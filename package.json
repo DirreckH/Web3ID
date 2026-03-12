@@ -10,7 +10,7 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "contracts:test": "pnpm --dir contracts test",
-    "proof:setup": "pnpm --filter @web3id/proof setup",
+    "proof:setup": "pnpm --filter @web3id/proof run setup",
     "demo:issue-vc": "pnpm --filter @web3id/issuer-service demo:issue",
     "demo:proof": "pnpm --filter @web3id/proof demo:proof",
     "demo:e2e": "pnpm --filter @web3id/frontend e2e",
