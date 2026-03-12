@@ -89,6 +89,7 @@ pnpm demo:stage2
 - start the frontend on `http://127.0.0.1:3000`
 
 The repository intentionally does not commit large proving artifacts such as `.zkey`, `.r1cs`, or `.sym` files. Fresh clones must run `pnpm proof:setup` before browser proving or the local demo can work.
+`pnpm proof:setup` now fingerprints the checked-in `.circom` sources and rebuilds runtime artifacts automatically when those files change.
 
 ## Main Commands
 
