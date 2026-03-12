@@ -25,7 +25,9 @@ contract IdentityStateRegistry is AccessControl {
         uint256 version,
         address actor
     );
-    event GovernanceAction(address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version);
+    event GovernanceAction(
+        address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version
+    );
 
     error IllegalTransition(IdentityState fromState, IdentityState toState);
 
@@ -59,12 +61,8 @@ contract IdentityStateRegistry is AccessControl {
             revert IllegalTransition(currentState, nextState);
         }
 
-        stateSnapshots[identityId] = StateSnapshot({
-            state: nextState,
-            reasonCode: reasonCode,
-            version: version,
-            updatedAt: block.timestamp
-        });
+        stateSnapshots[identityId] =
+            StateSnapshot({state: nextState, reasonCode: reasonCode, version: version, updatedAt: block.timestamp});
 
         emit StateTransitioned(identityId, currentState, nextState, reasonCode, version, msg.sender);
         emit GovernanceAction(msg.sender, keccak256("SET_STATE"), identityId, reasonCode, version);
@@ -94,22 +92,21 @@ contract IdentityStateRegistry is AccessControl {
 
     function _canTransition(IdentityState fromState, IdentityState toState) internal pure returns (bool) {
         if (fromState == IdentityState.INIT) {
-            return
-                toState == IdentityState.NORMAL || toState == IdentityState.OBSERVED || toState == IdentityState.RESTRICTED
-                    || toState == IdentityState.FROZEN;
+            return toState == IdentityState.NORMAL || toState == IdentityState.OBSERVED
+                || toState == IdentityState.RESTRICTED || toState == IdentityState.FROZEN;
         }
         if (fromState == IdentityState.NORMAL) {
-            return
-                toState == IdentityState.OBSERVED || toState == IdentityState.RESTRICTED
-                    || toState == IdentityState.HIGH_RISK || toState == IdentityState.FROZEN;
+            return toState == IdentityState.OBSERVED || toState == IdentityState.RESTRICTED
+                || toState == IdentityState.HIGH_RISK || toState == IdentityState.FROZEN;
         }
         if (fromState == IdentityState.OBSERVED) {
-            return
-                toState == IdentityState.NORMAL || toState == IdentityState.RESTRICTED
-                    || toState == IdentityState.HIGH_RISK || toState == IdentityState.FROZEN;
+            return toState == IdentityState.NORMAL || toState == IdentityState.RESTRICTED
+                || toState == IdentityState.HIGH_RISK || toState == IdentityState.FROZEN;
         }
         if (fromState == IdentityState.RESTRICTED) {
-            return toState == IdentityState.OBSERVED || toState == IdentityState.HIGH_RISK || toState == IdentityState.FROZEN;
+            return
+                toState == IdentityState.OBSERVED || toState == IdentityState.HIGH_RISK
+                    || toState == IdentityState.FROZEN;
         }
         if (fromState == IdentityState.HIGH_RISK) {
             return toState == IdentityState.RESTRICTED || toState == IdentityState.FROZEN;

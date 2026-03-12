@@ -22,7 +22,9 @@ contract RiskSourceRegistry is AccessControl {
     mapping(address => RiskSourceRecord) internal sources;
 
     event RiskSourceUpdated(address indexed source, RiskSourceType sourceType, bool enabled, bytes32 metadataHash);
-    event GovernanceAction(address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version);
+    event GovernanceAction(
+        address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version
+    );
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -39,10 +41,16 @@ contract RiskSourceRegistry is AccessControl {
     ) external onlyRole(RISK_MANAGER_ROLE) {
         sources[source] = RiskSourceRecord({sourceType: sourceType, enabled: enabled, metadataHash: metadataHash});
         emit RiskSourceUpdated(source, sourceType, enabled, metadataHash);
-        emit GovernanceAction(msg.sender, keccak256("SET_RISK_SOURCE"), bytes32(uint256(uint160(source))), reason, version);
+        emit GovernanceAction(
+            msg.sender, keccak256("SET_RISK_SOURCE"), bytes32(uint256(uint160(source))), reason, version
+        );
     }
 
-    function getSource(address source) external view returns (RiskSourceType sourceType, bool enabled, bytes32 metadataHash) {
+    function getSource(address source)
+        external
+        view
+        returns (RiskSourceType sourceType, bool enabled, bytes32 metadataHash)
+    {
         RiskSourceRecord memory record = sources[source];
         return (record.sourceType, record.enabled, record.metadataHash);
     }

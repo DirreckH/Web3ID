@@ -16,7 +16,9 @@ contract IssuerRegistry is AccessControl {
 
     event IssuerStatusUpdated(address indexed issuer, bool enabled, bytes32 metadataHash);
     event IssuerCapabilityUpdated(address indexed issuer, bytes32 indexed credentialType, bool enabled);
-    event GovernanceAction(address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version);
+    event GovernanceAction(
+        address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version
+    );
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -29,7 +31,9 @@ contract IssuerRegistry is AccessControl {
     {
         issuerRecords[issuer] = IssuerRecord({enabled: enabled, metadataHash: metadataHash});
         emit IssuerStatusUpdated(issuer, enabled, metadataHash);
-        emit GovernanceAction(msg.sender, keccak256("SET_ISSUER_STATUS"), bytes32(uint256(uint160(issuer))), reason, version);
+        emit GovernanceAction(
+            msg.sender, keccak256("SET_ISSUER_STATUS"), bytes32(uint256(uint160(issuer))), reason, version
+        );
     }
 
     function setIssuerCapability(address issuer, bytes32 credentialType, bool enabled, bytes32 reason, uint256 version)
@@ -38,7 +42,9 @@ contract IssuerRegistry is AccessControl {
     {
         issuerCapabilities[issuer][credentialType] = enabled;
         emit IssuerCapabilityUpdated(issuer, credentialType, enabled);
-        emit GovernanceAction(msg.sender, keccak256("SET_ISSUER_CAPABILITY"), bytes32(uint256(uint160(issuer))), reason, version);
+        emit GovernanceAction(
+            msg.sender, keccak256("SET_ISSUER_CAPABILITY"), bytes32(uint256(uint160(issuer))), reason, version
+        );
     }
 
     function getIssuer(address issuer) external view returns (bool enabled, bytes32 metadataHash) {

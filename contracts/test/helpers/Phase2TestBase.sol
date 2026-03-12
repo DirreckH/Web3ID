@@ -203,13 +203,15 @@ abstract contract Phase2TestBase is Test {
         payload.holderAuthorization.chainId = block.chainid;
         payload.holderAuthorization.nonce = 1;
         payload.holderAuthorization.deadline = block.timestamp + 1 hours;
-        payload.holderAuthorization.signature = signHolderAuthorization(payload.holderAuthorization, domainName, verifyingContract);
+        payload.holderAuthorization.signature =
+            signHolderAuthorization(payload.holderAuthorization, domainName, verifyingContract);
     }
 
-    function signHolderAuthorization(HolderAuthorization memory auth, string memory domainName, address verifyingContract)
-        internal
-        returns (bytes memory)
-    {
+    function signHolderAuthorization(
+        HolderAuthorization memory auth,
+        string memory domainName,
+        address verifyingContract
+    ) internal returns (bytes memory) {
         bytes32 structHash = keccak256(
             abi.encode(
                 HOLDER_AUTH_TYPEHASH,

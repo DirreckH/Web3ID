@@ -14,14 +14,13 @@ contract EnterpriseTreasuryGateTest is Phase2TestBase {
         bytes32 paymentRef = keccak256("payment-1");
         CredentialAttestationInput[] memory attestations = new CredentialAttestationInput[](1);
         attestations[0] = makeAttestation(
-            ENTITY_CREDENTIAL,
-            ENTITY_PAYMENT_POLICY_ID,
-            block.timestamp + 1 days,
-            keccak256("entity-payment")
+            ENTITY_CREDENTIAL, ENTITY_PAYMENT_POLICY_ID, block.timestamp + 1 days, keccak256("entity-payment")
         );
         AccessPayload memory payload = buildPayload(
             ENTITY_PAYMENT_POLICY_ID,
-            keccak256(abi.encodePacked("PAYMENT", address(enterpriseGate), makeAddr("beneficiary"), uint256(50), paymentRef)),
+            keccak256(
+                abi.encodePacked("PAYMENT", address(enterpriseGate), makeAddr("beneficiary"), uint256(50), paymentRef)
+            ),
             "Web3ID Enterprise Treasury",
             address(enterpriseGate),
             attestations
@@ -38,14 +37,13 @@ contract EnterpriseTreasuryGateTest is Phase2TestBase {
         stateRegistry.setState(identityId, IdentityState.HIGH_RISK, keccak256("risk"), 2);
         CredentialAttestationInput[] memory attestations = new CredentialAttestationInput[](1);
         attestations[0] = makeAttestation(
-            ENTITY_CREDENTIAL,
-            ENTITY_PAYMENT_POLICY_ID,
-            block.timestamp + 1 days,
-            keccak256("entity-payment")
+            ENTITY_CREDENTIAL, ENTITY_PAYMENT_POLICY_ID, block.timestamp + 1 days, keccak256("entity-payment")
         );
         AccessPayload memory payload = buildPayload(
             ENTITY_PAYMENT_POLICY_ID,
-            keccak256(abi.encodePacked("PAYMENT", address(enterpriseGate), makeAddr("beneficiary"), uint256(50), paymentRef)),
+            keccak256(
+                abi.encodePacked("PAYMENT", address(enterpriseGate), makeAddr("beneficiary"), uint256(50), paymentRef)
+            ),
             "Web3ID Enterprise Treasury",
             address(enterpriseGate),
             attestations
@@ -60,10 +58,7 @@ contract EnterpriseTreasuryGateTest is Phase2TestBase {
         bytes32 auditRef = keccak256("audit-1");
         CredentialAttestationInput[] memory attestations = new CredentialAttestationInput[](1);
         attestations[0] = makeAttestation(
-            ENTITY_CREDENTIAL,
-            ENTITY_AUDIT_POLICY_ID,
-            block.timestamp + 1 days,
-            keccak256("entity-audit")
+            ENTITY_CREDENTIAL, ENTITY_AUDIT_POLICY_ID, block.timestamp + 1 days, keccak256("entity-audit")
         );
         AccessPayload memory payload = buildPayload(
             ENTITY_AUDIT_POLICY_ID,

@@ -64,20 +64,15 @@ contract RegistriesTest is Test {
             }),
             keccak256("reason")
         );
-        (, , , bytes32[] memory requiredCredentialTypes, , , , , , bool enabled) = policyRegistry.getPolicy(policyId);
+        (,,, bytes32[] memory requiredCredentialTypes,,,,,, bool enabled) = policyRegistry.getPolicy(policyId);
         assertEq(requiredCredentialTypes[0], credentialTypes[0]);
         assertTrue(enabled);
 
         address source = makeAddr("source");
         riskSourceRegistry.setSourceStatus(
-            source,
-            RiskSourceRegistry.RiskSourceType.TRUSTED_ANALYZER,
-            true,
-            keccak256("meta"),
-            keccak256("reason"),
-            1
+            source, RiskSourceRegistry.RiskSourceType.TRUSTED_ANALYZER, true, keccak256("meta"), keccak256("reason"), 1
         );
-        (, bool sourceEnabled, ) = riskSourceRegistry.getSource(source);
+        (, bool sourceEnabled,) = riskSourceRegistry.getSource(source);
         assertTrue(sourceEnabled);
     }
 }

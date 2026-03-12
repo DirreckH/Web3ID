@@ -38,8 +38,14 @@ contract EnterpriseTreasuryGate is Ownable, EIP712 {
         verifier = ComplianceVerifier(verifier_);
     }
 
-    function submitPayment(AccessPayload calldata payload, address beneficiary, uint256 amount, bytes32 paymentRef) external {
-        _verifyHolderAuthorization(payload, PAYMENT_POLICY_ID, keccak256(abi.encodePacked("PAYMENT", address(this), beneficiary, amount, paymentRef)));
+    function submitPayment(AccessPayload calldata payload, address beneficiary, uint256 amount, bytes32 paymentRef)
+        external
+    {
+        _verifyHolderAuthorization(
+            payload,
+            PAYMENT_POLICY_ID,
+            keccak256(abi.encodePacked("PAYMENT", address(this), beneficiary, amount, paymentRef))
+        );
         if (!verifier.verifyAccess(PAYMENT_POLICY_ID, payload)) revert InvalidAccess();
 
         nonceUsed[msg.sender][payload.holderAuthorization.nonce] = true;
@@ -56,7 +62,9 @@ contract EnterpriseTreasuryGate is Ownable, EIP712 {
     }
 
     function exportAuditRecord(AccessPayload calldata payload, bytes32 auditRef) external {
-        _verifyHolderAuthorization(payload, AUDIT_POLICY_ID, keccak256(abi.encodePacked("AUDIT", address(this), auditRef)));
+        _verifyHolderAuthorization(
+            payload, AUDIT_POLICY_ID, keccak256(abi.encodePacked("AUDIT", address(this), auditRef))
+        );
         if (!verifier.verifyAccess(AUDIT_POLICY_ID, payload)) revert InvalidAccess();
 
         nonceUsed[msg.sender][payload.holderAuthorization.nonce] = true;

@@ -17,7 +17,9 @@ contract RevocationRegistry is AccessControl {
 
     event CredentialRevoked(bytes32 indexed revocationId, bytes32 indexed credentialHash, bool revoked);
     event ReplacementLinked(bytes32 indexed revocationId, bytes32 indexed replacedByRevocationId);
-    event GovernanceAction(address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version);
+    event GovernanceAction(
+        address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version
+    );
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);

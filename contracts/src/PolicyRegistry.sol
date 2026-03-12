@@ -37,7 +37,9 @@ contract PolicyRegistry is AccessControl {
 
     event PolicyRegistered(bytes32 indexed policyId, uint256 version, bool enabled);
     event PolicyEnabled(bytes32 indexed policyId, bool enabled);
-    event GovernanceAction(address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version);
+    event GovernanceAction(
+        address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version
+    );
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);

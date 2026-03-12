@@ -65,11 +65,7 @@ contract ComplianceVerifier is IComplianceVerifier, EIP712 {
             IdentityState minState,
             IdentityState maxState,
             bytes32[] memory requiredCredentialTypes,
-            address[] memory requiredIssuerSet,
-            ,
-            ,
-            ,
-            ,
+            address[] memory requiredIssuerSet,,,,,
             bool enabled
         ) = policyRegistry.getPolicy(policyId);
 
@@ -84,12 +80,16 @@ contract ComplianceVerifier is IComplianceVerifier, EIP712 {
         bool[] memory satisfiedTypes = new bool[](requiredCredentialTypes.length);
         for (uint256 index = 0; index < payload.credentialAttestations.length; index++) {
             CredentialAttestationInput calldata attestation = payload.credentialAttestations[index];
-            if (attestation.subjectBinding != payload.holderAuthorization.subjectBinding) revert InvalidHolderBinding();
+            if (attestation.subjectBinding != payload.holderAuthorization.subjectBinding) {
+                revert InvalidHolderBinding();
+            }
             if (attestation.expiration <= block.timestamp) revert ExpiredCredential();
             if (revocationRegistry.isRevoked(attestation.revocationId)) revert RevokedCredential();
             if (!issuerRegistry.isIssuerEnabled(attestation.issuer)) revert InvalidIssuer();
             if (!issuerRegistry.hasCapability(attestation.issuer, attestation.credentialType)) revert InvalidIssuer();
-            if (!_policyHintMatches(policyId, attestation.policyHints, attestation.policyHintsHash)) revert InvalidPolicyHints();
+            if (!_policyHintMatches(policyId, attestation.policyHints, attestation.policyHintsHash)) {
+                revert InvalidPolicyHints();
+            }
             if (!_issuerAllowed(requiredIssuerSet, attestation.issuer)) revert InvalidIssuer();
             if (!_verifyCredentialAttestation(attestation)) revert InvalidCredentialSignature();
 
@@ -107,7 +107,11 @@ contract ComplianceVerifier is IComplianceVerifier, EIP712 {
         return true;
     }
 
-    function _verifyCredentialAttestation(CredentialAttestationInput calldata attestation) internal view returns (bool) {
+    function _verifyCredentialAttestation(CredentialAttestationInput calldata attestation)
+        internal
+        view
+        returns (bool)
+    {
         bytes32 digest = _hashTypedDataV4(
             keccak256(
                 abi.encode(
