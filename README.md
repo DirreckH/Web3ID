@@ -1,139 +1,151 @@
-# Web3ID Role C (On-chain Adjudication)
+# Web3ID Phase2
 
-Role C delivers the on-chain decision layer:
-- Proof verifier interface (`bytes proof + uint256[] publicSignals`)
-- Mock verifier for stage-1 integration
-- RWA gate contract (verify -> allow action -> bookkeeping)
-- Trust registry (issuer/verifier trust anchors)
+Web3ID is a `pnpm` monorepo for a Phase2 identity and compliance demo built around deterministic identity IDs, EIP-712 credential attestations, on-chain state registries, and two policy-gated flows:
 
-## Project Structure
+- `RWA Access`
+- `Enterprise Treasury` with payment and audit actions
 
-```text
-src/
-  interfaces/IProofVerifier.sol
-  mocks/MockVerifier.sol
-  RWAGate.sol
-  TrustRegistry.sol
-test/
-  MockVerifier.t.sol
-  RWAGate.t.sol
-  TrustRegistry.t.sol
-script/
-  DeployLocal.s.sol
-  DeploySepolia.s.sol
-  InteractSepolia.s.sol
-```
+## Phase2 Scope
 
-## 1) Windows Toolchain Setup (From Zero)
+- Identity references are always `bytes32 identityId`
+- Policies are always `bytes32 policyId`
+- Credential attestations are always EIP-712 typed data signed by the issuer
+- Identity state is read from `IdentityStateRegistry` during verification
+- The zk boundary stays small and safe: Groth16 proves holder binding only
 
-### Install Foundry binaries
+## Workspace Layout
 
-```powershell
-# Download a Windows Foundry release package and extract to %USERPROFILE%\.foundry\bin
-$foundryBin = Join-Path $HOME '.foundry\bin'
-New-Item -ItemType Directory -Force -Path $foundryBin | Out-Null
-Invoke-WebRequest `
-  -Uri 'https://github.com/foundry-rs/foundry/releases/download/v1.6.0-rc1/foundry_v1.6.0-rc1_win32_amd64.zip' `
-  -OutFile "$env:TEMP\foundry_win32_amd64.zip"
-Expand-Archive "$env:TEMP\foundry_win32_amd64.zip" -DestinationPath $foundryBin -Force
-```
+- `apps/frontend`: Phase2 demo UI for identity tree selection, credential issuance, proof generation, RWA access, enterprise payment, and audit export
+- `apps/issuer-service`: file-backed issuer service with issue, reissue, revoke, status, verify, and compatibility endpoints
+- `packages/identity`: deterministic root/sub identity derivation, link proof helpers, same-root helpers
+- `packages/credential`: Phase2 credential schema, EIP-712 attestation helpers, W3C-compatible export helpers
+- `packages/state`: locked identity state enum, transition rules, risk signal mapping
+- `packages/policy`: `bytes32 policyId` constants, proof request helpers, policy templates
+- `packages/proof`: holder-binding proving helpers for browser and Node
+- `packages/sdk`: Phase2 SDK for issuer API calls, contract reads, payload construction, and verifier calls
+- `contracts`: Foundry contracts for registries, verifier, RWA gate, and enterprise treasury gate
 
-### Verify installation
+## Locked Protocol Rules
 
-```powershell
-& "$HOME\.foundry\bin\forge.exe" --version
-& "$HOME\.foundry\bin\cast.exe" --version
-& "$HOME\.foundry\bin\anvil.exe" --version
-```
+- Root identity derivation:
+  - `rootId = keccak256("did:pkh:eip155:<chainId>:<checksumAddress>")`
+  - root `identityId = keccak256(rootId)`
+- Sub identity derivation:
+  - `subIdentityId = keccak256(rootId + normalizedScope + subIdentityType)`
+  - sub `identityId = keccak256(subIdentityId)`
+- `IdentityState` ordering is fixed:
+  - `INIT=0`
+  - `NORMAL=1`
+  - `OBSERVED=2`
+  - `RESTRICTED=3`
+  - `HIGH_RISK=4`
+  - `FROZEN=5`
+- `CredentialAttestation` is EIP-712 with domain:
+  - `name: "Web3ID Credential"`
+  - `version: "2"`
+  - `chainId`
+  - `verifyingContract: ComplianceVerifier`
+- `verifyAccess(bytes32 policyId, AccessPayload payload)` never accepts state in the payload; state is loaded from `IdentityStateRegistry`
 
-If you already added Foundry to `PATH`, you can use `forge/cast/anvil` directly.
+## Quick Start
 
-## 2) Environment Variables
-
-Copy `.env.example` to `.env` and fill values:
-- `PRIVATE_KEY`: deployer private key (use burner wallet for testnets)
-- `SEPOLIA_RPC_URL`: Sepolia RPC endpoint
-- `ETHERSCAN_API_KEY`: optional, for contract verification
-- `RWA_GATE_ADDRESS`: for interaction script
-- `BUY_AMOUNT`, `PASS_SIGNAL`: interaction inputs
-
-## 3) Build and Test
+1. Install dependencies.
 
 ```powershell
-& "$HOME\.foundry\bin\forge.exe" build
-& "$HOME\.foundry\bin\forge.exe" test -vv
+pnpm install
 ```
 
-## 4) Local End-to-End (Anvil)
-
-### Start local chain
+2. Generate local proving artifacts.
 
 ```powershell
-& "$HOME\.foundry\bin\anvil.exe"
+pnpm proof:setup
 ```
 
-### Deploy contracts (new terminal)
+3. Build the workspace.
 
 ```powershell
-& "$HOME\.foundry\bin\forge.exe" script script/DeployLocal.s.sol:DeployLocalScript `
-  --rpc-url http://127.0.0.1:8545 `
-  --broadcast
+pnpm -r build
 ```
 
-### Verify success path (`publicSignals=[1]`)
+4. Run the full test suite.
 
 ```powershell
-& "$HOME\.foundry\bin\cast.exe" send <RWA_GATE_ADDRESS> `
-  "buyRwa(bytes,uint256[],uint256)" 0x1234 "[1]" 1 `
-  --rpc-url http://127.0.0.1:8545 `
-  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+pnpm -r test
 ```
 
-### Verify failure path (`publicSignals=[0]`)
+5. Start the local Phase2 demo.
 
 ```powershell
-& "$HOME\.foundry\bin\cast.exe" call <RWA_GATE_ADDRESS> `
-  "buyRwa(bytes,uint256[],uint256)" 0x1234 "[0]" 1 `
-  --rpc-url http://127.0.0.1:8545
+pnpm demo:stage2
 ```
 
-The call should revert with `ProofRejected()`.
+`demo:stage2` will:
 
-## 5) Sepolia Deployment
+- start `anvil` if RPC is not already available at `http://127.0.0.1:8545`
+- deploy the Phase2 contracts
+- seed default policies and initial holder states
+- run `pnpm proof:setup` to materialize frontend/browser proving artifacts locally
+- start the issuer service on `http://127.0.0.1:4100`
+- start the frontend on `http://127.0.0.1:3000`
+
+The repository intentionally does not commit large proving artifacts such as `.zkey`, `.r1cs`, or `.sym` files. Fresh clones must run `pnpm proof:setup` before browser proving or the local demo can work.
+
+## Main Commands
 
 ```powershell
-& "$HOME\.foundry\bin\forge.exe" script script/DeploySepolia.s.sol:DeploySepoliaScript `
-  --rpc-url $env:SEPOLIA_RPC_URL `
-  --broadcast
+pnpm -r build
+pnpm -r test
+pnpm proof:setup
+pnpm demo:stage2
+pnpm --dir contracts build
+pnpm --dir contracts test
+pnpm --filter @web3id/frontend e2e
+pnpm demo:issue-vc "did:pkh:eip155:31337:0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 ```
 
-Optional verification:
+`pnpm --filter @web3id/frontend e2e` expects the Phase2 demo stack to already be running. Start `pnpm demo:stage2` in a separate terminal first.
+
+## Issuer API
+
+- `GET /health`
+- `GET /issuer`
+- `POST /credentials/issue`
+- `POST /credentials/reissue`
+- `POST /credentials/revoke`
+- `GET /credentials/:id/status`
+- `POST /credentials/verify`
+
+The compatibility issue flow from Phase1 is still supported through `POST /credentials/issue` when the request contains `subjectDid` and `subjectAddress`.
+
+## Contracts
+
+Phase2 deploys the following core contracts:
+
+- `IssuerRegistry`
+- `RevocationRegistry`
+- `IdentityStateRegistry`
+- `PolicyRegistry`
+- `RiskSourceRegistry`
+- `ComplianceVerifier`
+- `RWAGate`
+- `EnterpriseTreasuryGate`
+- `MockRWAAsset`
+
+The default seeded policies are:
+
+- `keccak256("RWA_BUY_V2")`
+- `keccak256("ENTITY_PAYMENT_V1")`
+- `keccak256("ENTITY_AUDIT_V1")`
+
+## Verification Status
+
+The current repo state has been verified with:
 
 ```powershell
-& "$HOME\.foundry\bin\forge.exe" script script/DeploySepolia.s.sol:DeploySepoliaScript `
-  --rpc-url $env:SEPOLIA_RPC_URL `
-  --broadcast `
-  --verify `
-  --etherscan-api-key $env:ETHERSCAN_API_KEY
+pnpm -r build
+pnpm -r test
+pnpm demo:stage2
+pnpm --filter @web3id/frontend e2e
 ```
 
-## 6) Sepolia Interaction
-
-### Success path
-
-```powershell
-& "$HOME\.foundry\bin\forge.exe" script script/InteractSepolia.s.sol:InteractSepoliaScript `
-  --rpc-url $env:SEPOLIA_RPC_URL `
-  --broadcast
-```
-
-### Failure path
-Set `PASS_SIGNAL=0` then run the same command. It should revert with `ProofRejected()`.
-
-## 7) Integration with Role B (Mock -> Real Verifier)
-
-When Role B delivers real verifier artifacts:
-1. Deploy Role B's verifier contract (or adapter implementing `IProofVerifier`).
-2. Call `RWAGate.setVerifier(newVerifier)`.
-3. Keep `RWAGate.buyRwa(bytes,uint256[],uint256)` unchanged.
-4. Update client-side `publicSignals` index convention as required by Role B.
+`pnpm demo:stage2` has also been exercised locally to confirm contract deployment, state seeding, issuer-service startup, and frontend startup.

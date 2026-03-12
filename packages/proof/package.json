@@ -1,0 +1,32 @@
+{
+  "name": "@web3id/proof",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "main": "dist/index.js",
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "artifacts",
+    "circuits"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "setup": "tsx scripts/setup.ts",
+    "demo:proof": "tsx scripts/demo-proof.ts"
+  },
+  "dependencies": {
+    "@web3id/credential": "workspace:*",
+    "execa": "^9.5.2",
+    "ffjavascript": "^0.3.1",
+    "snarkjs": "^0.7.6",
+    "viem": "^2.23.5",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "circom2": "^0.2.22",
+    "circomlib": "^2.0.5"
+  }
+}

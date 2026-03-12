@@ -1,0 +1,24 @@
+{
+  "name": "@web3id/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "main": "dist/index.js",
+  "types": "./src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@web3id/credential": "workspace:*",
+    "@web3id/identity": "workspace:*",
+    "@web3id/policy": "workspace:*",
+    "@web3id/proof": "workspace:*",
+    "@web3id/state": "workspace:*",
+    "viem": "^2.23.5"
+  }
+}

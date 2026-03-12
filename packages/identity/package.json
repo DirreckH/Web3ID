@@ -1,0 +1,19 @@
+{
+  "name": "@web3id/identity",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "main": "dist/index.js",
+  "types": "./src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "viem": "^2.23.5"
+  }
+}

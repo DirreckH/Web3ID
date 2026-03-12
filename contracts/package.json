@@ -1,0 +1,11 @@
+{
+  "name": "@web3id/contracts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "powershell -NoProfile -Command \"$forge = (Get-Command forge -ErrorAction SilentlyContinue).Source; if (-not $forge -and (Test-Path \\\"$HOME\\\\.foundry\\\\bin\\\\forge.exe\\\")) { $forge = \\\"$HOME\\\\.foundry\\\\bin\\\\forge.exe\\\" }; if (-not $forge) { Write-Error 'forge not found'; exit 1 }; & $forge build\"",
+    "test": "powershell -NoProfile -Command \"$forge = (Get-Command forge -ErrorAction SilentlyContinue).Source; if (-not $forge -and (Test-Path \\\"$HOME\\\\.foundry\\\\bin\\\\forge.exe\\\")) { $forge = \\\"$HOME\\\\.foundry\\\\bin\\\\forge.exe\\\" }; if (-not $forge) { Write-Error 'forge not found'; exit 1 }; & $forge test -vv\"",
+    "fmt": "powershell -NoProfile -Command \"$forge = (Get-Command forge -ErrorAction SilentlyContinue).Source; if (-not $forge -and (Test-Path \\\"$HOME\\\\.foundry\\\\bin\\\\forge.exe\\\")) { $forge = \\\"$HOME\\\\.foundry\\\\bin\\\\forge.exe\\\" }; if (-not $forge) { Write-Error 'forge not found'; exit 1 }; & $forge fmt\""
+  }
+}

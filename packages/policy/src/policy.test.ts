@@ -1,0 +1,22 @@
+import { describe, expect, it } from "vitest";
+import { POLICY_IDS, computePolicyId, createProofRequest } from "./index.js";
+
+describe("policy helpers", () => {
+  it("produces deterministic bytes32 policy ids", () => {
+    expect(computePolicyId("RWA_BUY_V2")).toBe(POLICY_IDS.RWA_BUY_V2);
+    expect(POLICY_IDS.RWA_BUY_V2).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("creates proof requests with bytes32 policy ids", () => {
+    const request = createProofRequest({
+      verifier: "0x0000000000000000000000000000000000000001",
+      requestedClaims: ["kycLevel"],
+      policyId: POLICY_IDS.ENTITY_PAYMENT_V1,
+      policyVersion: 1,
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000002",
+      challenge: "0x0000000000000000000000000000000000000000000000000000000000000003",
+    });
+
+    expect(request.policyId).toBe(POLICY_IDS.ENTITY_PAYMENT_V1);
+  });
+});

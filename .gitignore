@@ -1,14 +1,48 @@
-# Compiler files
+# Node / workspace
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Frontend build artifacts
+apps/frontend/dist/
+apps/frontend/.vite/
+apps/frontend/public/circuits/*
+!apps/frontend/public/circuits/.gitkeep
+
+# Foundry build artifacts
+contracts/cache/
+contracts/out/
+!/contracts/broadcast
+/contracts/broadcast/*/31337/
+/contracts/broadcast/**/dry-run/
+
+# Legacy root artifacts from the pre-monorepo layout
 cache/
 out/
+broadcast/
 
-# Ignores development broadcast logs
-!/broadcast
-/broadcast/*/31337/
-/broadcast/**/dry-run/
+# Circuit artifacts
+packages/proof/artifacts/*
+!packages/proof/artifacts/.gitkeep
+packages/proof/artifacts-build/
+packages/proof/*.r1cs
+packages/proof/*.sym
+packages/proof/*_js/
+packages/proof/circuits/*.r1cs
+packages/proof/circuits/*.sym
+packages/proof/**/*_js/
+packages/proof/tmp-*.json
+packages/proof/tools/circom.exe
 
-# Docs
-docs/
-
-# Dotenv file
+# Local env
 .env
+.env.local
+.env.*.local
+.web3id/
+tmp-*.json
+tmp-demo-stage2*
+pnpm-install.log
+vendor-temp/
