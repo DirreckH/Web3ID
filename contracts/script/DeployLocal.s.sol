@@ -49,8 +49,9 @@ contract DeployLocalScript is Script {
         IdentityStateRegistry stateRegistry = new IdentityStateRegistry();
         PolicyRegistry policyRegistry = new PolicyRegistry();
         RiskSourceRegistry riskSourceRegistry = new RiskSourceRegistry();
-        IGroth16Verifier groth16Verifier =
-            useMockGroth16Verifier ? IGroth16Verifier(address(new MockGroth16Verifier())) : IGroth16Verifier(address(new Groth16Verifier()));
+        IGroth16Verifier groth16Verifier = useMockGroth16Verifier
+            ? IGroth16Verifier(address(new MockGroth16Verifier()))
+            : IGroth16Verifier(address(new Groth16Verifier()));
         ComplianceVerifier complianceVerifier = new ComplianceVerifier(
             address(groth16Verifier),
             address(issuerRegistry),
