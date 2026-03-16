@@ -52,3 +52,13 @@ Governance is override-only.
 - `GLOBAL_LOCKDOWN` is reserved for governance-only use
 
 Governance may override a decision, but it still does not replace the attribution chain or the audit trail.
+
+## Demo Control Plane Boundary
+
+`issuer-service` currently acts as both issuer integration and the demo control plane.
+
+- it registers identity trees for the local demo
+- it exposes deterministic/mock signal application and recovery evaluation
+- it syncs the minimal on-chain state anchors used by the frontend demos
+
+This is a runtime convenience for the Phase2+/Phase3-prep demo. It should not be treated as the final long-term service boundary for default-mode state control.

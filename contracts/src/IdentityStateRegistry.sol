@@ -138,7 +138,7 @@ contract IdentityStateRegistry is AccessControl {
         }
         if (fromState == IdentityState.RESTRICTED) {
             return
-                toState == IdentityState.OBSERVED || toState == IdentityState.HIGH_RISK
+                toState == IdentityState.NORMAL || toState == IdentityState.OBSERVED || toState == IdentityState.HIGH_RISK
                     || toState == IdentityState.FROZEN;
         }
         if (fromState == IdentityState.HIGH_RISK) {

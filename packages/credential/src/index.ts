@@ -112,6 +112,7 @@ export type HolderAuthorizationPayload = {
 };
 
 export type HolderAuthorization = {
+  chainId: number;
   nonce: bigint;
   deadline: bigint;
   signature: Hex;

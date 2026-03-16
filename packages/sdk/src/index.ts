@@ -22,7 +22,7 @@ import {
   type PolicyDefinition,
 } from "@web3id/policy";
 import { generateHolderBindingProof, generateHolderBoundProof } from "@web3id/proof";
-import { IdentityState } from "@web3id/state";
+import { IdentityState, getActiveConsequences, isStateInRange, type ConsequenceRecord } from "@web3id/state";
 import { createWalletClient, custom, encodePacked, keccak256, type Address, type Hex, type PublicClient } from "viem";
 
 export type ZkProofInput = {
@@ -45,6 +45,19 @@ export type AccessPayload = {
   zkProof: ZkProofInput;
   policyVersion: number;
   holderAuthorization: HolderAuthorization;
+};
+
+export type IdentityContextSnapshot = {
+  currentState: IdentityState;
+  activeConsequences?: ConsequenceRecord[];
+  consequences?: ConsequenceRecord[];
+};
+
+export type PolicyPreflightResult = {
+  allowed: boolean;
+  source: "mode" | "state" | "consequence" | "policy";
+  reason: string;
+  blockingConsequences: ConsequenceRecord[];
 };
 
 type IdentityLike = Pick<SubIdentity, "capabilities" | "permissions"> | Pick<RootIdentity, "capabilities">;
@@ -303,6 +316,70 @@ export function supportsPolicy(identity: IdentityLike, policyId: Hex | PolicyDef
   });
 }
 
+export function evaluatePolicyPreflight(input: {
+  identityContext?: IdentityContextSnapshot | null;
+  policyId: Hex | PolicyDefinition;
+  effectiveMode: ReturnType<typeof resolveEffectiveMode>;
+  payload?: Pick<AccessPayload, "credentialAttestations"> | null;
+}): PolicyPreflightResult {
+  const policy = getPolicyDefinition(input.policyId);
+  const effectiveMode = input.effectiveMode;
+  if (!effectiveMode) {
+    return {
+      allowed: false,
+      source: "mode",
+      reason: "Denied by effective mode: this identity does not support an allowed mode for the selected policy.",
+      blockingConsequences: [],
+    };
+  }
+
+  if (policy.requiresComplianceMode && (input.payload?.credentialAttestations.length ?? 0) === 0) {
+    return {
+      allowed: false,
+      source: "mode",
+      reason: "Denied by effective mode: compliance mode policies require a credential-bound payload.",
+      blockingConsequences: [],
+    };
+  }
+
+  if (!input.identityContext) {
+    return {
+      allowed: false,
+      source: "policy",
+      reason: "Denied by policy preflight: identity context is unavailable.",
+      blockingConsequences: [],
+    };
+  }
+
+  const activeConsequences = input.identityContext.activeConsequences ?? getActiveConsequences(input.identityContext.consequences ?? []);
+  const blockingConsequences = activeConsequences.filter((consequence) => consequenceBlocksPolicy(consequence, policy, effectiveMode));
+  if (blockingConsequences.length > 0) {
+    return {
+      allowed: false,
+      source: "consequence",
+      reason: `Denied by active consequence: ${blockingConsequences.map((consequence) => consequence.consequenceType).join(", ")}.`,
+      blockingConsequences,
+    };
+  }
+
+  const [minState, maxState] = policy.requiredStateRange;
+  if (!isStateInRange(input.identityContext.currentState, minState, maxState)) {
+    return {
+      allowed: false,
+      source: "state",
+      reason: `Denied by state: ${IdentityState[input.identityContext.currentState]} is outside ${IdentityState[minState]}-${IdentityState[maxState]}.`,
+      blockingConsequences: [],
+    };
+  }
+
+  return {
+    allowed: true,
+    source: "policy",
+    reason: "Allowed: policy preflight passed.",
+    blockingConsequences: [],
+  };
+}
+
 export async function issueCredential(apiUrl: string, input: {
   subjectDid: string;
   subjectAddress: Address;
@@ -498,6 +575,7 @@ export async function signHolderAuthorization(
 
 export function buildHolderAuthorizationPayload(payload: HolderAuthorizationPayload, signature: Hex): HolderAuthorization {
   return {
+    chainId: payload.chainId,
     nonce: payload.nonce,
     deadline: payload.deadline,
     signature,
@@ -572,4 +650,27 @@ export { getPolicyDefinition };
 
 function extractCredentialTypes(bundles: CredentialBundle[]) {
   return bundles.map((bundle) => bundle.attestation.credentialType as Hex);
+}
+
+function consequenceBlocksPolicy(
+  consequence: ConsequenceRecord,
+  policy: PolicyDefinition,
+  effectiveMode: NonNullable<ReturnType<typeof resolveEffectiveMode>>,
+) {
+  switch (consequence.consequenceType) {
+    case "warn":
+    case "trust_boost":
+    case "limit_relaxation":
+    case "access_unlock":
+    case "reputation_badge":
+      return false;
+    case "limit":
+      return effectiveMode === "DEFAULT_BEHAVIOR_MODE" || policy.riskTolerance === "LOW";
+    case "review_required":
+      return policy.requiredStateRange[0] === IdentityState.NORMAL && policy.requiredStateRange[1] === IdentityState.NORMAL;
+    case "freeze":
+      return true;
+    default:
+      return false;
+  }
 }

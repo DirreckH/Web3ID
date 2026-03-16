@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { createPublicClient, createWalletClient, http } from "viem";
@@ -17,6 +17,7 @@ const ISSUER_PRIVATE_KEY =
     "0x59c6995e998f97a5a0044966f0945384d7d0f5fb8f7c8d17826dfec353bbf4d6") as `0x${string}`;
 const DEFAULT_HOLDER =
   (process.env.DEFAULT_HOLDER ?? "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266") as `0x${string}`;
+const ISSUER_DATA_FILE = process.env.ISSUER_DATA_FILE ?? ".web3id/issuer-store.demo.json";
 
 const deployer = privateKeyToAccount(DEPLOYER_PRIVATE_KEY);
 const issuer = privateKeyToAccount(ISSUER_PRIVATE_KEY);
@@ -158,9 +159,10 @@ async function deployContracts() {
     ["script", "script/DeployLocal.s.sol:DeployLocalScript", "--rpc-url", RPC_URL, "--broadcast", "--non-interactive"],
     {
       ...process.env,
-      PRIVATE_KEY: DEPLOYER_PRIVATE_KEY,
-      TRUSTED_ISSUER: issuer.address,
-    },
+    PRIVATE_KEY: DEPLOYER_PRIVATE_KEY,
+    TRUSTED_ISSUER: issuer.address,
+    USE_MOCK_GROTH16_VERIFIER: "true",
+  },
     join(ROOT, "contracts"),
   );
 
@@ -236,6 +238,7 @@ async function seedIdentityState(stateRegistryAddress: `0x${string}`) {
 async function main() {
   await ensureAnvil();
   await resetLocalAnvilIfNeeded();
+  rmSync(join(ROOT, ISSUER_DATA_FILE), { force: true });
   const deployment = await deployContracts();
   await seedIdentityState(deployment.stateRegistry);
   await ensureProofArtifacts();
@@ -247,6 +250,7 @@ async function main() {
     RISK_MANAGER_PRIVATE_KEY: DEPLOYER_PRIVATE_KEY,
     ISSUER_PRIVATE_KEY: ISSUER_PRIVATE_KEY,
     ISSUER_ADDRESS: issuer.address,
+    ISSUER_DATA_FILE: ISSUER_DATA_FILE,
     COMPLIANCE_VERIFIER_ADDRESS: deployment.complianceVerifier,
     STATE_REGISTRY_ADDRESS: deployment.stateRegistry,
     VITE_CHAIN_ID: "31337",

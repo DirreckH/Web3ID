@@ -30,6 +30,9 @@ export type ConsequenceRecord = {
   recoverable: boolean;
   recoveryRuleId?: string;
   createdAt: string;
+  resolvedAt?: string;
+  resolvedBySignalId?: string;
+  resolvedByDecisionId?: string;
 };
 
 export function applyConsequences(input: {
@@ -53,7 +56,7 @@ export function applyConsequences(input: {
       reasonCode: input.assessment.reasonCode,
       sourceDecisionId: input.decision.decisionId,
       effectiveFrom: createdAt,
-      expiresAt: recoveryRule ? futureIso(recoveryRule.requiredCooldown) : undefined,
+      expiresAt: recoveryRule && recoveryRule.requiredCooldown > 0 ? futureIso(recoveryRule.requiredCooldown) : undefined,
       recoverable: consequenceType !== "trust_decrease",
       recoveryRuleId: recoveryRule?.ruleId,
       createdAt,
@@ -62,7 +65,9 @@ export function applyConsequences(input: {
 }
 
 export function getActiveConsequences(consequences: ConsequenceRecord[], at = new Date().toISOString()) {
-  return consequences.filter((consequence) => !consequence.expiresAt || consequence.expiresAt >= at);
+  return consequences.filter(
+    (consequence) => !consequence.resolvedAt && (!consequence.expiresAt || consequence.expiresAt >= at),
+  );
 }
 
 function consequenceTypeFor(category: RiskSignal["category"], state: IdentityState): ConsequenceType {

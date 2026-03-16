@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LinkabilityLevel, RiskIsolationLevel } from "../../identity/src/index.js";
+import { evaluateRecovery } from "./recovery.js";
 import { evaluatePropagation, PropagationLevel } from "./propagation.js";
 import { createRiskSignal } from "./signal.js";
 import {
@@ -97,8 +98,9 @@ describe("state machine", () => {
   });
 
   it("evaluates propagation without defaulting to global lockdown", () => {
+    const identityId = "0x0000000000000000000000000000000000000000000000000000000000000010";
     const signal = createRiskSignal({
-      identityId: "0x0000000000000000000000000000000000000000000000000000000000000010",
+      identityId,
       sourceType: "fixture",
       sourceId: "sanction",
       type: "SANCTION_HIT",
@@ -113,9 +115,10 @@ describe("state machine", () => {
       reasonCode: "SANCTION_HIT",
       explanation: "Sanction hit escalates to the root.",
     });
+    const decision = processRiskSignal(createIdentityStateContext(identityId, IdentityState.NORMAL), signal).decision;
 
     const propagation = evaluatePropagation(
-      signal,
+      decision,
       {
         identityId: signal.identityId,
         rootIdentityId: "0x00000000000000000000000000000000000000000000000000000000000000aa",
@@ -142,10 +145,136 @@ describe("state machine", () => {
           rootIdentityId: "0x00000000000000000000000000000000000000000000000000000000000000aa",
           scope: "payments",
         },
-      ],
+      ] as const,
     );
 
     expect(propagation.level).toBe(PropagationLevel.ROOT_ESCALATION);
     expect(propagation.impactedIdentityIds).toHaveLength(2);
+  });
+
+  it("keeps critical governance signals below global lockdown unless governance explicitly overrides", () => {
+    const identityId = "0x0000000000000000000000000000000000000000000000000000000000000012";
+    const signal = createRiskSignal({
+      identityId,
+      sourceType: "governance",
+      sourceId: "governance-escalation",
+      type: "GOVERNANCE_ACTION",
+      severity: "critical",
+      category: "negative",
+      evidenceType: "GOVERNANCE_DECISION",
+      evidenceRef: "fixture://governance-escalation",
+      observedAt: new Date(1_500).toISOString(),
+      actor: "governance-council",
+      policyVersion: 1,
+      requestedState: IdentityState.FROZEN,
+      reason: "governance escalation",
+      reasonCode: "GOVERNANCE_ESCALATION",
+      explanation: "Critical governance actions should default to root escalation only.",
+    });
+    const decision = processRiskSignal(createIdentityStateContext(identityId, IdentityState.NORMAL), signal).decision;
+
+    const identityGraph = [
+      {
+        identityId,
+        rootIdentityId: "0x00000000000000000000000000000000000000000000000000000000000000aa",
+        scope: "social",
+      },
+      {
+        identityId: "0x0000000000000000000000000000000000000000000000000000000000000013",
+        rootIdentityId: "0x00000000000000000000000000000000000000000000000000000000000000aa",
+        scope: "payments",
+      },
+    ] as const;
+
+    const defaultPropagation = evaluatePropagation(
+      decision,
+      {
+        identityId,
+        rootIdentityId: "0x00000000000000000000000000000000000000000000000000000000000000aa",
+        scope: "social",
+        permissions: {
+          allowedCredentialTypes: [],
+          allowedProofTypes: [],
+          supportedProofKinds: ["holder_bound_proof"],
+          allowRootLink: false,
+          riskIsolationLevel: RiskIsolationLevel.LOW,
+          linkabilityLevel: LinkabilityLevel.SAME_SCOPE,
+          canEscalateToRoot: true,
+          inheritsRootRestrictions: true,
+        },
+      },
+      identityGraph,
+    );
+    expect(defaultPropagation.level).toBe(PropagationLevel.ROOT_ESCALATION);
+
+    const governancePropagation = evaluatePropagation(
+      { ...decision, actorType: "governance" },
+      {
+        identityId,
+        rootIdentityId: "0x00000000000000000000000000000000000000000000000000000000000000aa",
+        scope: "social",
+        permissions: {
+          allowedCredentialTypes: [],
+          allowedProofTypes: [],
+          supportedProofKinds: ["holder_bound_proof"],
+          allowRootLink: false,
+          riskIsolationLevel: RiskIsolationLevel.LOW,
+          linkabilityLevel: LinkabilityLevel.SAME_SCOPE,
+          canEscalateToRoot: true,
+          inheritsRootRestrictions: true,
+        },
+      },
+      identityGraph,
+      PropagationLevel.GLOBAL_LOCKDOWN,
+    );
+    expect(governancePropagation.level).toBe(PropagationLevel.GLOBAL_LOCKDOWN);
+  });
+
+  it("runs recovery as an explicit flow after consequences have been applied", () => {
+    const identityId = "0x0000000000000000000000000000000000000000000000000000000000000020";
+    const restrictedContext = processRiskSignal(
+      createIdentityStateContext(identityId, IdentityState.NORMAL),
+      createRiskSignal({
+        identityId,
+        sourceType: "fixture",
+        sourceId: "negative-risk",
+        type: "NEGATIVE_RISK_FLAG",
+        severity: "high",
+        category: "negative",
+        evidenceType: "FIXTURE_SIGNAL",
+        evidenceRef: "fixture://negative-risk",
+        observedAt: new Date(1_000).toISOString(),
+        actor: "demo",
+        policyVersion: 1,
+        reason: "negative risk fixture",
+        reasonCode: "NEGATIVE_RISK_FLAG",
+        explanation: "Mock risk flag should create a restriction.",
+      }),
+    ).next;
+
+    const recoverySignal = createRiskSignal({
+      identityId,
+      sourceType: "fixture",
+      sourceId: "good-standing",
+      type: "LONG_TERM_GOOD_STANDING",
+      severity: "positive",
+      category: "positive",
+      evidenceType: "FIXTURE_SIGNAL",
+      evidenceRef: "fixture://good-standing",
+      observedAt: new Date(2_000).toISOString(),
+      actor: "demo",
+      policyVersion: 1,
+      reason: "good standing",
+      reasonCode: "LONG_TERM_GOOD_STANDING",
+      explanation: "A deterministic recovery signal should unlock the restriction.",
+    });
+    const positiveResult = processRiskSignal(restrictedContext, recoverySignal);
+    expect(positiveResult.next.currentState).toBe(IdentityState.RESTRICTED);
+
+    const recovery = evaluateRecovery(positiveResult.next, [recoverySignal]);
+    expect(recovery.resolvedConsequences).toHaveLength(1);
+    expect(recovery.resolvedConsequences[0].consequenceType).toBe("limit");
+    expect(recovery.next.currentState).toBe(IdentityState.NORMAL);
+    expect(recovery.next.decisions.at(-1)?.assessmentId).toBe(recovery.assessment?.assessmentId);
   });
 });

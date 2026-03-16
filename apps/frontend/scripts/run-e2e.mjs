@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -16,6 +16,40 @@ function spawnCommand(command, args, cwd) {
     stdio: ["ignore", "inherit", "inherit"],
     shell: false,
   });
+}
+
+function listPidsForPort(port) {
+  try {
+    if (isWindows) {
+      const output = execSync(`netstat -ano -p tcp | findstr :${port}`, {
+        cwd: workspaceRoot,
+        stdio: ["ignore", "pipe", "ignore"],
+      }).toString();
+      return [...new Set(
+        output
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => line.split(/\s+/).at(-1))
+          .filter((pid) => pid && /^\d+$/.test(pid)),
+      )];
+    }
+
+    const output = execSync(`lsof -ti tcp:${port}`, {
+      cwd: workspaceRoot,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).toString();
+    return [...new Set(output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+async function freePorts(ports) {
+  const pids = [...new Set(ports.flatMap((port) => listPidsForPort(port)))];
+  for (const pid of pids) {
+    await killTree(Number(pid));
+  }
 }
 
 async function waitForHttp(url, { method = "GET", body } = {}) {
@@ -77,10 +111,10 @@ const testArgs = isWindows
   ? ["/c", "pnpm", "exec", "playwright", "test", "--config", "playwright.config.ts"]
   : ["exec", "playwright", "test", "--config", "playwright.config.ts"];
 
-const demoProcess = spawnCommand(demoCommand, demoArgs, workspaceRoot);
+let demoProcess;
 
 const shutdown = async () => {
-  await killTree(demoProcess.pid);
+  await killTree(demoProcess?.pid);
 };
 
 process.on("SIGINT", async () => {
@@ -94,6 +128,8 @@ process.on("SIGTERM", async () => {
 });
 
 try {
+  await freePorts([3000, 4100, 8545]);
+  demoProcess = spawnCommand(demoCommand, demoArgs, workspaceRoot);
   await waitForDemoReady();
 
   const exitCode = await new Promise((resolveTest, rejectTest) => {

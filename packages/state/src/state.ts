@@ -64,7 +64,7 @@ const ALLOWED_TRANSITIONS: Record<IdentityState, IdentityState[]> = {
   [IdentityState.INIT]: [IdentityState.NORMAL, IdentityState.OBSERVED, IdentityState.RESTRICTED, IdentityState.FROZEN],
   [IdentityState.NORMAL]: [IdentityState.OBSERVED, IdentityState.RESTRICTED, IdentityState.HIGH_RISK, IdentityState.FROZEN],
   [IdentityState.OBSERVED]: [IdentityState.NORMAL, IdentityState.RESTRICTED, IdentityState.HIGH_RISK, IdentityState.FROZEN],
-  [IdentityState.RESTRICTED]: [IdentityState.OBSERVED, IdentityState.HIGH_RISK, IdentityState.FROZEN],
+  [IdentityState.RESTRICTED]: [IdentityState.NORMAL, IdentityState.OBSERVED, IdentityState.HIGH_RISK, IdentityState.FROZEN],
   [IdentityState.HIGH_RISK]: [IdentityState.RESTRICTED, IdentityState.FROZEN],
   [IdentityState.FROZEN]: [IdentityState.RESTRICTED, IdentityState.HIGH_RISK],
 };
@@ -84,13 +84,7 @@ export function canTransition(fromState: IdentityState, toState: IdentityState) 
 export function mapRiskSignalToState(currentState: IdentityState, signal: Pick<RiskSignal, "signalType" | "type" | "category" | "requestedState">): IdentityState {
   const signalType = signal.signalType;
   if (signal.category === "positive") {
-    if (currentState === IdentityState.FROZEN) {
-      return IdentityState.HIGH_RISK;
-    }
-    if (currentState === IdentityState.HIGH_RISK) {
-      return IdentityState.RESTRICTED;
-    }
-    return IdentityState.NORMAL;
+    return currentState;
   }
 
   switch (signalType) {

@@ -14,6 +14,8 @@ import {EnterpriseTreasuryGate} from "../src/EnterpriseTreasuryGate.sol";
 import {SocialGovernanceGate} from "../src/SocialGovernanceGate.sol";
 import {MockRWAAsset} from "../src/MockRWAAsset.sol";
 import {Groth16Verifier} from "../src/generated/Groth16Verifier.sol";
+import {MockGroth16Verifier} from "../src/mocks/MockGroth16Verifier.sol";
+import {IGroth16Verifier} from "../src/interfaces/IGroth16Verifier.sol";
 import {IdentityState} from "../src/interfaces/IComplianceVerifier.sol";
 
 contract DeployLocalScript is Script {
@@ -39,6 +41,7 @@ contract DeployLocalScript is Script {
     function run() external {
         uint256 privateKey = vm.envOr("PRIVATE_KEY", ANVIL_DEFAULT_PK);
         address trustedIssuer = vm.envOr("TRUSTED_ISSUER", address(0));
+        bool useMockGroth16Verifier = vm.envOr("USE_MOCK_GROTH16_VERIFIER", false);
 
         vm.startBroadcast(privateKey);
         IssuerRegistry issuerRegistry = new IssuerRegistry();
@@ -46,7 +49,8 @@ contract DeployLocalScript is Script {
         IdentityStateRegistry stateRegistry = new IdentityStateRegistry();
         PolicyRegistry policyRegistry = new PolicyRegistry();
         RiskSourceRegistry riskSourceRegistry = new RiskSourceRegistry();
-        Groth16Verifier groth16Verifier = new Groth16Verifier();
+        IGroth16Verifier groth16Verifier =
+            useMockGroth16Verifier ? IGroth16Verifier(address(new MockGroth16Verifier())) : IGroth16Verifier(address(new Groth16Verifier()));
         ComplianceVerifier complianceVerifier = new ComplianceVerifier(
             address(groth16Verifier),
             address(issuerRegistry),

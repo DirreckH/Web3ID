@@ -83,5 +83,42 @@ test("shows social denial after applying a deterministic risk signal", async ({ 
   await expect(page.getByText("Signal applied: negative_risk_flag")).toBeVisible({ timeout: 20_000 });
 
   await page.getByRole("button", { name: "Build Access Payload" }).click();
-  await expect(page.getByText(/InvalidState|Verifier preflight failed|Verifier preflight:/)).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText("Access payload ready.")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText(/Policy preflight: Denied by active consequence:/)).toBeVisible({ timeout: 120_000 });
+});
+
+test("social new wallet stays denied until recovery path completes", async ({ page, request }) => {
+  await connectAndDeriveIdentity(page, request);
+  await page.getByRole("button", { name: "Social Governance" }).click();
+  await page.getByRole("button", { name: "Observe New Wallet" }).click();
+  await expect(page.getByText("Signal applied: new_wallet_observation")).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Build Access Payload" }).click();
+  await expect(page.getByText("Access payload ready.")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText(/Policy preflight: Denied by (active consequence|state):/)).toBeVisible({ timeout: 120_000 });
+
+  await page.getByRole("button", { name: "Build Access Payload" }).click();
+  await expect(page.getByText("Access payload ready.")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText(/Policy preflight: Denied by (active consequence|state):/)).toBeVisible({ timeout: 120_000 });
+});
+
+test("social recovers after good standing and can re-enter", async ({ page, request }) => {
+  await connectAndDeriveIdentity(page, request);
+  await page.getByRole("button", { name: "Social Governance" }).click();
+  await page.getByRole("button", { name: "Apply Risk Flag" }).click();
+  await expect(page.getByText("Signal applied: negative_risk_flag")).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Build Access Payload" }).click();
+  await expect(page.getByText(/Policy preflight: Denied by active consequence:/)).toBeVisible({ timeout: 120_000 });
+
+  await page.getByRole("button", { name: "Recover to Normal" }).click();
+  await expect(page.getByText("Signal applied: good_standing")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/"resolvedAt":/)).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Build Access Payload" }).click();
+  await expect(page.getByText("Policy preflight: Allowed: policy preflight passed.")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText(/Verifier preflight: Allowed by on-chain verifier:/)).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText("Current State")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/^NORMAL$/)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Submit Vote" })).toBeEnabled();
 });

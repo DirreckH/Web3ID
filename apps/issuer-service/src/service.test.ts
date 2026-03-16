@@ -57,7 +57,9 @@ describe("issuer service", () => {
     await registerIdentityTree({ rootIdentity: root, subIdentities });
 
     const social = subIdentities.find((item) => item.scope === "social");
+    const payments = subIdentities.find((item) => item.scope === "payments");
     expect(social).toBeDefined();
+    expect(payments).toBeDefined();
 
     const initialContext = await getStoredIdentityContext(social!.identityId);
     expect(initialContext.currentState).toBe(1);
@@ -66,5 +68,21 @@ describe("issuer service", () => {
     const updatedContext = await getStoredIdentityContext(social!.identityId);
     expect(updatedContext.currentState).toBe(3);
     expect(updatedContext.activeConsequences[0].consequenceType).toBe("limit");
+
+    const paymentsContext = await getStoredIdentityContext(payments!.identityId);
+    expect(paymentsContext.currentState).toBe(1);
+
+    await applyIdentitySignal({ identityId: social!.identityId, signalKey: "good_standing" });
+    const recoveredContext = await getStoredIdentityContext(social!.identityId);
+    expect(recoveredContext.currentState).toBe(1);
+    expect(recoveredContext.activeConsequences.some((consequence: { consequenceType: string }) => consequence.consequenceType === "limit")).toBe(
+      false,
+    );
+    expect(
+      recoveredContext.consequences.some(
+        (consequence: { consequenceType: string; resolvedAt?: string }) =>
+          consequence.consequenceType === "limit" && typeof consequence.resolvedAt === "string",
+      ),
+    ).toBe(true);
   });
 });

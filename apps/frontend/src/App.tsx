@@ -10,6 +10,7 @@ import {
   buildHolderAuthorizationPayload,
   buildRwaRequestHash,
   enterpriseTreasuryGateAbi,
+  evaluatePolicyPreflight,
   getIdentityCapabilities,
   getIdentityContext,
   getIdentityState,
@@ -24,6 +25,7 @@ import {
   supportsPolicy,
   verifyAccess,
   type AccessPayload,
+  type PolicyPreflightResult,
 } from "@web3id/sdk";
 import { computeSubjectBinding, holderAuthorizationTypes, type CredentialBundle, type HolderAuthorizationPayload } from "@web3id/credential";
 import { buildSignInMessage, deriveRootIdentity, listDefaultSubIdentities, SubIdentityType } from "@web3id/identity";
@@ -50,6 +52,7 @@ const DEFAULT_VERIFIER = (import.meta.env.VITE_COMPLIANCE_VERIFIER_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as `0x${string}`;
 const DEFAULT_STATE_REGISTRY = (import.meta.env.VITE_STATE_REGISTRY_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as `0x${string}`;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 function textToBytes32(value: string) {
   return pad(stringToHex(value.slice(0, 31) || "ref"), { size: 32 });
@@ -89,7 +92,8 @@ export function App() {
   const [stateRegistryAddress] = useState(DEFAULT_STATE_REGISTRY);
   const [mintedBalance, setMintedBalance] = useState("0");
   const [identityState, setIdentityState] = useState<number>();
-  const [preflight, setPreflight] = useState<string>("Not checked");
+  const [policyPreflight, setPolicyPreflight] = useState<PolicyPreflightResult | null>(null);
+  const [verifierPreflight, setVerifierPreflight] = useState<string>("Not checked");
   const [identityContext, setIdentityContext] = useState<IdentityContextResponse | null>(null);
 
   const { address, chainId } = useAccount();
@@ -158,11 +162,12 @@ export function App() {
     setSelectedSubIdentityId(preferred.identityId);
     setBundles([]);
     setPayload(null);
-    setPreflight("Not checked");
+    setPolicyPreflight(null);
+    setVerifierPreflight("Not checked");
   }, [scenario, subIdentities]);
 
   useEffect(() => {
-    if (!selectedSubIdentity || !publicClient || !stateRegistryAddress || stateRegistryAddress === DEFAULT_STATE_REGISTRY) {
+    if (!selectedSubIdentity || !publicClient || !stateRegistryAddress || stateRegistryAddress === ZERO_ADDRESS) {
       return;
     }
 
@@ -285,7 +290,8 @@ export function App() {
     const issuedBundles = [next.bundle as CredentialBundle];
     setBundles(issuedBundles);
     setPayload(null);
-    setPreflight("Not checked");
+    setPolicyPreflight(null);
+    setVerifierPreflight("Not checked");
     setStatus("Credential issued.");
   }
 
@@ -375,13 +381,36 @@ export function App() {
       setStatus("Access payload ready.");
     });
 
-    if (publicClient && verifierAddress !== DEFAULT_VERIFIER) {
+    let latestIdentityContext = identityContext;
+    if (selectedSubIdentity) {
+      try {
+        latestIdentityContext = await getIdentityContext(ISSUER_API_URL, selectedSubIdentity.identityId);
+        setIdentityContext(latestIdentityContext);
+      } catch {
+        latestIdentityContext = identityContext;
+      }
+    }
+
+    setPolicyPreflight(
+      evaluatePolicyPreflight({
+        identityContext: latestIdentityContext,
+        policyId: activePolicy,
+        effectiveMode,
+        payload: nextPayload,
+      }),
+    );
+
+    if (publicClient && verifierAddress !== ZERO_ADDRESS) {
       try {
         const result = await verifyAccess(publicClient, verifierAddress, activePolicyId, nextPayload);
-        setPreflight(`Verifier preflight: ${String(result)}`);
+        setVerifierPreflight(`Allowed by on-chain verifier: ${String(result)}`);
       } catch (error) {
-        setPreflight(error instanceof Error ? error.message : "Verifier preflight failed");
+        setVerifierPreflight(
+          `Denied by on-chain verifier: ${error instanceof Error ? error.message : "Verifier preflight failed"}`,
+        );
       }
+    } else {
+      setVerifierPreflight("Not checked");
     }
   }
 
@@ -472,6 +501,8 @@ export function App() {
       signalKey,
     });
     await refreshIdentityContext(selectedSubIdentity.identityId);
+    setPolicyPreflight(null);
+    setVerifierPreflight("Not checked");
     setStatus(`Signal applied: ${signalKey}`);
   }
 
@@ -583,7 +614,8 @@ export function App() {
               <p>{policySupport?.supported ? "Supported" : policySupport?.reason ?? "Unknown"}</p>
             </div>
           </div>
-          <p>Verifier preflight: {preflight}</p>
+          <p>Policy preflight: {policyPreflight?.reason ?? "Not checked"}</p>
+          <p>Verifier preflight: {verifierPreflight}</p>
           <p>Minted RWA balance: {mintedBalance}</p>
         </article>
 

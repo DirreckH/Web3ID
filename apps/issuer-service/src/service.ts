@@ -19,10 +19,10 @@ import {
   IdentityState,
   createIdentityStateContext,
   createRiskSignal,
+  evaluateRecovery,
   evaluatePropagation,
   getActiveConsequences,
   processRiskSignal,
-  PropagationLevel,
   type IdentityStateContext,
   type RiskSignalInput,
 } from "../../../packages/state/src/index.js";
@@ -425,15 +425,24 @@ export async function applyIdentitySignal(input: {
   const relatedRecords = Object.values(store.identities).filter(
     (record) => record.subIdentity.rootIdentityId === sourceRecord.subIdentity.rootIdentityId,
   );
-  const propagation = evaluatePropagation(
-    baseSignal,
-    sourceRecord.subIdentity,
-    relatedRecords.map((record) => record.subIdentity),
-    signalTemplate.type === "SANCTION_HIT" ? PropagationLevel.ROOT_ESCALATION : undefined,
+  const sourceProcessing = applySignalToContext(sourceRecord.context, baseSignal);
+  sourceRecord.context = sourceProcessing.next;
+  sourceRecord.updatedAt = new Date().toISOString();
+  await syncIdentityState(
+    sourceRecord.subIdentity.identityId,
+    sourceProcessing.next.currentState,
+    sourceProcessing.next.lastDecisionRef,
+    sourceProcessing.next.lastEvidenceHash,
   );
 
-  const updatedIdentityIds: Hex[] = [];
-  for (const impactedIdentityId of propagation.impactedIdentityIds) {
+  const propagation = evaluatePropagation(
+    sourceProcessing.propagationDecision,
+    sourceRecord.subIdentity,
+    relatedRecords.map((record) => record.subIdentity),
+  );
+
+  const updatedIdentityIds: Hex[] = [sourceRecord.subIdentity.identityId];
+  for (const impactedIdentityId of propagation.impactedIdentityIds.filter((identityId) => identityId !== sourceRecord.subIdentity.identityId)) {
     const impactedRecord = store.identities[impactedIdentityId];
     if (!impactedRecord) {
       continue;
@@ -453,15 +462,15 @@ export async function applyIdentitySignal(input: {
             explanation: `${signalTemplate.explanation} Propagation reason: ${propagation.reason}`,
           });
 
-    const result = processRiskSignal(impactedRecord.context, propagatedSignal);
+    const result = applySignalToContext(impactedRecord.context, propagatedSignal);
     impactedRecord.context = result.next;
     impactedRecord.updatedAt = new Date().toISOString();
     updatedIdentityIds.push(impactedIdentityId);
     await syncIdentityState(
       impactedIdentityId,
-      result.next.currentState,
-      result.next.lastDecisionRef,
-      result.next.lastEvidenceHash,
+      impactedRecord.context.currentState,
+      impactedRecord.context.lastDecisionRef,
+      impactedRecord.context.lastEvidenceHash,
     );
   }
 
@@ -469,6 +478,13 @@ export async function applyIdentitySignal(input: {
   return {
     propagation,
     updatedIdentityIds,
+    recovery:
+      sourceProcessing.recovery && sourceProcessing.recovery.resolvedConsequences.length > 0
+        ? {
+            resolvedConsequences: sourceProcessing.recovery.resolvedConsequences.map((consequence) => consequence.consequenceId),
+            decisionId: sourceProcessing.recovery.decision?.decisionId ?? null,
+          }
+        : null,
     context: formatIdentityContext(store.identities[input.identityId]),
   };
 }
@@ -496,6 +512,17 @@ function formatIdentityContext(record: StoredIdentityRecord) {
     lastDecisionRef: record.context.lastDecisionRef ?? null,
     lastEvidenceHash: record.context.lastEvidenceHash ?? null,
     demoSignals: listDemoSignals(),
+  };
+}
+
+function applySignalToContext(context: IdentityStateContext, signal: ReturnType<typeof createRiskSignal>) {
+  const primary = processRiskSignal(context, signal);
+  const recovery = signal.category === "positive" ? evaluateRecovery(primary.next, [signal]) : undefined;
+  return {
+    next: recovery?.next ?? primary.next,
+    primary,
+    recovery,
+    propagationDecision: primary.decision,
   };
 }
 

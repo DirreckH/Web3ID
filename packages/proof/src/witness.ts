@@ -36,12 +36,13 @@ export function buildSubjectCircuitInput(subjectAddress: Address): {
 } {
   const subject = getAddress(subjectAddress);
   const subjectBinding = computeSubjectBinding(subject);
+  const subjectBytes = addressToBytes(subject).slice(-20);
 
   return {
     publicSignals: [BigInt(subjectBinding)],
     circuitInput: {
       statementSignal: BigInt(subjectBinding),
-      subjectBytes: addressToBytes(subject),
+      subjectBytes,
     },
   };
 }
