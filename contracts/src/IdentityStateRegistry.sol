@@ -92,7 +92,9 @@ contract IdentityStateRegistry is AccessControl {
             lastEvidenceHash: evidenceHash
         });
 
-        emit StateTransitioned(identityId, currentState, nextState, reasonCode, version, msg.sender, decisionRef, evidenceHash);
+        emit StateTransitioned(
+            identityId, currentState, nextState, reasonCode, version, msg.sender, decisionRef, evidenceHash
+        );
         emit GovernanceAction(msg.sender, keccak256("SET_STATE"), identityId, reasonCode, version);
     }
 
@@ -118,7 +120,11 @@ contract IdentityStateRegistry is AccessControl {
         return (snapshot.state, snapshot.reasonCode, snapshot.version, snapshot.updatedAt);
     }
 
-    function getAuditAnchors(bytes32 identityId) external view returns (bytes32 lastDecisionRef, bytes32 lastEvidenceHash) {
+    function getAuditAnchors(bytes32 identityId)
+        external
+        view
+        returns (bytes32 lastDecisionRef, bytes32 lastEvidenceHash)
+    {
         StateSnapshot memory snapshot = stateSnapshots[identityId];
         return (snapshot.lastDecisionRef, snapshot.lastEvidenceHash);
     }
@@ -137,9 +143,8 @@ contract IdentityStateRegistry is AccessControl {
                 || toState == IdentityState.HIGH_RISK || toState == IdentityState.FROZEN;
         }
         if (fromState == IdentityState.RESTRICTED) {
-            return
-                toState == IdentityState.NORMAL || toState == IdentityState.OBSERVED || toState == IdentityState.HIGH_RISK
-                    || toState == IdentityState.FROZEN;
+            return toState == IdentityState.NORMAL || toState == IdentityState.OBSERVED
+                || toState == IdentityState.HIGH_RISK || toState == IdentityState.FROZEN;
         }
         if (fromState == IdentityState.HIGH_RISK) {
             return toState == IdentityState.RESTRICTED || toState == IdentityState.FROZEN;
