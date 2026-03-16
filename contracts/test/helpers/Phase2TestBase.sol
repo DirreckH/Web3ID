@@ -11,6 +11,7 @@ import {PolicyRegistry} from "../../src/PolicyRegistry.sol";
 import {RiskSourceRegistry} from "../../src/RiskSourceRegistry.sol";
 import {RWAGate} from "../../src/RWAGate.sol";
 import {EnterpriseTreasuryGate} from "../../src/EnterpriseTreasuryGate.sol";
+import {SocialGovernanceGate} from "../../src/SocialGovernanceGate.sol";
 import {MockRWAAsset} from "../../src/MockRWAAsset.sol";
 import {MockGroth16Verifier} from "../../src/mocks/MockGroth16Verifier.sol";
 import {
@@ -30,8 +31,13 @@ abstract contract Phase2TestBase is Test {
     bytes32 internal constant RWA_POLICY_ID = keccak256("RWA_BUY_V2");
     bytes32 internal constant ENTITY_PAYMENT_POLICY_ID = keccak256("ENTITY_PAYMENT_V1");
     bytes32 internal constant ENTITY_AUDIT_POLICY_ID = keccak256("ENTITY_AUDIT_V1");
+    bytes32 internal constant GOV_VOTE_POLICY_ID = keccak256("GOV_VOTE_V1");
+    bytes32 internal constant AIRDROP_POLICY_ID = keccak256("AIRDROP_ELIGIBILITY_V1");
+    bytes32 internal constant COMMUNITY_POST_POLICY_ID = keccak256("COMMUNITY_POST_V1");
     bytes32 internal constant KYC_AML_CREDENTIAL = keccak256("KYC_AML_CREDENTIAL");
     bytes32 internal constant ENTITY_CREDENTIAL = keccak256("ENTITY_CREDENTIAL");
+    uint8 internal constant MODE_DEFAULT = 1;
+    uint8 internal constant MODE_COMPLIANCE = 2;
 
     MockGroth16Verifier internal groth16Verifier;
     IssuerRegistry internal issuerRegistry;
@@ -43,6 +49,7 @@ abstract contract Phase2TestBase is Test {
     MockRWAAsset internal asset;
     RWAGate internal rwaGate;
     EnterpriseTreasuryGate internal enterpriseGate;
+    SocialGovernanceGate internal socialGate;
 
     uint256 internal issuerKey;
     address internal issuer;
@@ -73,6 +80,7 @@ abstract contract Phase2TestBase is Test {
         asset = new MockRWAAsset();
         rwaGate = new RWAGate(address(verifier), address(asset));
         enterpriseGate = new EnterpriseTreasuryGate(address(verifier));
+        socialGate = new SocialGovernanceGate(address(verifier));
         asset.setMinter(address(rwaGate));
 
         issuerRegistry.setIssuerStatus(issuer, true, keccak256("issuer"), keccak256("seed"), 1);
@@ -96,7 +104,14 @@ abstract contract Phase2TestBase is Test {
                 expiryRule: keccak256("NOT_EXPIRED"),
                 jurisdictionRule: keccak256("GLOBAL"),
                 riskTolerance: keccak256("LOW"),
-                enabled: true
+                enabled: true,
+                modeFlags: MODE_COMPLIANCE,
+                requiresComplianceMode: true,
+                onPassAction: keccak256("ALLOW"),
+                onFailAction: keccak256("DENY"),
+                onRiskAction: keccak256("RESTRICT"),
+                consequenceRule: keccak256("rwa_access_control"),
+                explanationTemplate: keccak256("RWA access requires compliance mode")
             }),
             keccak256("seed")
         );
@@ -117,7 +132,14 @@ abstract contract Phase2TestBase is Test {
                 expiryRule: keccak256("NOT_EXPIRED"),
                 jurisdictionRule: keccak256("GLOBAL"),
                 riskTolerance: keccak256("MEDIUM"),
-                enabled: true
+                enabled: true,
+                modeFlags: MODE_COMPLIANCE,
+                requiresComplianceMode: true,
+                onPassAction: keccak256("ALLOW"),
+                onFailAction: keccak256("DENY"),
+                onRiskAction: keccak256("REVIEW_REQUIRED"),
+                consequenceRule: keccak256("entity_payment_control"),
+                explanationTemplate: keccak256("Enterprise payment requires compliance mode")
             }),
             keccak256("seed")
         );
@@ -133,7 +155,86 @@ abstract contract Phase2TestBase is Test {
                 expiryRule: keccak256("NOT_EXPIRED"),
                 jurisdictionRule: keccak256("GLOBAL"),
                 riskTolerance: keccak256("MEDIUM"),
-                enabled: true
+                enabled: true,
+                modeFlags: MODE_COMPLIANCE,
+                requiresComplianceMode: true,
+                onPassAction: keccak256("ALLOW"),
+                onFailAction: keccak256("DENY"),
+                onRiskAction: keccak256("REVIEW_REQUIRED"),
+                consequenceRule: keccak256("entity_audit_control"),
+                explanationTemplate: keccak256("Enterprise audit requires compliance mode")
+            }),
+            keccak256("seed")
+        );
+
+        bytes32[] memory noCreds = new bytes32[](0);
+        address[] memory noIssuers = new address[](0);
+        policyRegistry.registerPolicy(
+            GOV_VOTE_POLICY_ID,
+            PolicyRegistry.PolicyConfig({
+                version: 1,
+                minState: IdentityState.NORMAL,
+                maxState: IdentityState.NORMAL,
+                requiredCredentialTypes: noCreds,
+                requiredIssuerSet: noIssuers,
+                proofTemplate: keccak256("HOLDER_BOUND_PROOF"),
+                expiryRule: keccak256("NONE"),
+                jurisdictionRule: keccak256("COMMUNITY"),
+                riskTolerance: keccak256("LOW"),
+                enabled: true,
+                modeFlags: MODE_DEFAULT,
+                requiresComplianceMode: false,
+                onPassAction: keccak256("ALLOW"),
+                onFailAction: keccak256("DENY"),
+                onRiskAction: keccak256("OBSERVE"),
+                consequenceRule: keccak256("social_governance_access"),
+                explanationTemplate: keccak256("Governance voting uses default mode")
+            }),
+            keccak256("seed")
+        );
+        policyRegistry.registerPolicy(
+            AIRDROP_POLICY_ID,
+            PolicyRegistry.PolicyConfig({
+                version: 1,
+                minState: IdentityState.NORMAL,
+                maxState: IdentityState.NORMAL,
+                requiredCredentialTypes: noCreds,
+                requiredIssuerSet: noIssuers,
+                proofTemplate: keccak256("HOLDER_BOUND_PROOF"),
+                expiryRule: keccak256("NONE"),
+                jurisdictionRule: keccak256("COMMUNITY"),
+                riskTolerance: keccak256("LOW"),
+                enabled: true,
+                modeFlags: MODE_DEFAULT,
+                requiresComplianceMode: false,
+                onPassAction: keccak256("ALLOW"),
+                onFailAction: keccak256("DENY"),
+                onRiskAction: keccak256("OBSERVE"),
+                consequenceRule: keccak256("social_airdrop_access"),
+                explanationTemplate: keccak256("Airdrop claim uses default mode")
+            }),
+            keccak256("seed")
+        );
+        policyRegistry.registerPolicy(
+            COMMUNITY_POST_POLICY_ID,
+            PolicyRegistry.PolicyConfig({
+                version: 1,
+                minState: IdentityState.NORMAL,
+                maxState: IdentityState.NORMAL,
+                requiredCredentialTypes: noCreds,
+                requiredIssuerSet: noIssuers,
+                proofTemplate: keccak256("HOLDER_BOUND_PROOF"),
+                expiryRule: keccak256("NONE"),
+                jurisdictionRule: keccak256("COMMUNITY"),
+                riskTolerance: keccak256("LOW"),
+                enabled: true,
+                modeFlags: MODE_DEFAULT,
+                requiresComplianceMode: false,
+                onPassAction: keccak256("ALLOW"),
+                onFailAction: keccak256("DENY"),
+                onRiskAction: keccak256("OBSERVE"),
+                consequenceRule: keccak256("social_post_access"),
+                explanationTemplate: keccak256("Community posting uses default mode")
             }),
             keccak256("seed")
         );

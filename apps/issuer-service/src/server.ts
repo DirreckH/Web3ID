@@ -5,9 +5,13 @@ import { deriveRootIdentity } from "@web3id/identity";
 import { POLICY_IDS } from "@web3id/policy";
 import { issuerConfig } from "./config.js";
 import {
+  applyIdentitySignal,
   getCredentialStatus,
+  getStoredIdentityContext,
   issueCompatibilityCredential,
   issueCredential,
+  listDemoSignals,
+  registerIdentityTree,
   resolveCredentialPreset,
   reissueCredential,
   revokeCredential,
@@ -53,6 +57,63 @@ const verifyRequestSchema = z.object({
   bundle: z.unknown(),
 });
 
+const registerTreeRequestSchema = z.object({
+  rootIdentity: z.object({
+    rootId: z.string(),
+    identityId: z.string(),
+    controllerAddress: z.string(),
+    didLikeId: z.string(),
+    chainId: z.number(),
+    createdAt: z.string(),
+    capabilities: z.object({
+      supportsHolderBinding: z.boolean(),
+      supportsIssuerValidation: z.boolean(),
+      hasLinkedCredentials: z.boolean(),
+      supportedProofKinds: z.array(z.string()),
+      preferredMode: z.string(),
+    }),
+  }),
+  subIdentities: z.array(z.object({
+    subIdentityId: z.string(),
+    identityId: z.string(),
+    rootId: z.string(),
+    rootIdentityId: z.string(),
+    scope: z.string(),
+    type: z.string(),
+    createdAt: z.string(),
+    permissions: z.object({
+      allowedCredentialTypes: z.array(z.string()),
+      allowedProofTypes: z.array(z.string()),
+      supportedProofKinds: z.array(z.string()),
+      allowRootLink: z.boolean(),
+      riskIsolationLevel: z.string(),
+      linkabilityLevel: z.string(),
+      canEscalateToRoot: z.boolean(),
+      inheritsRootRestrictions: z.boolean(),
+    }),
+    capabilities: z.object({
+      supportsHolderBinding: z.boolean(),
+      supportsIssuerValidation: z.boolean(),
+      hasLinkedCredentials: z.boolean(),
+      supportedProofKinds: z.array(z.string()),
+      preferredMode: z.string(),
+    }),
+  })),
+});
+
+const applySignalRequestSchema = z.object({
+  signalKey: z.enum([
+    "new_wallet_observation",
+    "negative_risk_flag",
+    "sanction_hit",
+    "manual_review_fail",
+    "trusted_usage",
+    "governance_participation",
+    "good_standing",
+  ]),
+  actor: z.string().optional(),
+});
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -76,6 +137,10 @@ app.get("/issuer", (_req, res) => {
       verifyingContract: issuerConfig.complianceVerifierAddress,
     },
   });
+});
+
+app.get("/signals", (_req, res) => {
+  res.json({ items: listDemoSignals() });
 });
 
 app.post("/credentials/issue", async (req, res) => {
@@ -150,6 +215,42 @@ app.post("/credentials/verify", async (req, res) => {
   try {
     const input = verifyRequestSchema.parse(req.body);
     const result = await verifyIssuedCredential(input.bundle as any);
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown issuer error";
+    res.status(400).json({ error: message });
+  }
+});
+
+app.post("/identities/register-tree", async (req, res) => {
+  try {
+    const input = registerTreeRequestSchema.parse(req.body);
+    const result = await registerIdentityTree(input as any);
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown issuer error";
+    res.status(400).json({ error: message });
+  }
+});
+
+app.get("/identities/:id/context", async (req, res) => {
+  try {
+    const context = await getStoredIdentityContext(req.params.id as `0x${string}`);
+    res.json(context);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown issuer error";
+    res.status(404).json({ error: message });
+  }
+});
+
+app.post("/identities/:id/signals", async (req, res) => {
+  try {
+    const input = applySignalRequestSchema.parse(req.body);
+    const result = await applyIdentitySignal({
+      identityId: req.params.id as `0x${string}`,
+      signalKey: input.signalKey,
+      actor: input.actor,
+    });
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown issuer error";

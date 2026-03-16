@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { POLICY_IDS, computePolicyId, createProofRequest } from "./index.js";
+import { POLICY_DEFINITIONS, POLICY_IDS, computePolicyId, createProofRequest, getPolicyDefinition } from "./index.js";
 
 describe("policy helpers", () => {
   it("produces deterministic bytes32 policy ids", () => {
@@ -18,5 +18,12 @@ describe("policy helpers", () => {
     });
 
     expect(request.policyId).toBe(POLICY_IDS.ENTITY_PAYMENT_V1);
+  });
+
+  it("tags policies by allowed modes and orchestration actions", () => {
+    expect(POLICY_DEFINITIONS.RWA_BUY_V2.requiresComplianceMode).toBe(true);
+    expect(POLICY_DEFINITIONS.GOV_VOTE_V1.allowedModes).toEqual(["DEFAULT_BEHAVIOR_MODE"]);
+    expect(POLICY_DEFINITIONS.GOV_VOTE_V1.onRiskAction).toBe("observe");
+    expect(getPolicyDefinition(POLICY_IDS.GOV_VOTE_V1).targetAction).toBe("governance_vote");
   });
 });

@@ -10,6 +10,10 @@ loadEnv({ path: "../../.env" });
 const issuerPrivateKey = (process.env.ISSUER_PRIVATE_KEY ??
   "0x59c6995e998f97a5a0044966f0945384d7d0f5fb8f7c8d17826dfec353bbf4d6") as Hex;
 const issuerAccount = privateKeyToAccount(issuerPrivateKey);
+const riskManagerPrivateKey = (process.env.RISK_MANAGER_PRIVATE_KEY ??
+  process.env.PRIVATE_KEY ??
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80") as Hex;
+const riskManagerAccount = privateKeyToAccount(riskManagerPrivateKey);
 const dataFile = resolve(process.cwd(), process.env.ISSUER_DATA_FILE ?? ".web3id/issuer-store.json");
 mkdirSync(dirname(dataFile), { recursive: true });
 
@@ -24,5 +28,12 @@ export const issuerConfig = {
   complianceVerifierAddress: getAddress(
     (process.env.COMPLIANCE_VERIFIER_ADDRESS as Address | undefined) ?? "0x0000000000000000000000000000000000000000",
   ),
+  stateRegistryAddress: getAddress(
+    (process.env.STATE_REGISTRY_ADDRESS as Address | undefined) ??
+      (process.env.VITE_STATE_REGISTRY_ADDRESS as Address | undefined) ??
+      "0x0000000000000000000000000000000000000000",
+  ),
+  riskManagerPrivateKey,
+  riskManagerAccount,
   dataFile,
 };

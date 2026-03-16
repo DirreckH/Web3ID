@@ -88,4 +88,31 @@ contract ComplianceVerifierTest is Phase2TestBase {
         vm.expectRevert(ComplianceVerifier.InvalidProof.selector);
         verifier.verifyAccess(RWA_POLICY_ID, payload);
     }
+
+    function testVerifyAccessRejectsCompliancePolicyWithoutCredentialPayload() external {
+        CredentialAttestationInput[] memory attestations = new CredentialAttestationInput[](0);
+        AccessPayload memory payload = buildPayload(
+            RWA_POLICY_ID,
+            keccak256(abi.encodePacked("BUY_RWA", address(rwaGate), uint256(1))),
+            "Web3ID RWAGate",
+            address(rwaGate),
+            attestations
+        );
+
+        vm.expectRevert(ComplianceVerifier.InvalidMode.selector);
+        verifier.verifyAccess(RWA_POLICY_ID, payload);
+    }
+
+    function testVerifyAccessPassesForDefaultModePolicyWithoutCredentials() external {
+        CredentialAttestationInput[] memory attestations = new CredentialAttestationInput[](0);
+        AccessPayload memory payload = buildPayload(
+            GOV_VOTE_POLICY_ID,
+            keccak256(abi.encodePacked("VOTE", address(socialGate), keccak256("proposal-1"))),
+            "Web3ID Social Governance",
+            address(socialGate),
+            attestations
+        );
+
+        assertTrue(verifier.verifyAccess(GOV_VOTE_POLICY_ID, payload));
+    }
 }

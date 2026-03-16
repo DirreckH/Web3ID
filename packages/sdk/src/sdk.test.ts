@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { buildEnterpriseAuditRequestHash, buildEnterprisePaymentRequestHash, buildHolderAuthorizationPayload, buildRwaRequestHash } from "./index.js";
+import { deriveRootIdentity, deriveSubIdentity, SubIdentityType } from "@web3id/identity";
+import {
+  buildEnterpriseAuditRequestHash,
+  buildEnterprisePaymentRequestHash,
+  buildGovernanceVoteRequestHash,
+  buildHolderAuthorizationPayload,
+  buildRwaRequestHash,
+  policyIds,
+  resolveEffectiveMode,
+  supportsPolicy,
+} from "./index.js";
 
 describe("sdk helpers", () => {
   it("builds deterministic request hashes", () => {
@@ -38,5 +48,23 @@ describe("sdk helpers", () => {
 
     expect(payload.nonce).toBe(1n);
     expect(payload.policyId).toBe("0x0000000000000000000000000000000000000000000000000000000000000003");
+  });
+
+  it("resolves effective mode against policy requirements", () => {
+    const root = deriveRootIdentity("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+    const social = deriveSubIdentity({ rootIdentity: root, scope: "social", type: SubIdentityType.SOCIAL });
+    const rwa = deriveSubIdentity({ rootIdentity: root, scope: "rwa-invest", type: SubIdentityType.RWA_INVEST });
+
+    expect(resolveEffectiveMode(social, policyIds.GOV_VOTE_V1)).toBe("DEFAULT_BEHAVIOR_MODE");
+    expect(supportsPolicy(rwa, policyIds.RWA_BUY_V2).supported).toBe(false);
+  });
+
+  it("builds deterministic social request hashes", () => {
+    expect(
+      buildGovernanceVoteRequestHash(
+        "0x0000000000000000000000000000000000000001",
+        "0x0000000000000000000000000000000000000000000000000000000000000005",
+      ),
+    ).toMatch(/^0x[0-9a-f]{64}$/);
   });
 });

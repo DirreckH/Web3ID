@@ -60,7 +60,14 @@ contract RegistriesTest is Test {
                 expiryRule: keccak256("NOT_EXPIRED"),
                 jurisdictionRule: keccak256("GLOBAL"),
                 riskTolerance: keccak256("MEDIUM"),
-                enabled: true
+                enabled: true,
+                modeFlags: 2,
+                requiresComplianceMode: true,
+                onPassAction: keccak256("ALLOW"),
+                onFailAction: keccak256("DENY"),
+                onRiskAction: keccak256("REVIEW_REQUIRED"),
+                consequenceRule: keccak256("entity_payment_control"),
+                explanationTemplate: keccak256("Enterprise payment requires compliance mode")
             }),
             keccak256("reason")
         );

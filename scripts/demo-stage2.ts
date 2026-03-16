@@ -41,10 +41,14 @@ function resolveExecutable(name: string) {
 }
 
 function spawnCommand(command: string, args: string[], env: NodeJS.ProcessEnv = process.env, stdio: "inherit" | "pipe" = "inherit") {
+  const childStdio = stdio === "pipe"
+    ? ["ignore", "pipe", "pipe"] as const
+    : ["ignore", "inherit", "inherit"] as const;
+
   const child = spawn(command, args, {
     cwd: ROOT,
     env,
-    stdio,
+    stdio: childStdio,
     shell: false,
   });
   processes.push(child);
@@ -72,6 +76,25 @@ async function isRpcReady() {
   }
 }
 
+async function rpcRequest<T>(method: string, params: unknown[] = []) {
+  const response = await fetch(RPC_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`RPC request failed for ${method}`);
+  }
+
+  const payload = await response.json() as { result?: T; error?: { message?: string } };
+  if (payload.error) {
+    throw new Error(payload.error.message ?? `RPC request failed for ${method}`);
+  }
+
+  return payload.result as T;
+}
+
 async function ensureAnvil() {
   if (await isRpcReady()) {
     return;
@@ -89,6 +112,15 @@ async function ensureAnvil() {
     await delay(1000);
   }
   throw new Error("Timed out waiting for anvil");
+}
+
+async function resetLocalAnvilIfNeeded() {
+  const chainId = await rpcRequest<string>("eth_chainId");
+  if (chainId !== "0x7a69") {
+    return;
+  }
+
+  await rpcRequest("anvil_reset");
 }
 
 async function runCommandCapture(command: string, args: string[], env: NodeJS.ProcessEnv, cwd = ROOT) {
@@ -123,7 +155,7 @@ async function runCommandCapture(command: string, args: string[], env: NodeJS.Pr
 async function deployContracts() {
   const output = await runCommandCapture(
     resolveExecutable("forge"),
-    ["script", "script/DeployLocal.s.sol:DeployLocalScript", "--rpc-url", RPC_URL, "--broadcast"],
+    ["script", "script/DeployLocal.s.sol:DeployLocalScript", "--rpc-url", RPC_URL, "--broadcast", "--non-interactive"],
     {
       ...process.env,
       PRIVATE_KEY: DEPLOYER_PRIVATE_KEY,
@@ -146,6 +178,7 @@ async function deployContracts() {
     asset: matchAddress("MockRWAAsset"),
     rwaGate: matchAddress("RWAGate"),
     enterpriseGate: matchAddress("EnterpriseGate"),
+    socialGate: matchAddress("SocialGate"),
   };
 }
 
@@ -168,8 +201,15 @@ async function seedIdentityState(stateRegistryAddress: `0x${string}`) {
   const root = deriveRootIdentity(DEFAULT_HOLDER);
   const rwa = deriveSubIdentity({ rootIdentity: root, scope: "rwa-invest", type: SubIdentityType.RWA_INVEST });
   const payments = deriveSubIdentity({ rootIdentity: root, scope: "payments", type: SubIdentityType.PAYMENTS });
+  const social = deriveSubIdentity({ rootIdentity: root, scope: "social", type: SubIdentityType.SOCIAL });
+  const anonymous = deriveSubIdentity({ rootIdentity: root, scope: "anonymous-lowrisk", type: SubIdentityType.ANONYMOUS_LOWRISK });
 
-  for (const identityId of [rwa.identityId, payments.identityId]) {
+  for (const [identityId, nextState] of [
+    [rwa.identityId, 1],
+    [payments.identityId, 1],
+    [social.identityId, 1],
+    [anonymous.identityId, 2],
+  ] as const) {
     const hash = await walletClient.writeContract({
       address: stateRegistryAddress,
       abi: [
@@ -187,7 +227,7 @@ async function seedIdentityState(stateRegistryAddress: `0x${string}`) {
         },
       ],
       functionName: "setState",
-      args: [identityId, 1, root.rootId, 1n],
+      args: [identityId, nextState, root.rootId, 1n],
     });
     await publicClient.waitForTransactionReceipt({ hash });
   }
@@ -195,6 +235,7 @@ async function seedIdentityState(stateRegistryAddress: `0x${string}`) {
 
 async function main() {
   await ensureAnvil();
+  await resetLocalAnvilIfNeeded();
   const deployment = await deployContracts();
   await seedIdentityState(deployment.stateRegistry);
   await ensureProofArtifacts();
@@ -202,9 +243,12 @@ async function main() {
   const sharedEnv = {
     ...process.env,
     ANVIL_RPC_URL: RPC_URL,
+    PRIVATE_KEY: DEPLOYER_PRIVATE_KEY,
+    RISK_MANAGER_PRIVATE_KEY: DEPLOYER_PRIVATE_KEY,
     ISSUER_PRIVATE_KEY: ISSUER_PRIVATE_KEY,
     ISSUER_ADDRESS: issuer.address,
     COMPLIANCE_VERIFIER_ADDRESS: deployment.complianceVerifier,
+    STATE_REGISTRY_ADDRESS: deployment.stateRegistry,
     VITE_CHAIN_ID: "31337",
     VITE_ANVIL_RPC_URL: RPC_URL,
     VITE_COMPLIANCE_VERIFIER_ADDRESS: deployment.complianceVerifier,
@@ -212,6 +256,7 @@ async function main() {
     VITE_MOCK_RWA_ASSET_ADDRESS: deployment.asset,
     VITE_RWA_GATE_ADDRESS: deployment.rwaGate,
     VITE_ENTERPRISE_GATE_ADDRESS: deployment.enterpriseGate,
+    VITE_SOCIAL_GATE_ADDRESS: deployment.socialGate,
   };
 
   spawnCommand("cmd", ["/c", "pnpm --filter @web3id/issuer-service dev"], sharedEnv, "inherit");
@@ -223,11 +268,16 @@ async function main() {
   console.log(`Holder:        ${DEFAULT_HOLDER}`);
   console.log(`Proof setup:   pnpm proof:setup completed`);
 
-  process.on("SIGINT", () => {
-    for (const child of processes) {
-      child.kill();
-    }
-    process.exit(0);
+  await new Promise<void>((resolve) => {
+    const shutdown = () => {
+      for (const child of processes) {
+        child.kill();
+      }
+      resolve();
+    };
+
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
   });
 }
 

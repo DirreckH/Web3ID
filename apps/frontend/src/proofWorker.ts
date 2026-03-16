@@ -1,4 +1,4 @@
-import { generateHolderBindingProof } from "@web3id/proof";
+import { generateHolderBindingProof, generateHolderBoundProof } from "@web3id/proof";
 
 const E2E_DEFAULT_SUBJECT = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
 const E2E_PROOF_POINTS = [
@@ -28,11 +28,17 @@ self.onmessage = async (event: MessageEvent) => {
       return;
     }
 
-    const result = await generateHolderBindingProof(bundle, {
-      mode: "browser",
-      subjectAddress,
-      artifactsBasePath: "",
-    });
+    const result = bundle
+      ? await generateHolderBindingProof(bundle, {
+          mode: "browser",
+          subjectAddress,
+          artifactsBasePath: "",
+        })
+      : await generateHolderBoundProof(subjectAddress, {
+          mode: "browser",
+          subjectAddress,
+          artifactsBasePath: "",
+        });
     self.postMessage({ ok: true, result });
   } catch (error) {
     self.postMessage({

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { deriveRootIdentity } from "./root.js";
-import { SubIdentityType } from "./types.js";
+import { IdentityMode, SubIdentityType } from "./types.js";
 import {
   createSameRootProof,
   createSubIdentityLinkProof,
   deriveSubIdentity,
+  getIdentityCapabilities,
   normalizeScope,
+  resolveEffectiveMode,
+  supportsPolicy,
   verifySameRootProof,
   verifySubIdentityLinkProof,
 } from "./sub.js";
@@ -47,5 +50,32 @@ describe("identity derivation", () => {
     const proof = createSameRootProof(root, [first, second]);
 
     expect(verifySameRootProof(proof, root, [first, second])).toBe(true);
+  });
+
+  it("derives capability-first identities and resolves effective mode per policy", () => {
+    const root = deriveRootIdentity(address);
+    const social = deriveSubIdentity({ rootIdentity: root, scope: "social", type: SubIdentityType.SOCIAL });
+    const rwa = deriveSubIdentity({ rootIdentity: root, scope: "rwa-invest", type: SubIdentityType.RWA_INVEST });
+    const govPolicy = {
+      allowedModes: [IdentityMode.DEFAULT_BEHAVIOR_MODE],
+      requiresComplianceMode: false,
+    };
+    const rwaPolicy = {
+      allowedModes: [IdentityMode.COMPLIANCE_MODE],
+      requiresComplianceMode: true,
+    };
+
+    const socialCapabilities = getIdentityCapabilities(social);
+    expect(socialCapabilities.supportedProofKinds).toEqual(["holder_bound_proof"]);
+
+    expect(resolveEffectiveMode(social, govPolicy)).toBe("DEFAULT_BEHAVIOR_MODE");
+    expect(resolveEffectiveMode(rwa, rwaPolicy)).toBeNull();
+    expect(
+      resolveEffectiveMode(rwa, rwaPolicy, {
+        linkedCredentialTypes: ["0x0000000000000000000000000000000000000000000000000000000000000001"],
+      }),
+    ).toBe("COMPLIANCE_MODE");
+
+    expect(supportsPolicy(social, rwaPolicy).supported).toBe(false);
   });
 });

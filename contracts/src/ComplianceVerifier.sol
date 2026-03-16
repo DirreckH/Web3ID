@@ -26,6 +26,17 @@ contract ComplianceVerifier is IComplianceVerifier, EIP712 {
     IdentityStateRegistry public immutable identityStateRegistry;
     PolicyRegistry public immutable policyRegistry;
 
+    struct PolicyCheck {
+        uint256 version;
+        IdentityState minState;
+        IdentityState maxState;
+        bytes32[] requiredCredentialTypes;
+        address[] requiredIssuerSet;
+        bool enabled;
+        uint8 modeFlags;
+        bool requiresComplianceMode;
+    }
+
     error DisabledPolicy();
     error WrongPolicyVersion();
     error InvalidState();
@@ -38,6 +49,7 @@ contract ComplianceVerifier is IComplianceVerifier, EIP712 {
     error InvalidHolderBinding();
     error InvalidProof();
     error InvalidHolderAuthorization();
+    error InvalidMode();
 
     constructor(
         address groth16Verifier_,
@@ -60,23 +72,27 @@ contract ComplianceVerifier is IComplianceVerifier, EIP712 {
             revert InvalidHolderAuthorization();
         }
 
-        (
-            uint256 version,
-            IdentityState minState,
-            IdentityState maxState,
-            bytes32[] memory requiredCredentialTypes,
-            address[] memory requiredIssuerSet,,,,,
-            bool enabled
-        ) = policyRegistry.getPolicy(policyId);
-
-        if (!enabled) revert DisabledPolicy();
-        if (version != payload.policyVersion) revert WrongPolicyVersion();
+        PolicyCheck memory policy = _loadPolicy(policyId);
+        if (!policy.enabled) revert DisabledPolicy();
+        if (policy.version != payload.policyVersion) revert WrongPolicyVersion();
+        _validateMode(payload, policy);
 
         IdentityState currentState = identityStateRegistry.getState(payload.identityId);
-        if (uint8(currentState) < uint8(minState) || uint8(currentState) > uint8(maxState)) revert InvalidState();
+        if (uint8(currentState) < uint8(policy.minState) || uint8(currentState) > uint8(policy.maxState)) {
+            revert InvalidState();
+        }
 
         if (!_verifyProof(payload)) revert InvalidProof();
+        _validateAttestations(policyId, payload, policy.requiredCredentialTypes, policy.requiredIssuerSet);
+        return true;
+    }
 
+    function _validateAttestations(
+        bytes32 policyId,
+        AccessPayload calldata payload,
+        bytes32[] memory requiredCredentialTypes,
+        address[] memory requiredIssuerSet
+    ) internal view {
         bool[] memory satisfiedTypes = new bool[](requiredCredentialTypes.length);
         for (uint256 index = 0; index < payload.credentialAttestations.length; index++) {
             CredentialAttestationInput calldata attestation = payload.credentialAttestations[index];
@@ -103,8 +119,29 @@ contract ComplianceVerifier is IComplianceVerifier, EIP712 {
         for (uint256 index = 0; index < satisfiedTypes.length; index++) {
             if (!satisfiedTypes[index]) revert InvalidCredentialSet();
         }
+    }
 
-        return true;
+    function _loadPolicy(bytes32 policyId) internal view returns (PolicyCheck memory policy) {
+        (
+            policy.version,
+            policy.minState,
+            policy.maxState,
+            policy.requiredCredentialTypes,
+            policy.requiredIssuerSet,,,,,
+            policy.enabled
+        ) = policyRegistry.getPolicy(policyId);
+        (policy.modeFlags, policy.requiresComplianceMode,,,,,) = policyRegistry.getPolicyModeConfig(policyId);
+    }
+
+    function _validateMode(AccessPayload calldata payload, PolicyCheck memory policy) internal pure {
+        bool compliancePayload = payload.credentialAttestations.length > 0;
+        bool allowsDefaultMode = (policy.modeFlags & uint8(1)) != 0;
+        bool allowsComplianceMode = (policy.modeFlags & uint8(2)) != 0;
+
+        if (policy.requiresComplianceMode && !compliancePayload) revert InvalidMode();
+        if (compliancePayload && !allowsComplianceMode) revert InvalidMode();
+        if (!compliancePayload && !allowsDefaultMode) revert InvalidMode();
+        if (policy.requiredCredentialTypes.length > 0 && !compliancePayload) revert InvalidMode();
     }
 
     function _verifyCredentialAttestation(CredentialAttestationInput calldata attestation)

@@ -6,6 +6,8 @@ import {IdentityState} from "./interfaces/IComplianceVerifier.sol";
 
 contract PolicyRegistry is AccessControl {
     bytes32 public constant POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
+    uint8 public constant MODE_DEFAULT = 1;
+    uint8 public constant MODE_COMPLIANCE = 2;
 
     struct PolicyConfig {
         uint256 version;
@@ -18,6 +20,13 @@ contract PolicyRegistry is AccessControl {
         bytes32 jurisdictionRule;
         bytes32 riskTolerance;
         bool enabled;
+        uint8 modeFlags;
+        bool requiresComplianceMode;
+        bytes32 onPassAction;
+        bytes32 onFailAction;
+        bytes32 onRiskAction;
+        bytes32 consequenceRule;
+        bytes32 explanationTemplate;
     }
 
     struct PolicyRecord {
@@ -31,6 +40,13 @@ contract PolicyRegistry is AccessControl {
         bytes32 jurisdictionRule;
         bytes32 riskTolerance;
         bool enabled;
+        uint8 modeFlags;
+        bool requiresComplianceMode;
+        bytes32 onPassAction;
+        bytes32 onFailAction;
+        bytes32 onRiskAction;
+        bytes32 consequenceRule;
+        bytes32 explanationTemplate;
     }
 
     mapping(bytes32 => PolicyRecord) internal policies;
@@ -59,6 +75,13 @@ contract PolicyRegistry is AccessControl {
         record.jurisdictionRule = config.jurisdictionRule;
         record.riskTolerance = config.riskTolerance;
         record.enabled = config.enabled;
+        record.modeFlags = config.modeFlags;
+        record.requiresComplianceMode = config.requiresComplianceMode;
+        record.onPassAction = config.onPassAction;
+        record.onFailAction = config.onFailAction;
+        record.onRiskAction = config.onRiskAction;
+        record.consequenceRule = config.consequenceRule;
+        record.explanationTemplate = config.explanationTemplate;
         _replaceBytes32Array(record.requiredCredentialTypes, config.requiredCredentialTypes);
         _replaceAddressArray(record.requiredIssuerSet, config.requiredIssuerSet);
 
@@ -103,6 +126,31 @@ contract PolicyRegistry is AccessControl {
             record.jurisdictionRule,
             record.riskTolerance,
             record.enabled
+        );
+    }
+
+    function getPolicyModeConfig(bytes32 policyId)
+        external
+        view
+        returns (
+            uint8 modeFlags,
+            bool requiresComplianceMode,
+            bytes32 onPassAction,
+            bytes32 onFailAction,
+            bytes32 onRiskAction,
+            bytes32 consequenceRule,
+            bytes32 explanationTemplate
+        )
+    {
+        PolicyRecord storage record = policies[policyId];
+        return (
+            record.modeFlags,
+            record.requiresComplianceMode,
+            record.onPassAction,
+            record.onFailAction,
+            record.onRiskAction,
+            record.consequenceRule,
+            record.explanationTemplate
         );
     }
 

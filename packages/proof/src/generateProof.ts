@@ -1,5 +1,5 @@
-import { buildCircuitInput } from "./witness.js";
-import type { GenerateHolderBindingProofResult, HolderBindingContext } from "./types.js";
+import { buildCircuitInput, buildSubjectCircuitInput } from "./witness.js";
+import type { GenerateHolderBindingProofResult, GenerateHolderBoundProofResult, HolderBindingContext } from "./types.js";
 import type { CredentialBundle } from "@web3id/credential";
 
 const DEFAULT_WASM = "/circuits/web3id-compliance.wasm";
@@ -37,6 +37,35 @@ export async function generateHolderBindingProof(
 }
 
 export const generateComplianceProof = generateHolderBindingProof;
+export async function generateHolderBoundProof(
+  subjectAddress: HolderBindingContext["subjectAddress"],
+  context: HolderBindingContext,
+): Promise<GenerateHolderBoundProofResult> {
+  const prepared = buildSubjectCircuitInput(subjectAddress);
+  const wasmPath = context.wasmPath ?? `${context.artifactsBasePath ?? ""}${DEFAULT_WASM}`;
+  const zkeyPath = context.zkeyPath ?? `${context.artifactsBasePath ?? ""}${DEFAULT_ZKEY}`;
+  const generated =
+    context.mode === "browser"
+      ? await generateBrowserProof(prepared.circuitInput, { wasmPath, zkeyPath })
+      : await generateNodeProof(prepared.circuitInput, { wasmPath, zkeyPath });
+
+  if (generated.publicSignals.length !== 1) {
+    throw new Error(`expected exactly 1 holder-binding public signal, received ${generated.publicSignals.length}`);
+  }
+
+  if (generated.publicSignals[0] !== prepared.publicSignals[0]) {
+    throw new Error(
+      `holder-binding mismatch: expected ${prepared.publicSignals[0]} but received ${generated.publicSignals[0]}`,
+    );
+  }
+
+  return {
+    proof: generated.proof,
+    proofPoints: generated.solidityProof,
+    publicSignals: prepared.publicSignals,
+    solidityProof: generated.solidityProof,
+  };
+}
 
 async function generateBrowserProof(
   witness: Record<string, any>,

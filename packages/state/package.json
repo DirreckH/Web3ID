@@ -12,5 +12,9 @@
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@web3id/identity": "workspace:*",
+    "viem": "^2.23.5"
   }
 }

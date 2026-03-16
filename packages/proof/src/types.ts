@@ -32,3 +32,4 @@ export type GeneratedProof = {
 };
 
 export type GenerateHolderBindingProofResult = GeneratedProof & HolderBindingInput & { bundle: CredentialBundle };
+export type GenerateHolderBoundProofResult = GeneratedProof & HolderBindingInput;

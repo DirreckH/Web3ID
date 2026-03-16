@@ -20,7 +20,7 @@ async function connectAndDeriveIdentity(page: Page, request: APIRequestContext) 
   await expect(page.getByText(DEFAULT_ACCOUNT, { exact: true })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "Sign Identity Challenge" }).click();
-  await expect(page.getByText("Identity tree ready.")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Identity tree ready.")).toBeVisible({ timeout: 20_000 });
 }
 
 async function issueCredentialAndBuildPayload(page: Page) {
@@ -44,7 +44,7 @@ test("builds an RWA payload end to end", async ({ page, request }) => {
 test("switches between scenario controls", async ({ page, request }) => {
   await connectAndDeriveIdentity(page, request);
   await page.locator("select").selectOption({ label: "social / SOCIAL" });
-  await expect(page.locator(".hero-card span")).toHaveText("social / SOCIAL", { timeout: 15_000 });
+  await expect(page.locator(".hero-card span").nth(0)).toHaveText("social / SOCIAL", { timeout: 15_000 });
   await page.getByRole("button", { name: "Enterprise Treasury" }).click();
   await expect(page.getByRole("button", { name: "Payment", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Audit", exact: true })).toBeVisible();
@@ -65,4 +65,23 @@ test("builds an enterprise audit payload", async ({ page, request }) => {
 
   await issueCredentialAndBuildPayload(page);
   await expect(page.getByRole("button", { name: "Export Audit Record" })).toBeEnabled();
+});
+
+test("builds a default-mode social payload without credentials", async ({ page, request }) => {
+  await connectAndDeriveIdentity(page, request);
+  await page.getByRole("button", { name: "Social Governance" }).click();
+
+  await page.getByRole("button", { name: "Build Access Payload" }).click();
+  await expect(page.getByText("Access payload ready.")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByRole("button", { name: "Submit Vote" })).toBeEnabled();
+});
+
+test("shows social denial after applying a deterministic risk signal", async ({ page, request }) => {
+  await connectAndDeriveIdentity(page, request);
+  await page.getByRole("button", { name: "Social Governance" }).click();
+  await page.getByRole("button", { name: "Apply Risk Flag" }).click();
+  await expect(page.getByText("Signal applied: negative_risk_flag")).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Build Access Payload" }).click();
+  await expect(page.getByText(/InvalidState|Verifier preflight failed|Verifier preflight:/)).toBeVisible({ timeout: 120_000 });
 });

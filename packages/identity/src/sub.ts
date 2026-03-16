@@ -1,7 +1,12 @@
 import { encodePacked, keccak256, type Hex } from "viem";
 import {
+  IdentityMode,
+  LinkabilityLevel,
+  type PolicyModeDescriptor,
+  type PolicySupportResult,
   RiskIsolationLevel,
   SubIdentityType,
+  type IdentityCapabilities,
   type PermissionProfile,
   type RootIdentity,
   type SameRootProof,
@@ -28,31 +33,70 @@ export function defaultPermissionProfile(type: SubIdentityType, allowedCredentia
       return {
         allowedCredentialTypes,
         allowedProofTypes: DEFAULT_PROOF_TYPES,
+        supportedProofKinds: ["holder_bound_proof", "credential_bound_proof"],
         allowRootLink: true,
         riskIsolationLevel: RiskIsolationLevel.MEDIUM,
+        linkabilityLevel: LinkabilityLevel.ROOT_LINKABLE,
+        canEscalateToRoot: true,
+        inheritsRootRestrictions: true,
       };
     case SubIdentityType.PAYMENTS:
       return {
         allowedCredentialTypes,
         allowedProofTypes: DEFAULT_PROOF_TYPES,
+        supportedProofKinds: ["holder_bound_proof", "credential_bound_proof"],
         allowRootLink: true,
         riskIsolationLevel: RiskIsolationLevel.HIGH,
+        linkabilityLevel: LinkabilityLevel.ROOT_LINKABLE,
+        canEscalateToRoot: true,
+        inheritsRootRestrictions: true,
       };
     case SubIdentityType.SOCIAL:
       return {
         allowedCredentialTypes,
         allowedProofTypes: DEFAULT_PROOF_TYPES,
+        supportedProofKinds: ["holder_bound_proof"],
         allowRootLink: false,
         riskIsolationLevel: RiskIsolationLevel.LOW,
+        linkabilityLevel: LinkabilityLevel.SAME_SCOPE,
+        canEscalateToRoot: false,
+        inheritsRootRestrictions: true,
       };
     case SubIdentityType.ANONYMOUS_LOWRISK:
       return {
         allowedCredentialTypes,
         allowedProofTypes: ["HOLDER_BINDING_GROTH16_V1"],
+        supportedProofKinds: ["holder_bound_proof"],
         allowRootLink: false,
         riskIsolationLevel: RiskIsolationLevel.HIGH,
+        linkabilityLevel: LinkabilityLevel.NONE,
+        canEscalateToRoot: false,
+        inheritsRootRestrictions: false,
       };
   }
+}
+
+export function deriveIdentityCapabilities(
+  permissions: PermissionProfile,
+  options: {
+    preferredMode?: IdentityMode;
+    linkedCredentialTypes?: Hex[];
+  } = {},
+): IdentityCapabilities {
+  const linkedCredentialTypes = options.linkedCredentialTypes ?? permissions.allowedCredentialTypes;
+  const supportsIssuerValidation =
+    permissions.supportedProofKinds.includes("credential_bound_proof") || linkedCredentialTypes.length > 0;
+  const preferredMode =
+    options.preferredMode ??
+    (supportsIssuerValidation ? IdentityMode.COMPLIANCE_MODE : IdentityMode.DEFAULT_BEHAVIOR_MODE);
+
+  return {
+    supportsHolderBinding: true,
+    supportsIssuerValidation,
+    hasLinkedCredentials: linkedCredentialTypes.length > 0,
+    supportedProofKinds: [...permissions.supportedProofKinds],
+    preferredMode,
+  };
 }
 
 export function computeSubIdentityId(rootId: Hex, scope: string, type: SubIdentityType): Hex {
@@ -82,6 +126,12 @@ export function deriveSubIdentity(input: {
     type: input.type,
     createdAt: input.createdAt ?? new Date().toISOString(),
     permissions: input.permissions ?? defaultPermissionProfile(input.type),
+    capabilities: deriveIdentityCapabilities(input.permissions ?? defaultPermissionProfile(input.type), {
+      preferredMode:
+        input.type === SubIdentityType.SOCIAL || input.type === SubIdentityType.ANONYMOUS_LOWRISK
+          ? IdentityMode.DEFAULT_BEHAVIOR_MODE
+          : IdentityMode.COMPLIANCE_MODE,
+    }),
   };
 }
 
@@ -168,4 +218,77 @@ export function listDefaultSubIdentities(rootIdentity: Pick<RootIdentity, "rootI
       ),
     }),
   ];
+}
+
+export function getIdentityCapabilities(
+  identity: Pick<SubIdentity, "capabilities" | "permissions"> | Pick<RootIdentity, "capabilities">,
+  options: { linkedCredentialTypes?: Hex[] } = {},
+): IdentityCapabilities {
+  if ("permissions" in identity) {
+    return deriveIdentityCapabilities(identity.permissions, {
+      preferredMode: identity.capabilities.preferredMode,
+      linkedCredentialTypes: options.linkedCredentialTypes,
+    });
+  }
+
+  return identity.capabilities;
+}
+
+export function getPreferredMode(identity: Pick<SubIdentity, "capabilities"> | Pick<RootIdentity, "capabilities">): IdentityMode {
+  return identity.capabilities.preferredMode;
+}
+
+export function resolveEffectiveMode(
+  identity: Pick<SubIdentity, "capabilities" | "permissions"> | Pick<RootIdentity, "capabilities">,
+  policy: PolicyModeDescriptor,
+  options: { linkedCredentialTypes?: Hex[] } = {},
+): IdentityMode | null {
+  const capabilities = getIdentityCapabilities(identity as Pick<SubIdentity, "capabilities" | "permissions">, options);
+  const allowsDefault = policy.allowedModes.includes(IdentityMode.DEFAULT_BEHAVIOR_MODE);
+  const allowsCompliance = policy.allowedModes.includes(IdentityMode.COMPLIANCE_MODE);
+  const complianceReady =
+    capabilities.supportsIssuerValidation &&
+    capabilities.supportedProofKinds.includes("credential_bound_proof") &&
+    capabilities.hasLinkedCredentials;
+
+  if (policy.requiresComplianceMode) {
+    return complianceReady && allowsCompliance ? IdentityMode.COMPLIANCE_MODE : null;
+  }
+
+  if (capabilities.preferredMode === IdentityMode.COMPLIANCE_MODE && complianceReady && allowsCompliance) {
+    return IdentityMode.COMPLIANCE_MODE;
+  }
+
+  if (allowsDefault && capabilities.supportedProofKinds.includes("holder_bound_proof")) {
+    return IdentityMode.DEFAULT_BEHAVIOR_MODE;
+  }
+
+  if (complianceReady && allowsCompliance) {
+    return IdentityMode.COMPLIANCE_MODE;
+  }
+
+  return null;
+}
+
+export function supportsPolicy(
+  identity: Pick<SubIdentity, "capabilities" | "permissions"> | Pick<RootIdentity, "capabilities">,
+  policy: PolicyModeDescriptor,
+  options: { linkedCredentialTypes?: Hex[] } = {},
+): PolicySupportResult {
+  const effectiveMode = resolveEffectiveMode(identity, policy, options);
+  if (!effectiveMode) {
+    return {
+      supported: false,
+      effectiveMode: null,
+      reason: policy.requiresComplianceMode
+        ? "This policy requires compliance mode with linked credentials."
+        : "This identity does not support an allowed mode for the selected policy.",
+    };
+  }
+
+  return {
+    supported: true,
+    effectiveMode,
+    reason: null,
+  };
 }

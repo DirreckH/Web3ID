@@ -110,6 +110,13 @@ select {
   margin-bottom: 14px;
 }
 
+.stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .segmented.compact {
   margin-top: -4px;
 }
@@ -157,6 +164,27 @@ select {
   color: #9fd9ff;
 }
 
+.hint {
+  font-size: 0.95rem;
+  color: rgba(243, 239, 231, 0.58);
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.meta-grid strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.meta-grid p {
+  margin: 0;
+}
+
 pre {
   overflow: auto;
   padding: 14px;
@@ -173,6 +201,10 @@ pre {
 @media (max-width: 960px) {
   .hero,
   .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .meta-grid {
     grid-template-columns: 1fr;
   }
 }

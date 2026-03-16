@@ -1,5 +1,5 @@
 import { getAddress, keccak256, stringToHex, type Address, type Hex } from "viem";
-import { DEFAULT_CHAIN_ID, type RootIdentity } from "./types.js";
+import { DEFAULT_CHAIN_ID, IdentityMode, type RootIdentity } from "./types.js";
 
 export function buildDidPkh(address: Address, chainId = DEFAULT_CHAIN_ID): string {
   return `did:pkh:eip155:${chainId}:${getAddress(address)}`;
@@ -29,6 +29,13 @@ export function deriveRootIdentity(
     didLikeId,
     chainId,
     createdAt,
+    capabilities: {
+      supportsHolderBinding: true,
+      supportsIssuerValidation: false,
+      hasLinkedCredentials: false,
+      supportedProofKinds: ["holder_bound_proof"],
+      preferredMode: IdentityMode.DEFAULT_BEHAVIOR_MODE,
+    },
   };
 }
 

@@ -2,6 +2,11 @@ import type { Address, Hex } from "viem";
 
 export const DEFAULT_CHAIN_ID = 31337;
 
+export enum IdentityMode {
+  DEFAULT_BEHAVIOR_MODE = "DEFAULT_BEHAVIOR_MODE",
+  COMPLIANCE_MODE = "COMPLIANCE_MODE",
+}
+
 export enum SubIdentityType {
   RWA_INVEST = "RWA_INVEST",
   PAYMENTS = "PAYMENTS",
@@ -15,11 +20,31 @@ export enum RiskIsolationLevel {
   HIGH = "HIGH",
 }
 
+export enum LinkabilityLevel {
+  NONE = "NONE",
+  SAME_SCOPE = "SAME_SCOPE",
+  ROOT_LINKABLE = "ROOT_LINKABLE",
+}
+
+export type SupportedProofKind = "holder_bound_proof" | "credential_bound_proof";
+
 export type PermissionProfile = {
   allowedCredentialTypes: Hex[];
   allowedProofTypes: string[];
+  supportedProofKinds: SupportedProofKind[];
   allowRootLink: boolean;
   riskIsolationLevel: RiskIsolationLevel;
+  linkabilityLevel: LinkabilityLevel;
+  canEscalateToRoot: boolean;
+  inheritsRootRestrictions: boolean;
+};
+
+export type IdentityCapabilities = {
+  supportsHolderBinding: boolean;
+  supportsIssuerValidation: boolean;
+  hasLinkedCredentials: boolean;
+  supportedProofKinds: SupportedProofKind[];
+  preferredMode: IdentityMode;
 };
 
 export type RootIdentity = {
@@ -29,6 +54,7 @@ export type RootIdentity = {
   didLikeId: string;
   chainId: number;
   createdAt: string;
+  capabilities: IdentityCapabilities;
 };
 
 export type SubIdentity = {
@@ -40,6 +66,7 @@ export type SubIdentity = {
   type: SubIdentityType;
   createdAt: string;
   permissions: PermissionProfile;
+  capabilities: IdentityCapabilities;
 };
 
 export type SubIdentityLinkProof = {
@@ -56,4 +83,16 @@ export type SameRootProof = {
   rootCommitment: Hex;
   subIdentityIds: Hex[];
   commitment: Hex;
+};
+
+export type PolicyModeDescriptor = {
+  policyId?: Hex;
+  allowedModes: IdentityMode[];
+  requiresComplianceMode: boolean;
+};
+
+export type PolicySupportResult = {
+  supported: boolean;
+  effectiveMode: IdentityMode | null;
+  reason: string | null;
 };

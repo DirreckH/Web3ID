@@ -7,9 +7,22 @@ import {
   type HolderAuthorization,
   type HolderAuthorizationPayload,
 } from "@web3id/credential";
-import { generateHolderBindingProof } from "@web3id/proof";
-import { POLICY_IDS } from "../../policy/src/index.js";
-import { IdentityState } from "../../state/src/index.js";
+import {
+  getIdentityCapabilities as getResolvedIdentityCapabilities,
+  getPreferredMode as getResolvedPreferredMode,
+  resolveEffectiveMode as resolveIdentityEffectiveMode,
+  supportsPolicy as resolveIdentityPolicySupport,
+  type RootIdentity,
+  type SubIdentity,
+} from "@web3id/identity";
+import {
+  POLICY_IDS,
+  getPolicyDefinition,
+  getPolicyModeDescriptor,
+  type PolicyDefinition,
+} from "@web3id/policy";
+import { generateHolderBindingProof, generateHolderBoundProof } from "@web3id/proof";
+import { IdentityState } from "@web3id/state";
 import { createWalletClient, custom, encodePacked, keccak256, type Address, type Hex, type PublicClient } from "viem";
 
 export type ZkProofInput = {
@@ -33,6 +46,8 @@ export type AccessPayload = {
   policyVersion: number;
   holderAuthorization: HolderAuthorization;
 };
+
+type IdentityLike = Pick<SubIdentity, "capabilities" | "permissions"> | Pick<RootIdentity, "capabilities">;
 
 const credentialAttestationComponents = [
   { name: "credentialType", type: "bytes32" },
@@ -136,6 +151,39 @@ export const enterpriseTreasuryGateAbi = [
   },
 ] as const;
 
+export const socialGovernanceGateAbi = [
+  {
+    type: "function",
+    name: "vote",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "payload", type: "tuple", components: accessPayloadComponents },
+      { name: "proposalId", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "claimAirdrop",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "payload", type: "tuple", components: accessPayloadComponents },
+      { name: "roundId", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "createPost",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "payload", type: "tuple", components: accessPayloadComponents },
+      { name: "postRef", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+] as const;
+
 export const mockRwaAssetAbi = [
   {
     type: "function",
@@ -188,6 +236,13 @@ export const identityStateRegistryAbi = [
     inputs: [{ name: "identityId", type: "bytes32" }],
     outputs: [{ type: "uint8" }, { type: "bytes32" }, { type: "uint256" }, { type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "getAuditAnchors",
+    stateMutability: "view",
+    inputs: [{ name: "identityId", type: "bytes32" }],
+    outputs: [{ type: "bytes32" }, { type: "bytes32" }],
+  },
 ] as const;
 
 export const policyRegistryAbi = [
@@ -209,7 +264,44 @@ export const policyRegistryAbi = [
       { type: "bool" },
     ],
   },
+  {
+    type: "function",
+    name: "getPolicyModeConfig",
+    stateMutability: "view",
+    inputs: [{ name: "policyId", type: "bytes32" }],
+    outputs: [
+      { type: "uint8" },
+      { type: "bool" },
+      { type: "bytes32" },
+      { type: "bytes32" },
+      { type: "bytes32" },
+      { type: "bytes32" },
+      { type: "bytes32" },
+    ],
+  },
 ] as const;
+
+export function getIdentityCapabilities(identity: IdentityLike, bundles: CredentialBundle[] = []) {
+  return getResolvedIdentityCapabilities(identity, {
+    linkedCredentialTypes: extractCredentialTypes(bundles),
+  });
+}
+
+export function getPreferredMode(identity: IdentityLike, bundles: CredentialBundle[] = []) {
+  return getIdentityCapabilities(identity, bundles).preferredMode ?? getResolvedPreferredMode(identity);
+}
+
+export function resolveEffectiveMode(identity: IdentityLike, policyId: Hex | PolicyDefinition, bundles: CredentialBundle[] = []) {
+  return resolveIdentityEffectiveMode(identity, getPolicyModeDescriptor(policyId), {
+    linkedCredentialTypes: extractCredentialTypes(bundles),
+  });
+}
+
+export function supportsPolicy(identity: IdentityLike, policyId: Hex | PolicyDefinition, bundles: CredentialBundle[] = []) {
+  return resolveIdentityPolicySupport(identity, getPolicyModeDescriptor(policyId), {
+    linkedCredentialTypes: extractCredentialTypes(bundles),
+  });
+}
 
 export async function issueCredential(apiUrl: string, input: {
   subjectDid: string;
@@ -302,28 +394,71 @@ export async function verifyCredentialStatus(apiUrl: string, bundle: CredentialB
   return response.json();
 }
 
+export async function getIdentityContext(apiUrl: string, identityId: Hex) {
+  const response = await fetch(`${apiUrl}/identities/${identityId}/context`);
+  if (!response.ok) {
+    throw new Error(`Issuer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function registerIdentityTree(apiUrl: string, input: { rootIdentity: RootIdentity; subIdentities: SubIdentity[] }) {
+  const response = await fetch(`${apiUrl}/identities/register-tree`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(`Issuer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function applyDemoSignal(
+  apiUrl: string,
+  input: {
+    identityId: Hex;
+    signalKey: string;
+    actor?: string;
+  },
+) {
+  const response = await fetch(`${apiUrl}/identities/${input.identityId}/signals`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ signalKey: input.signalKey, actor: input.actor }),
+  });
+  if (!response.ok) {
+    throw new Error(`Issuer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function requestProof(input: {
   identityId: Hex;
   policyId: Hex;
   policyVersion: number;
-  bundles: CredentialBundle[];
+  bundles?: CredentialBundle[];
   subjectAddress: Address;
   holderAuthorization: HolderAuthorization;
   mode?: "browser" | "node";
 }) {
-  if (input.bundles.length === 0) {
-    throw new Error("requestProof requires at least one credential bundle");
-  }
-
-  const proof = await generateHolderBindingProof(input.bundles[0], {
-    mode: input.mode ?? "browser",
-    subjectAddress: input.subjectAddress,
-    artifactsBasePath: "",
-  });
+  const bundles = input.bundles ?? [];
+  const proof =
+    bundles.length > 0
+      ? await generateHolderBindingProof(bundles[0], {
+          mode: input.mode ?? "browser",
+          subjectAddress: input.subjectAddress,
+          artifactsBasePath: "",
+        })
+      : await generateHolderBoundProof(input.subjectAddress, {
+          mode: input.mode ?? "browser",
+          subjectAddress: input.subjectAddress,
+          artifactsBasePath: "",
+        });
 
   return {
     identityId: input.identityId,
-    credentialAttestations: input.bundles.map((bundle) => bundle.attestation),
+    credentialAttestations: bundles.map((bundle) => bundle.attestation),
     zkProof: {
       proofPoints: proof.proofPoints,
       publicSignals: proof.publicSignals,
@@ -387,6 +522,18 @@ export function buildEnterpriseAuditRequestHash(gateAddress: Address, auditRef: 
   return keccak256(encodePacked(["string", "address", "bytes32"], ["AUDIT", gateAddress, auditRef]));
 }
 
+export function buildGovernanceVoteRequestHash(gateAddress: Address, proposalId: Hex): Hex {
+  return keccak256(encodePacked(["string", "address", "bytes32"], ["VOTE", gateAddress, proposalId]));
+}
+
+export function buildAirdropClaimRequestHash(gateAddress: Address, roundId: Hex): Hex {
+  return keccak256(encodePacked(["string", "address", "bytes32"], ["CLAIM_AIRDROP", gateAddress, roundId]));
+}
+
+export function buildCommunityPostRequestHash(gateAddress: Address, postRef: Hex): Hex {
+  return keccak256(encodePacked(["string", "address", "bytes32"], ["CREATE_POST", gateAddress, postRef]));
+}
+
 export async function verifyAccess(
   publicClient: PublicClient,
   verifierAddress: Address,
@@ -421,3 +568,8 @@ export async function getIdentityState(publicClient: PublicClient, registryAddre
 }
 
 export const policyIds = POLICY_IDS;
+export { getPolicyDefinition };
+
+function extractCredentialTypes(bundles: CredentialBundle[]) {
+  return bundles.map((bundle) => bundle.attestation.credentialType as Hex);
+}

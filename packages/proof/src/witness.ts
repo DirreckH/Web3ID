@@ -26,9 +26,21 @@ export async function buildCircuitInput(bundle: CredentialBundle, subjectAddress
 
   return {
     bundle: parsedBundle,
-    publicSignals: [BigInt(expectedSubjectBinding)],
+    ...buildSubjectCircuitInput(subject),
+  };
+}
+
+export function buildSubjectCircuitInput(subjectAddress: Address): {
+  circuitInput: CircuitInput;
+  publicSignals: [bigint];
+} {
+  const subject = getAddress(subjectAddress);
+  const subjectBinding = computeSubjectBinding(subject);
+
+  return {
+    publicSignals: [BigInt(subjectBinding)],
     circuitInput: {
-      statementSignal: BigInt(expectedSubjectBinding),
+      statementSignal: BigInt(subjectBinding),
       subjectBytes: addressToBytes(subject),
     },
   };

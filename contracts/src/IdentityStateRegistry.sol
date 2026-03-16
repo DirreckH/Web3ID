@@ -13,6 +13,8 @@ contract IdentityStateRegistry is AccessControl {
         bytes32 reasonCode;
         uint256 version;
         uint256 updatedAt;
+        bytes32 lastDecisionRef;
+        bytes32 lastEvidenceHash;
     }
 
     mapping(bytes32 => StateSnapshot) internal stateSnapshots;
@@ -23,7 +25,9 @@ contract IdentityStateRegistry is AccessControl {
         IdentityState indexed toState,
         bytes32 reasonCode,
         uint256 version,
-        address actor
+        address actor,
+        bytes32 decisionRef,
+        bytes32 evidenceHash
     );
     event GovernanceAction(
         address indexed actor, bytes32 indexed action, bytes32 indexed target, bytes32 reason, uint256 version
@@ -41,30 +45,54 @@ contract IdentityStateRegistry is AccessControl {
         external
         onlyRole(RISK_MANAGER_ROLE)
     {
-        _setState(identityId, nextState, reasonCode, version);
+        _setState(identityId, nextState, reasonCode, version, bytes32(0), bytes32(0));
+    }
+
+    function setStateWithAnchors(
+        bytes32 identityId,
+        IdentityState nextState,
+        bytes32 reasonCode,
+        uint256 version,
+        bytes32 decisionRef,
+        bytes32 evidenceHash
+    ) external onlyRole(RISK_MANAGER_ROLE) {
+        _setState(identityId, nextState, reasonCode, version, decisionRef, evidenceHash);
     }
 
     function freeze(bytes32 identityId, bytes32 reasonCode, uint256 version) external onlyRole(RISK_MANAGER_ROLE) {
-        _setState(identityId, IdentityState.FROZEN, reasonCode, version);
+        _setState(identityId, IdentityState.FROZEN, reasonCode, version, bytes32(0), bytes32(0));
     }
 
     function unfreeze(bytes32 identityId, IdentityState nextState, bytes32 reasonCode, uint256 version)
         external
         onlyRole(RISK_MANAGER_ROLE)
     {
-        _setState(identityId, nextState, reasonCode, version);
+        _setState(identityId, nextState, reasonCode, version, bytes32(0), bytes32(0));
     }
 
-    function _setState(bytes32 identityId, IdentityState nextState, bytes32 reasonCode, uint256 version) internal {
+    function _setState(
+        bytes32 identityId,
+        IdentityState nextState,
+        bytes32 reasonCode,
+        uint256 version,
+        bytes32 decisionRef,
+        bytes32 evidenceHash
+    ) internal {
         IdentityState currentState = getState(identityId);
         if (!_canTransition(currentState, nextState) && currentState != nextState) {
             revert IllegalTransition(currentState, nextState);
         }
 
-        stateSnapshots[identityId] =
-            StateSnapshot({state: nextState, reasonCode: reasonCode, version: version, updatedAt: block.timestamp});
+        stateSnapshots[identityId] = StateSnapshot({
+            state: nextState,
+            reasonCode: reasonCode,
+            version: version,
+            updatedAt: block.timestamp,
+            lastDecisionRef: decisionRef,
+            lastEvidenceHash: evidenceHash
+        });
 
-        emit StateTransitioned(identityId, currentState, nextState, reasonCode, version, msg.sender);
+        emit StateTransitioned(identityId, currentState, nextState, reasonCode, version, msg.sender, decisionRef, evidenceHash);
         emit GovernanceAction(msg.sender, keccak256("SET_STATE"), identityId, reasonCode, version);
     }
 
@@ -88,6 +116,11 @@ contract IdentityStateRegistry is AccessControl {
         }
 
         return (snapshot.state, snapshot.reasonCode, snapshot.version, snapshot.updatedAt);
+    }
+
+    function getAuditAnchors(bytes32 identityId) external view returns (bytes32 lastDecisionRef, bytes32 lastEvidenceHash) {
+        StateSnapshot memory snapshot = stateSnapshots[identityId];
+        return (snapshot.lastDecisionRef, snapshot.lastEvidenceHash);
     }
 
     function _canTransition(IdentityState fromState, IdentityState toState) internal pure returns (bool) {
