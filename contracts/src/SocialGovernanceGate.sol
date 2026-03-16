@@ -36,7 +36,9 @@ contract SocialGovernanceGate is Ownable, EIP712 {
     }
 
     function vote(AccessPayload calldata payload, bytes32 proposalId) external {
-        _verifyHolderAuthorization(payload, GOV_VOTE_POLICY_ID, keccak256(abi.encodePacked("VOTE", address(this), proposalId)));
+        _verifyHolderAuthorization(
+            payload, GOV_VOTE_POLICY_ID, keccak256(abi.encodePacked("VOTE", address(this), proposalId))
+        );
         if (!verifier.verifyAccess(GOV_VOTE_POLICY_ID, payload)) revert InvalidAccess();
 
         nonceUsed[msg.sender][payload.holderAuthorization.nonce] = true;
