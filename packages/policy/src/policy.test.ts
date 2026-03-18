@@ -26,4 +26,16 @@ describe("policy helpers", () => {
     expect(POLICY_DEFINITIONS.GOV_VOTE_V1.onRiskAction).toBe("observe");
     expect(getPolicyDefinition(POLICY_IDS.GOV_VOTE_V1).targetAction).toBe("governance_vote");
   });
+
+  it("reads reserved privacy fields without changing existing policy definitions", () => {
+    const policy = getPolicyDefinition({
+      ...POLICY_DEFINITIONS.ENTITY_AUDIT_V1,
+      acceptedPrivacyModes: ["credential_bound", "issuer_hidden_reserved"],
+      issuerDisclosureRequirement: "hash_only",
+    });
+
+    expect(policy.acceptedPrivacyModes).toEqual(["credential_bound", "issuer_hidden_reserved"]);
+    expect(policy.issuerDisclosureRequirement).toBe("hash_only");
+    expect(policy.proofTemplate).toBe("credential_bound_proof");
+  });
 });

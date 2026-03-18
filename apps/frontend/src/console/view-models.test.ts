@@ -110,6 +110,15 @@ function buildSelection(overrides: Partial<ConsoleSelection> = {}): ConsoleSelec
       recentHighRiskOrFrozen: [{ action: "STATE_COMPUTED", timestamp: "2026-03-18T00:00:00.000Z", identityId: "0x3", evidenceRefs: ["tx:1"] }],
       recentWarningPolicies: [{ kind: "warning", policyId: "COUNTERPARTY_WARNING_V1", createdAt: "2026-03-18T00:00:00.000Z", decision: "warn", reasons: ["state_high"] }],
     } as any,
+    recoveryHooks: {
+      guardianSetRef: "guardians:root",
+      recoveryPolicySlotId: "slot-1",
+      policySlot: {
+        allowedRecoveryActions: ["unlock", "rebind"],
+      },
+      guardians: [{ guardianId: "guardian-1" }],
+      intents: [{ intentId: "intent-1", blockedReason: "global lockdown is active" }],
+    } as any,
     auditBundle: {
       generatedAt: "2026-03-18T00:00:00.000Z",
       signals: [{}],
@@ -140,5 +149,12 @@ describe("buildPlatformConsoleViewModels", () => {
   it("marks positive thresholds as configurable demo defaults", () => {
     const models = buildPlatformConsoleViewModels(buildSelection());
     expect(models.stateConsequence.recoveryNotes.some((note) => note.includes("demo defaults"))).toBe(true);
+  });
+
+  it("shows recovery hooks as read-only reserved metadata", () => {
+    const models = buildPlatformConsoleViewModels(buildSelection());
+    expect(models.recoveryHooks.metrics.find((item) => item.label === "Guardian count")?.value).toBe("1");
+    expect(models.recoveryHooks.metrics.find((item) => item.label === "Supported actions")?.value).toContain("unlock");
+    expect(models.recoveryHooks.notes.some((note) => note.includes("cannot override governance emergency freeze"))).toBe(true);
   });
 });

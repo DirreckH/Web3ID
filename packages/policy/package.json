@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@web3id/identity": "workspace:*",
+    "@web3id/proof": "workspace:*",
     "@web3id/state": "workspace:*",
     "viem": "^2.23.5",
     "zod": "^3.24.2"

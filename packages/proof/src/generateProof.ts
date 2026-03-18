@@ -1,4 +1,5 @@
 import { buildCircuitInput, buildSubjectCircuitInput } from "./witness.js";
+import { buildProofDescriptor } from "./interfaces.js";
 import type { GenerateHolderBindingProofResult, GenerateHolderBoundProofResult, HolderBindingContext } from "./types.js";
 import type { CredentialBundle } from "@web3id/credential";
 
@@ -33,6 +34,10 @@ export async function generateHolderBindingProof(
     proofPoints: generated.solidityProof,
     publicSignals: prepared.publicSignals,
     solidityProof: generated.solidityProof,
+    descriptor: buildProofDescriptor({
+      proofType: "credential_bound_proof",
+      subjectBindingType: context.subjectBindingType,
+    }),
   };
 }
 
@@ -64,6 +69,10 @@ export async function generateHolderBoundProof(
     proofPoints: generated.solidityProof,
     publicSignals: prepared.publicSignals,
     solidityProof: generated.solidityProof,
+    descriptor: buildProofDescriptor({
+      proofType: "holder_bound_proof",
+      subjectBindingType: context.subjectBindingType,
+    }),
   };
 }
 

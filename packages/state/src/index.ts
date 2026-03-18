@@ -5,3 +5,4 @@ export * from "./decision.js";
 export * from "./consequence.js";
 export * from "./recovery.js";
 export * from "./propagation.js";
+export * from "./cross-chain.js";

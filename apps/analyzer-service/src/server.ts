@@ -41,6 +41,8 @@ const registerTreeRequestSchema = z.object({
     didLikeId: z.string(),
     chainId: z.number().int().positive(),
     createdAt: z.string(),
+    guardianSetRef: z.string().optional(),
+    recoveryPolicySlotId: z.string().optional(),
     capabilities: z.object({
       supportsHolderBinding: z.boolean(),
       supportsIssuerValidation: z.boolean(),

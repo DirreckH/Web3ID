@@ -59,6 +59,12 @@ export type StateConsequenceViewModel = {
   jsonSections: JsonSection[];
 };
 
+export type RecoveryHooksViewModel = {
+  metrics: MetricItem[];
+  notes: string[];
+  jsonSections: JsonSection[];
+};
+
 export type AuditEvidenceViewModel = {
   exportMetrics: MetricItem[];
   historyMetrics: MetricItem[];
@@ -91,6 +97,7 @@ export type PlatformConsoleViewModels = {
   overview: PlatformOverviewViewModel;
   identity: IdentityDetailViewModel;
   stateConsequence: StateConsequenceViewModel;
+  recoveryHooks: RecoveryHooksViewModel;
   auditEvidence: AuditEvidenceViewModel;
   policy: PolicyDecisionViewModel;
   aiReview: AiReviewViewModel;
@@ -219,6 +226,34 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
           selected.summary,
           "Run analyzer scans to populate stored/effective state and propagation overlays.",
         ),
+      ],
+    },
+    recoveryHooks: {
+      metrics: [
+        { label: "Guardian set ref", value: selection.recoveryHooks.guardianSetRef ?? "Not configured" },
+        { label: "Policy slot ref", value: selection.recoveryHooks.recoveryPolicySlotId ?? "Not configured" },
+        { label: "Guardian count", value: `${selection.recoveryHooks.guardians.length}` },
+        { label: "Recovery enabled", value: selection.recoveryHooks.recoveryPolicySlotId ? "Configured" : "Disabled" },
+        {
+          label: "Supported actions",
+          value: listText(selection.recoveryHooks.policySlot?.allowedRecoveryActions ?? []),
+        },
+        {
+          label: "Blocked by governance controls",
+          value: selection.recoveryHooks.intents.some((intent) => Boolean(intent.blockedReason)) ? "Yes" : "No",
+        },
+        {
+          label: "Recent intents",
+          value: `${selection.recoveryHooks.intents.length}`,
+        },
+      ],
+      notes: [
+        "Recovery hooks are reserved metadata only. They do not execute unlock, rebind, or controller rotation in P2.",
+        "Recovery hooks cannot override governance emergency freeze or GLOBAL_LOCKDOWN.",
+        "An empty panel is expected until a local recovery slot and guardian set are configured.",
+      ],
+      jsonSections: [
+        jsonSection("Recovery Hooks Snapshot", selection.recoveryHooks, "Recovery hooks are not configured for the selected root identity."),
       ],
     },
     auditEvidence: {

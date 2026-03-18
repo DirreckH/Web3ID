@@ -64,6 +64,8 @@ export type RootIdentity = {
   didLikeId: string;
   chainId: number;
   createdAt: string;
+  guardianSetRef?: string;
+  recoveryPolicySlotId?: string;
   capabilities: IdentityCapabilities;
 };
 

@@ -1,19 +1,39 @@
-import { describe, expect, it } from "vitest";
-import { deriveRootIdentity, deriveSubIdentity, IdentityMode, SubIdentityType } from "@web3id/identity";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  clearRecoveryHooksForTests,
+  createRecoveryIntent,
+  deriveRootIdentity,
+  deriveSubIdentity,
+  getRecoveryPolicySlot,
+  IdentityMode,
+  registerRecoveryGuardians,
+  registerRecoveryPolicySlot,
+  SubIdentityType,
+} from "@web3id/identity";
 import { IdentityState } from "@web3id/state";
 import {
+  buildCrossChainStateMessage,
+  buildStateSnapshot,
   buildEnterpriseAuditRequestHash,
   buildEnterprisePaymentRequestHash,
   evaluatePolicyPreflight,
   buildGovernanceVoteRequestHash,
   buildHolderAuthorizationPayload,
   buildRwaRequestHash,
+  getProofCapabilities,
+  getProofDescriptor,
+  getRecoveryHooksSnapshot,
   policyIds,
   resolveEffectiveMode,
   supportsPolicy,
 } from "./index.js";
 
 describe("sdk helpers", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearRecoveryHooksForTests();
+  });
+
   it("builds deterministic request hashes", () => {
     expect(buildRwaRequestHash("0x0000000000000000000000000000000000000001", 1n)).toBe(
       buildRwaRequestHash("0x0000000000000000000000000000000000000001", 1n),
@@ -116,5 +136,120 @@ describe("sdk helpers", () => {
     expect(preflight.allowed).toBe(false);
     expect(preflight.source).toBe("consequence");
     expect(preflight.blockingConsequences).toHaveLength(1);
+  });
+
+  it("builds state snapshots from analyzer risk-context while preferring structured state facts", async () => {
+    const root = deriveRootIdentity("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+    const rwa = deriveSubIdentity({ rootIdentity: root, scope: "rwa-invest", type: SubIdentityType.RWA_INVEST });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          rootIdentity: root,
+          subIdentity: rwa,
+          summary: {
+            storedState: IdentityState.FROZEN,
+            effectiveState: IdentityState.RESTRICTED,
+          },
+          stateContext: {
+            currentState: IdentityState.NORMAL,
+            decisions: [
+              {
+                decisionId: "decision-1",
+                evidenceBundleHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+              },
+            ],
+            assessments: [],
+            consequences: [
+              {
+                consequenceId: "limit-1",
+                identityId: rwa.identityId,
+                targetLevel: "sub",
+                consequenceType: "limit",
+                severity: "high",
+                reasonCode: "NEGATIVE_RISK_FLAG",
+                sourceDecisionId: "decision-1",
+                effectiveFrom: new Date("2026-03-18T00:00:00Z").toISOString(),
+                recoverable: true,
+                createdAt: new Date("2026-03-18T00:00:00Z").toISOString(),
+              },
+            ],
+          },
+          policyDecisions: [
+            {
+              policyLabel: "RWA_BUY_V2",
+              policyVersion: 1,
+              createdAt: new Date("2026-03-19T00:00:00Z").toISOString(),
+            },
+          ],
+        }),
+      })) as any,
+    );
+
+    const snapshot = await buildStateSnapshot("http://127.0.0.1:4200", rwa.identityId, {
+      generatedAt: new Date("2026-03-20T00:00:00Z").toISOString(),
+    });
+    const message = await buildCrossChainStateMessage("http://127.0.0.1:4200", rwa.identityId, 10, {
+      generatedAt: new Date("2026-03-20T00:00:00Z").toISOString(),
+      createdAt: new Date("2026-03-20T00:00:00Z").toISOString(),
+      commitmentCreatedAt: new Date("2026-03-20T00:00:00Z").toISOString(),
+    });
+
+    expect(snapshot.storedState).toBe("NORMAL");
+    expect(snapshot.effectiveState).toBe("RESTRICTED");
+    expect(snapshot.policyContextVersion).toBe("RWA_BUY_V2@1");
+    expect(message.targetChainId).toBe(10);
+    expect(message.snapshotRef).toBe(snapshot.snapshotId);
+  });
+
+  it("exposes proof descriptors and local recovery hook snapshots without mutating main flows", () => {
+    const root = deriveRootIdentity("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+    registerRecoveryPolicySlot({
+      policySlotId: "slot-1",
+      rootIdentityId: root.identityId,
+      enabled: true,
+      minGuardianApprovals: 2,
+      cooldownSeconds: 3600,
+      scope: "root_only",
+      allowedRecoveryActions: ["unlock"],
+      createdAt: new Date("2026-03-18T00:00:00Z").toISOString(),
+      updatedAt: new Date("2026-03-18T00:00:00Z").toISOString(),
+    });
+    registerRecoveryGuardians(root.identityId, [
+      {
+        guardianId: "guardian-1",
+        guardianType: "address",
+        guardianRef: "0x00000000000000000000000000000000000000a1",
+        role: "primary",
+        weight: 1,
+        addedAt: new Date("2026-03-18T00:00:00Z").toISOString(),
+        status: "active",
+      },
+    ]);
+    createRecoveryIntent(
+      {
+        intentId: "intent-1",
+        rootIdentityId: root.identityId,
+        action: "unlock",
+        initiatedBy: "guardian-1",
+        createdAt: new Date("2026-03-18T01:00:00Z").toISOString(),
+      },
+      { governanceEmergencyFreeze: true },
+    );
+
+    const recoverySnapshot = getRecoveryHooksSnapshot({
+      ...root,
+      guardianSetRef: "guardians:root",
+      recoveryPolicySlotId: "slot-1",
+    });
+    const proofDescriptor = getProofDescriptor("holder_bound_proof");
+
+    expect(getProofCapabilities().some((item) => item.proofType === "credential_bound_proof")).toBe(true);
+    expect(proofDescriptor.privacyMode).toBe("holder_binding");
+    expect(getRecoveryPolicySlot("slot-1")?.enabled).toBe(true);
+    expect(recoverySnapshot.guardians).toHaveLength(1);
+    expect(recoverySnapshot.policySlot?.allowedRecoveryActions).toEqual(["unlock"]);
+    expect(recoverySnapshot.intents[0]?.blockedReason).toMatch(/emergency freeze/i);
   });
 });

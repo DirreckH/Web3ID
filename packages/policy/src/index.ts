@@ -1,4 +1,5 @@
 import { IdentityMode, type PolicyModeDescriptor, type SupportedProofKind } from "../../identity/src/index.js";
+import { proofPrivacyModes, type ProofPrivacyMode } from "../../proof/src/index.js";
 import { IdentityState } from "../../state/src/index.js";
 import { keccak256, stringToHex, type Address, type Hex } from "viem";
 import { z } from "zod";
@@ -39,6 +40,7 @@ export const POLICY_IDS = {
 } as const;
 
 const proofKindSchema = z.enum(["holder_bound_proof", "credential_bound_proof"]);
+const proofPrivacyModeSchema = z.enum(proofPrivacyModes);
 
 export const policySchema = z.object({
   policyId: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
@@ -64,9 +66,15 @@ export const policySchema = z.object({
   cooldownRule: z.string().optional(),
   retryRule: z.string().optional(),
   stateOverrideRule: z.string().optional(),
+  acceptedPrivacyModes: z.array(proofPrivacyModeSchema).optional(),
+  issuerDisclosureRequirement: z.enum(["full", "hash_only", "hidden_reserved"]).optional(),
 });
 
 export type PolicyDefinition = z.infer<typeof policySchema>;
+export type PolicyPrivacyRequirement = {
+  acceptedPrivacyModes?: ProofPrivacyMode[];
+  issuerDisclosureRequirement?: "full" | "hash_only" | "hidden_reserved";
+};
 
 export const proofRequestSchema = z.object({
   verifier: z.string(),

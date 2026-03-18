@@ -8,10 +8,16 @@ import {
   type HolderAuthorizationPayload,
 } from "@web3id/credential";
 import {
+  getRecoveryPolicySlot,
+  listRecoveryGuardians,
+  listRecoveryIntents,
   getIdentityCapabilities as getResolvedIdentityCapabilities,
   getPreferredMode as getResolvedPreferredMode,
   resolveEffectiveMode as resolveIdentityEffectiveMode,
   supportsPolicy as resolveIdentityPolicySupport,
+  type GuardianMetadata,
+  type RecoveryIntent,
+  type RecoveryPolicySlot,
   type RootIdentity,
   type SubIdentity,
 } from "@web3id/identity";
@@ -21,8 +27,26 @@ import {
   getPolicyModeDescriptor,
   type PolicyDefinition,
 } from "@web3id/policy";
-import { generateHolderBindingProof, generateHolderBoundProof } from "@web3id/proof";
-import { IdentityState, getActiveConsequences, isStateInRange, type ConsequenceRecord } from "@web3id/state";
+import {
+  generateHolderBindingProof,
+  generateHolderBoundProof,
+  getProofCapabilities as getProofCapabilitiesFromProof,
+  getProofDescriptor as getProofDescriptorFromProof,
+  type ProofCapability,
+  type ProofDescriptor,
+} from "@web3id/proof";
+import {
+  IdentityState,
+  buildCrossChainStateMessage as buildStructuredCrossChainStateMessage,
+  buildStateMerkleCommitment,
+  buildStateSnapshot as buildStructuredStateSnapshot,
+  getActiveConsequences,
+  isStateInRange,
+  type ConsequenceRecord,
+  type CrossChainStateMessage,
+  type StateSnapshot,
+  type StateSnapshotSource,
+} from "@web3id/state";
 import { createWalletClient, custom, encodePacked, keccak256, type Address, type Hex, type PublicClient } from "viem";
 
 export type ZkProofInput = {
@@ -45,6 +69,7 @@ export type AccessPayload = {
   zkProof: ZkProofInput;
   policyVersion: number;
   holderAuthorization: HolderAuthorization;
+  proofDescriptor?: ProofDescriptor;
 };
 
 export type IdentityContextSnapshot = {
@@ -58,6 +83,14 @@ export type PolicyPreflightResult = {
   source: "mode" | "state" | "consequence" | "policy";
   reason: string;
   blockingConsequences: ConsequenceRecord[];
+};
+
+export type RecoveryHooksSnapshot = {
+  guardianSetRef: string | null;
+  recoveryPolicySlotId: string | null;
+  policySlot: RecoveryPolicySlot | null;
+  guardians: GuardianMetadata[];
+  intents: RecoveryIntent[];
 };
 
 type IdentityLike = Pick<SubIdentity, "capabilities" | "permissions"> | Pick<RootIdentity, "capabilities">;
@@ -514,6 +547,60 @@ export async function getAnalyzerRiskContext(apiUrl: string, identityId: Hex) {
   return response.json();
 }
 
+export function getRecoveryHooksSnapshot(rootIdentity: RootIdentity | null | undefined): RecoveryHooksSnapshot {
+  if (!rootIdentity) {
+    return {
+      guardianSetRef: null,
+      recoveryPolicySlotId: null,
+      policySlot: null,
+      guardians: [],
+      intents: [],
+    };
+  }
+
+  return {
+    guardianSetRef: rootIdentity.guardianSetRef ?? null,
+    recoveryPolicySlotId: rootIdentity.recoveryPolicySlotId ?? null,
+    policySlot: rootIdentity.recoveryPolicySlotId ? (getRecoveryPolicySlot(rootIdentity.recoveryPolicySlotId) ?? null) : null,
+    guardians: listRecoveryGuardians(rootIdentity.identityId),
+    intents: listRecoveryIntents(rootIdentity.identityId),
+  };
+}
+
+export async function buildStateSnapshot(
+  apiUrl: string,
+  identityId: Hex,
+  options: {
+    generatedAt?: string;
+  } = {},
+): Promise<StateSnapshot> {
+  const context = await getAnalyzerRiskContext(apiUrl, identityId);
+  const source = buildStateSnapshotSource(context, identityId);
+  return buildStructuredStateSnapshot(source, options);
+}
+
+export async function buildCrossChainStateMessage(
+  apiUrl: string,
+  identityId: Hex,
+  targetChainId: number,
+  options: {
+    generatedAt?: string;
+    createdAt?: string;
+    sourceChainId?: number;
+    commitmentCreatedAt?: string;
+  } = {},
+): Promise<CrossChainStateMessage> {
+  const context = await getAnalyzerRiskContext(apiUrl, identityId);
+  const source = buildStateSnapshotSource(context, identityId);
+  const snapshot = buildStructuredStateSnapshot(source, { generatedAt: options.generatedAt });
+  const commitment = buildStateMerkleCommitment(snapshot, { createdAt: options.commitmentCreatedAt });
+  return buildStructuredCrossChainStateMessage(snapshot, targetChainId, {
+    commitment,
+    sourceChainId: options.sourceChainId ?? context.rootIdentity?.chainId ?? 31337,
+    createdAt: options.createdAt,
+  });
+}
+
 export async function exportAnalyzerAudit(apiUrl: string, input: {
   identityId?: Hex;
   rootIdentityId?: Hex;
@@ -686,6 +773,16 @@ export async function evaluateWarningPolicy(apiUrl: string, input: {
   return postJson(apiUrl, "/policies/warning/evaluate", input, "Policy API");
 }
 
+export function getProofCapabilities(): ProofCapability[] {
+  return getProofCapabilitiesFromProof();
+}
+
+export function getProofDescriptor(
+  input: string | { descriptor?: ProofDescriptor | null; proofDescriptor?: ProofDescriptor | null; proofType?: string | null },
+) {
+  return getProofDescriptorFromProof(input);
+}
+
 export async function registerIdentityTree(apiUrl: string, input: { rootIdentity: RootIdentity; subIdentities: SubIdentity[] }) {
   const response = await fetch(`${apiUrl}/identities/register-tree`, {
     method: "POST",
@@ -749,6 +846,7 @@ export async function requestProof(input: {
     } satisfies ZkProofInput,
     policyVersion: input.policyVersion,
     holderAuthorization: input.holderAuthorization,
+    proofDescriptor: proof.descriptor,
   } satisfies AccessPayload;
 }
 
@@ -872,6 +970,37 @@ export async function getIdentityAuditAnchorsV2(publicClient: PublicClient, regi
 
 export const policyIds = POLICY_IDS;
 export { getPolicyDefinition };
+
+function buildStateSnapshotSource(context: any, identityId: Hex): StateSnapshotSource {
+  const stateContext = context.stateContext ?? null;
+  const summary = context.summary ?? null;
+  const storedState = stateContext?.currentState ?? summary?.storedState;
+  const effectiveState = summary?.effectiveState ?? stateContext?.currentState;
+  if (storedState === undefined || effectiveState === undefined) {
+    throw new Error(`Unable to build a structured state snapshot for ${identityId}: state context is incomplete.`);
+  }
+
+  return {
+    identityId,
+    rootIdentityId: context.rootIdentity.identityId,
+    subIdentityId: context.subIdentity?.identityId,
+    storedState,
+    effectiveState,
+    stateContext: stateContext
+      ? {
+          currentState: stateContext.currentState,
+          decisions: stateContext.decisions ?? [],
+          assessments: stateContext.assessments ?? [],
+          consequences: stateContext.consequences ?? [],
+        }
+      : null,
+    policyDecisions: (context.policyDecisions ?? []).map((decision: any) => ({
+      policyLabel: decision.policyLabel,
+      policyVersion: decision.policyVersion,
+      createdAt: decision.createdAt,
+    })),
+  };
+}
 
 function extractCredentialTypes(bundles: CredentialBundle[]) {
   return bundles.map((bundle) => bundle.attestation.credentialType as Hex);

@@ -6,6 +6,7 @@ import {
   getAnalyzerListHistory,
   getAnalyzerOperatorDashboard,
   getAnalyzerPolicyDecisionHistory,
+  getRecoveryHooksSnapshot,
   getAnalyzerRiskContext,
   getIdentityContext,
 } from "@web3id/sdk";
@@ -31,6 +32,7 @@ export type AuditExportBundleResponse = Awaited<ReturnType<typeof exportAnalyzer
 export type ListHistoryResponse = Awaited<ReturnType<typeof getAnalyzerListHistory>>;
 export type OperatorDashboardResponse = Awaited<ReturnType<typeof getAnalyzerOperatorDashboard>>;
 export type PolicyHistoryResponse = Awaited<ReturnType<typeof getAnalyzerPolicyDecisionHistory>>;
+export type RecoveryHooksResponse = ReturnType<typeof getRecoveryHooksSnapshot>;
 
 export type IdentityCapabilitiesLike = {
   supportsHolderBinding?: boolean;
@@ -76,6 +78,7 @@ export type ConsoleSelection = {
   status: string;
   mintedBalance: string;
   operatorDashboard: OperatorDashboardResponse | null;
+  recoveryHooks: RecoveryHooksResponse;
   auditBundle: AuditExportBundleResponse | null;
   listHistory: ListHistoryResponse;
   policyHistory: PolicyHistoryResponse;

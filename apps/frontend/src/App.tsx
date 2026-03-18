@@ -22,6 +22,7 @@ import {
   getAnalyzerListHistory,
   getAnalyzerOperatorDashboard,
   getAnalyzerPolicyDecisionHistory,
+  getRecoveryHooksSnapshot,
   getAnalyzerWatchStatus,
   getIdentityCapabilities,
   getAnalyzerRiskContext,
@@ -71,6 +72,7 @@ import { IdentityDetailPanel } from "./panels/IdentityDetailPanel";
 import { OperatorDashboardPanel } from "./panels/OperatorDashboardPanel";
 import { PlatformOverviewPanel } from "./panels/PlatformOverviewPanel";
 import { PolicyDecisionPanel } from "./panels/PolicyDecisionPanel";
+import { RecoveryHooksPanel } from "./panels/RecoveryHooksPanel";
 import { StateConsequencePanel } from "./panels/StateConsequencePanel";
 type ProofWorkerResponse =
   | { ok: true; result: { proofPoints: [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint]; publicSignals: [bigint] } }
@@ -248,6 +250,7 @@ export function App() {
   );
   const activePolicy = useMemo(() => getPolicyDefinition(activePolicyId), [activePolicyId]);
   const platformEntry = PLATFORM_ENTRY_META[PLATFORM_ENTRY] ?? PLATFORM_ENTRY_META.platform;
+  const recoveryHooks = useMemo(() => getRecoveryHooksSnapshot(rootIdentity), [rootIdentity]);
   const consoleModels = useMemo(
     () =>
       buildPlatformConsoleViewModels({
@@ -274,6 +277,7 @@ export function App() {
         status,
         mintedBalance,
         operatorDashboard,
+        recoveryHooks,
         auditBundle,
         listHistory,
         policyHistory,
@@ -302,6 +306,7 @@ export function App() {
       status,
       mintedBalance,
       operatorDashboard,
+      recoveryHooks,
       auditBundle,
       listHistory,
       policyHistory,
@@ -1076,9 +1081,11 @@ export function App() {
           onIssueCredentials={() => void handleIssueCredentials()}
         />
 
-        <StateConsequencePanel model={consoleModels.stateConsequence} />
+          <StateConsequencePanel model={consoleModels.stateConsequence} />
 
-        <PolicyDecisionPanel
+          <RecoveryHooksPanel model={consoleModels.recoveryHooks} />
+
+          <PolicyDecisionPanel
           model={consoleModels.policy}
           scenario={scenario}
           enterpriseAction={enterpriseAction}
