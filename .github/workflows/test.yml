@@ -69,7 +69,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Proof smoke
-        run: pnpm proof:smoke
+        run: |
+          pnpm proof:setup
+          pnpm proof:smoke
 
       - name: Integration suite
         run: pnpm test:integration
