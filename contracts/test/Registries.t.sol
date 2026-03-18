@@ -46,7 +46,8 @@ contract RegistriesTest is Test {
             keccak256("stateHash"),
             keccak256("bundleHash")
         );
-        (,, uint256 version,, bytes32 stateHash, bytes32 evidenceBundleHash) = stateRegistry.getStateSnapshotV2(identityId);
+        (,, uint256 version,, bytes32 stateHash, bytes32 evidenceBundleHash) =
+            stateRegistry.getStateSnapshotV2(identityId);
         assertEq(version, 3);
         assertEq(stateHash, keccak256("stateHash"));
         assertEq(evidenceBundleHash, keccak256("bundleHash"));

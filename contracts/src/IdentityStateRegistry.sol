@@ -189,15 +189,21 @@ contract IdentityStateRegistry is AccessControl {
     function getAuditAnchorsV2(bytes32 identityId)
         external
         view
-        returns (bytes32 lastDecisionRef, bytes32 lastEvidenceHash, bytes32 lastStateHash, bytes32 lastEvidenceBundleHash)
+        returns (
+            bytes32 lastDecisionRef,
+            bytes32 lastEvidenceHash,
+            bytes32 lastStateHash,
+            bytes32 lastEvidenceBundleHash
+        )
     {
         StateSnapshot memory snapshot = stateSnapshots[identityId];
-        return (
-            snapshot.lastDecisionRef,
-            snapshot.lastEvidenceHash,
-            snapshot.lastStateHash,
-            snapshot.lastEvidenceBundleHash
-        );
+        return
+            (
+                snapshot.lastDecisionRef,
+                snapshot.lastEvidenceHash,
+                snapshot.lastStateHash,
+                snapshot.lastEvidenceBundleHash
+            );
     }
 
     function _canTransition(IdentityState fromState, IdentityState toState) internal pure returns (bool) {
