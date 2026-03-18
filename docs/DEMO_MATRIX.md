@@ -1,54 +1,131 @@
-# Demo Matrix
+# DEMO MATRIX
 
-本页统一说明 `stage1 / stage2 / stage3 / platform` 的 demo 入口。
+P1 开始，demo 导航改成 `scenario-first`。
 
-## 入口总览
+也就是说，先想“你要讲哪个平台场景”，再选择最适合的 `stage` 入口，而不是先背 `stage1 / stage2 / stage3 / platform` 的差异。
 
-| Entry | 场景 | 模式 | 依赖服务 | 推荐用途 |
-| --- | --- | --- | --- | --- |
-| `pnpm demo:stage1` | 最小基线 | compliance happy path | anvil, contracts, issuer-service, frontend, proof | 新成员快速跑通最小闭环。 |
-| `pnpm demo:stage2` | reinforced baseline | default + compliance | anvil, contracts, issuer-service, frontend, proof | 查看 Phase2 强化后的统一控制台。 |
-| `pnpm demo:stage3` | 完整控制面 | default + compliance + risk control plane | anvil, contracts, issuer-service, analyzer-service, policy-api, frontend, proof | 验证 stored/effective state、review queue、anchors。 |
-| `pnpm demo:platform` | 推荐平台入口 | platform narrative | 同 `stage3` | 演示统一平台叙事。 |
+## 1. RWA Access
 
-## Stage1
+目标：
 
-- 目标场景
-  root/sub identity、credential issuance、proof build、RWA happy path。
-- 成功路径
-  连接钱包 -> 派生 identity -> issue credential -> build access payload -> submit RWA。
-- 失败路径
-  proof runtime 缺失、issuer 不可用、链未启动。
+- 展示 root/sub identity
+- issue compliance credential
+- build holder-bound proof payload
+- evaluate access policy
+- 完成 RWA happy path
 
-## Stage2
+推荐入口：
 
-- 目标场景
-  reinforced baseline，演示 default/compliance 两类 policy 路径。
-- 成功路径
-  Social 走 default，RWA/Enterprise 走 compliance。
-- 失败路径
-  proof runtime 缺失、state registry 未部署、frontend 没拿到环境变量。
+| 场景 | 推荐入口 | 原因 |
+| --- | --- | --- |
+| 快速演示最小闭环 | `pnpm demo:stage1` | 最小可跑基线，聚焦 compliance happy path |
+| 展示平台统一控制台 | `pnpm demo:stage2` | 还能同时看到 default / compliance 的对照 |
+| 展示完整风险/审计联动 | `pnpm demo:platform` | 直接进入统一平台叙事 |
 
-## Stage3 / Platform
+成功路径：
 
-- 目标场景
-  analyzer、policy-api、review queue、manual release、watch、anchors、warning policy。
-- 成功路径
-  register tree -> bindings -> watch/backfill -> review queue -> access/warning evaluation -> anchor flush。
-- 失败路径
-  analyzer 未注册 identity tree、binding 未签名、review queue 未确认、anchor sync 失败。
+1. Connect wallet
+2. Sign identity challenge
+3. Issue scenario credential
+4. Build access payload
+5. Evaluate access policy
+6. Submit `buyRwa`
 
-## 验收建议
+常见失败：
 
-- proof runtime
-  `pnpm proof:smoke`
-- service-level
-  `pnpm test:integration`
-- full platform
-  `pnpm demo:platform`
+- `proof runtime artifacts are missing`
+- verifier / state registry 地址未注入
+- issuer-service 未启动
+- 合约未部署或 anvil 未就绪
 
-## 统一叙事
+## 2. Enterprise / Audit
 
-- Social Governance 代表 default-only path。
-- RWA Access 与 Enterprise Treasury 代表 compliance path。
-- Platform entry 用 Stage3 栈把三条路径收口成同一个系统视角。
+目标：
+
+- 展示 enterprise treasury / audit export policy path
+- 展示 policy decision snapshot 只做 action-level audit
+- 展示 structured audit export 和 operator traceability
+
+推荐入口：
+
+| 场景 | 推荐入口 | 原因 |
+| --- | --- | --- |
+| 展示 enterprise 基本闭环 | `pnpm demo:stage2` | 依赖轻，适合先讲 credential / proof / policy |
+| 展示完整审计与运营视图 | `pnpm demo:stage3` | analyzer + policy + review + anchors 都在 |
+| 统一平台叙事演示 | `pnpm demo:platform` | frontend 文案与 operator 面板都按平台视角收口 |
+
+成功路径：
+
+1. Derive identity tree
+2. Issue enterprise credential
+3. Build access payload
+4. Evaluate access / warning policy
+5. Submit payment 或 export audit record
+6. 导出 structured audit bundle
+
+常见失败：
+
+- compliance credential 未签发
+- policy-api 未启动
+- analyzer-service 未记录 snapshot / audit
+- audit filters 配置不完整
+
+## 3. Social Governance
+
+目标：
+
+- 展示 default-only path
+- 展示 warning policy、AI suggestion、review queue
+- 展示 positive signals / governance participation / recovery explanation
+
+推荐入口：
+
+| 场景 | 推荐入口 | 原因 |
+| --- | --- | --- |
+| 展示 default path 对比 | `pnpm demo:stage2` | 轻量展示 social default path |
+| 展示 review / propagation / operator flow | `pnpm demo:stage3` | 包含 analyzer / policy / review queue |
+| 统一平台叙事演示 | `pnpm demo:platform` | 适合同时串联 AI 边界与 operator dashboard |
+
+成功路径：
+
+1. Derive identity tree
+2. 选择 social sub identity
+3. Build default-path payload
+4. Evaluate warning policy
+5. 执行 vote / airdrop / post
+6. 如有 AI review，走 confirm / dismiss / expire
+
+常见失败：
+
+- 把 social 场景误解成 compliance path
+- 把 AI suggestion 误解成 final decision
+- 忘记区分 stored state 与 effective overlay
+
+## 4. Stage 到场景的映射
+
+| 命令 | 最适合的讲法 | 依赖服务 |
+| --- | --- | --- |
+| `pnpm demo:stage1` | RWA Access 最小闭环 | anvil, contracts, issuer-service, frontend, proof |
+| `pnpm demo:stage2` | RWA + Social 的对照式平台基线 | anvil, contracts, issuer-service, frontend, proof |
+| `pnpm demo:stage3` | 完整 risk / policy / review / operator 栈 | anvil, contracts, issuer-service, analyzer-service, policy-api, frontend, proof |
+| `pnpm demo:platform` | 推荐统一入口，串联三类场景 | 同 `stage3` |
+
+## 5. 推荐验收
+
+proof：
+
+```powershell
+pnpm proof:smoke
+```
+
+integration：
+
+```powershell
+pnpm test:integration
+```
+
+平台验收：
+
+```powershell
+pnpm exec tsx scripts/verify-stage3-acceptance.ts platform
+```

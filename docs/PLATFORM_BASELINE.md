@@ -1,103 +1,72 @@
-# Web3ID 平台基线
+# PLATFORM BASELINE
 
-本页是 P0 收口后的平台冻结基线。
+本文是 Web3ID 当前冻结的平台基线。P1 不再新增第二份 baseline，而是在这份文档上继续收口产品化和工程化语义。
 
-- 用途：统一解释 Web3ID 当前平台结构、稳定边界、默认入口和阶段映射。
-- 优先级：高于阶段性说明文档。`README_PHASE3.md`、`PHASE3_REPORT.md` 和其余 `docs/*.md` 作为补充资料存在。
-- 冻结目标：保持 capability-first、effective mode、六段式状态链路、传播规则、AI 边界不变。
+## 平台模块
 
-## 平台总览
-
-```mermaid
-flowchart LR
-  A["Wallet / Controller"] --> B["identity"]
-  B --> C["credential"]
-  B --> D["proof"]
-  B --> E["state"]
-  E --> F["consequence"]
-  E --> G["propagation"]
-  G --> H["risk"]
-  H --> I["ai-assistant"]
-  H --> J["policy"]
-  J --> K["governance"]
-  C --> J
-  D --> J
-  J --> L["contracts / verifier / gates"]
-  H --> M["frontend / demo"]
-  J --> M
-```
-
-## 模块边界
-
-### 稳定基线
-- `identity`
-  Root / Sub Identity 派生、scope 归一化、capability-first、policy support 判定。
-- `credential`
-  凭证 bundle、typed data attestation、issuer/revocation 校验。
-- `proof`
-  holder-bound / credential-bound proof runtime、浏览器和 Node proving 入口。
-- `state`
-  `signal -> assessment -> decision -> state update -> consequence application -> recovery/propagation` 主链路。
-- `consequence`
-  运营处置记录，不替代状态语义。
-- `propagation`
-  `LOCAL_ONLY / SAME_SCOPE_CLASS / ROOT_ESCALATION / GLOBAL_LOCKDOWN` 传播级别和 overlay 规则。
-- `policy`
-  allowedModes、requiresComplianceMode、proof template、state range、risk action。
-- `governance`
-  override-only，应急治理和全局锁定保留权限。
-- `risk`
-  analyzer/risk package 的评分、名单、review queue、anchor queue、risk context。
-- `ai-assistant`
-  只能生成 suggestion / explanation，不直接写 state。
-
-### 可局部优化但不能改核心语义
-- `frontend / demo`
-  可以继续做产品化、入口整理和验收体验优化，但不能改平台语义。
-- `issuer-service / analyzer-service / policy-api`
-  可以继续做 API 组织、错误提示、日志与测试增强，但不能改平台不变量。
-- `proof tooling`
-  可以继续优化冷启动、缓存、路径稳定性，但 proof 语义和公用运行产物约定不变。
-
-## 统一路径定义
-
-### Default Path
-- 使用 `holder_bound_proof`。
-- 不要求 issuer-backed credential。
-- effective mode 由 policy 允许 `DEFAULT_BEHAVIOR_MODE` 且 identity 支持 holder binding 决定。
-- 典型场景：`GOV_VOTE_V1`、`AIRDROP_ELIGIBILITY_V1`、`COMMUNITY_POST_V1`。
-
-### Compliance Path
-- 使用 `credential_bound_proof`。
-- 需要 issuer validation、linked credentials、policy 允许 `COMPLIANCE_MODE`。
-- 最终放行仍同时依赖 proof、credential、risk state、policy version。
-- 典型场景：`RWA_BUY_V2`、`ENTITY_PAYMENT_V1`、`ENTITY_AUDIT_V1`。
-
-## 阶段到平台视角的映射
-
-| Stage | 平台视角 | 主要入口 | 说明 |
+| Module | 责任 | 可以优化什么 | 不允许漂移什么 |
 | --- | --- | --- | --- |
-| Stage1 | 最小可跑平台基线 | `pnpm demo:stage1` | Root/Sub identity、issuer、proof happy path、RWA 最小闭环。 |
-| Stage2 | 强化后的 baseline | `pnpm demo:stage2` | 强化 default/compliance path、状态与 consequence 基础能力。 |
-| Stage3 | 完整平台控制面 | `pnpm demo:stage3` | analyzer、policy-api、stored/effective state、review queue、anchors。 |
-| Platform | 推荐平台入口 | `pnpm demo:platform` | 以统一平台叙事启动完整 Stage3 栈。 |
+| `identity` | Root/Sub identity、scope、capabilities | 派生工具、selector、UI 展示 | Root 唯一、Sub scope 归一化后不可变 |
+| `credential` | 凭证签发、attestation、policy hints | claim 展示、issue flow | 凭证不是 state，本身不等于 access allow |
+| `proof` | 可证明事实的证明与验证 | runtime、artifact、smoke、DX | proof 不能包装 AI 结论 |
+| `state` | signal -> assessment -> decision -> state | helper、对象整理、视图模型 | 六段式主链路顺序不变 |
+| `consequence` | limit、freeze、unlock、badge、floor | consequence 解释和展示 | consequence 不能反写 state |
+| `propagation` | overlay、root/sub 传播 | 展示、explanation | effective overlay 不改 child stored state |
+| `policy` | access / warning evaluation | action 解释、snapshot、SDK 包装 | policy decision 不是 state source |
+| `governance` | platform-level override | operator 流程 | `GLOBAL_LOCKDOWN` 仍只属于 governance |
+| `risk` | scoring、lists、watch、review | thresholds、dashboard、integration | AI 不得越过 risk/state 边界 |
+| `ai-assistant` | suggestion / explanation / review hint | prompt/schema/audit metadata | AI 不是 final decision |
+| `frontend-demo` | 场景入口、平台控制台 | information architecture、view-model | 不得把平台不变量改写成按钮叙事 |
 
-## 当前推荐入口
+## 路径模型
 
-- 快速理解平台：先读本页，再看 `docs/IDENTITY_INVARIANTS.md`、`docs/STATE_SYSTEM_INVARIANTS.md`、`docs/BOUNDARIES.md`。
-- 快速运行：
-  `pnpm install`
-  `pnpm proof:setup`
-  `pnpm demo:platform`
-- 快速验收：
-  `pnpm proof:smoke`
-  `pnpm test:integration`
+### Default path
 
-## 冻结语义清单
+- 典型场景：`Social Governance`
+- 典型 proof：`holder_bound_proof`
+- 核心特征：default-only，不依赖 compliance credential
 
-- Root Identity 唯一且不可变，Sub Identity 由 `rootId + normalizedScope + subIdentityType` 决定。
-- Identity 不带永久 mode 标签；mode 通过 capability + policy 解析为 effective mode。
-- 状态链路顺序固定，state 与 consequence 分离。
-- propagated effect 只影响 effective state，不回写 child stored state。
-- AI 只能生成 suggestion，不是 final decision。
-- proof 只证明可证明事实，不能包装 AI 结论。
+### Compliance path
+
+- 典型场景：`RWA Access`、`Enterprise / Audit`
+- 典型 proof：credential-bound / holder-bound proof with linked credential context
+- 核心特征：policy declared compliance requirements 优先
+
+## 平台冻结语义
+
+- capability-first 不等于永久 mode label
+- `effectiveMode` 由 identity capability + policy + credential + proof + risk context 联合解析
+- `stored state` 是本地事实
+- `effective state` 是 overlay 结果
+- `consequence` 是运营处置
+- `PolicyDecisionRecord` 是 action-level audit snapshot
+- `AI suggestion` 只做 suggestion / review / explanation
+
+## Stage 与平台视角的映射
+
+- `stage1`
+  平台最小闭环，最适合讲 `RWA Access`
+- `stage2`
+  平台强化基线，最适合讲 `RWA Access + Social Governance`
+- `stage3`
+  完整风险、策略、传播、review、operator 栈
+- `platform`
+  推荐入口，统一三类场景叙事
+
+## P1 新增但不改变基线的内容
+
+- integration 从单层 acceptance 扩成基础层与扩展层
+- frontend 从单文件操作台拆成 selectors / view-models / panel components
+- 审计导出升级为 structured JSON bundle
+- positive signal 阈值配置化，并明确为 `demo defaults`
+- demo matrix 从 stage-first 改为 scenario-first
+
+## 关联文档
+
+- `docs/WHAT_IS_WEB3ID.md`
+- `docs/SYSTEM_INVARIANTS.md`
+- `docs/IDENTITY_INVARIANTS.md`
+- `docs/STATE_SYSTEM_INVARIANTS.md`
+- `docs/POSITIVE_SIGNALS_AND_RECOVERY.md`
+- `docs/PLATFORM_CONSOLE.md`
+- `docs/DEMO_MATRIX.md`

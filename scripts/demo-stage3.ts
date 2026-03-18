@@ -6,6 +6,7 @@ import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { createSubIdentityLinkProof, deriveRootIdentity, listDefaultSubIdentities, SubIdentityType } from "../packages/identity/src/index.js";
+import { printDemoSummary } from "./demo-summary.ts";
 
 const ROOT = process.cwd();
 const DEMO_ENTRY = process.env.WEB3ID_DEMO_ENTRY ?? "stage3";
@@ -418,16 +419,31 @@ async function main() {
   });
   await postJson(`${ANALYZER_API_URL}/anchors/flush`, {});
 
-  console.log(`Web3ID ${DEMO_ENTRY} demo running`);
-  console.log(`Issuer service: http://127.0.0.1:4100`);
-  console.log(`Analyzer API:   ${ANALYZER_API_URL}`);
-  console.log(`Policy API:     ${POLICY_API_URL}`);
-  console.log(`Frontend:      http://127.0.0.1:3000`);
-  console.log(`Holder:        ${DEFAULT_HOLDER}`);
-  console.log(`Bindings:      Root + default sub identities registered and signed`);
-  console.log(`Risk seed:     trusted defi and governance transactions replayed`);
-  console.log(`Proof setup:   pnpm proof:setup completed`);
-  console.log(`Docs:          docs/PLATFORM_BASELINE.md and docs/DEMO_MATRIX.md`);
+  printDemoSummary({
+    entry: DEMO_ENTRY as "stage3" | "platform",
+    holder: DEFAULT_HOLDER,
+    proofStatus: "pnpm proof:setup completed",
+    services: ["anvil", "contracts", "issuer-service", "analyzer-service", "policy-api", "frontend", "proof runtime"],
+    urls: [
+      { label: "Issuer service", value: "http://127.0.0.1:4100" },
+      { label: "Analyzer API", value: ANALYZER_API_URL },
+      { label: "Policy API", value: POLICY_API_URL },
+      { label: "Frontend", value: "http://127.0.0.1:3000" },
+    ],
+    seededData: [
+      "issuer and analyzer stores reset",
+      "root + default sub identities registered and bound",
+      "trusted defi and governance transactions replayed",
+      "initial backfill and anchor flush completed",
+    ],
+    docs: [
+      "docs/WHAT_IS_WEB3ID.md",
+      "docs/PLATFORM_BASELINE.md",
+      "docs/DEMO_MATRIX.md",
+      "docs/PLATFORM_CONSOLE.md",
+      "docs/OPERATOR_WORKFLOWS.md",
+    ],
+  });
 
   await new Promise<void>((resolve) => {
     const shutdown = () => {

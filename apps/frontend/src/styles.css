@@ -102,6 +102,11 @@ textarea {
   font-size: 0.92rem;
 }
 
+.subtle-pill {
+  background: rgba(124, 195, 255, 0.08);
+  border-color: rgba(124, 195, 255, 0.16);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -123,6 +128,11 @@ textarea {
 .panel p,
 .footer-panel p {
   color: rgba(243, 239, 231, 0.74);
+}
+
+.panel-copy {
+  margin-top: 0;
+  margin-bottom: 14px;
 }
 
 .actions,
@@ -214,6 +224,45 @@ textarea {
   margin: 0;
 }
 
+.pill-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.scenario-card {
+  display: grid;
+  gap: 8px;
+  border-radius: 20px;
+  padding: 18px;
+  text-align: left;
+  background: rgba(3, 11, 18, 0.38);
+  border: 1px solid rgba(243, 239, 231, 0.12);
+  color: #f3efe7;
+}
+
+.scenario-card.active {
+  border-color: rgba(124, 195, 255, 0.48);
+  background: linear-gradient(180deg, rgba(124, 195, 255, 0.18), rgba(3, 11, 18, 0.52));
+}
+
+.scenario-card strong {
+  font-size: 1.05rem;
+}
+
+.scenario-card span {
+  color: rgba(243, 239, 231, 0.74);
+  line-height: 1.5;
+}
+
 pre {
   overflow: auto;
   padding: 14px;
@@ -290,6 +339,47 @@ pre {
   word-break: break-all;
 }
 
+.data-list {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  color: rgba(243, 239, 231, 0.74);
+  display: grid;
+  gap: 8px;
+}
+
+.data-list li {
+  line-height: 1.55;
+}
+
+.timeline-list,
+.json-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-item {
+  border: 1px solid rgba(243, 239, 231, 0.08);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 6px;
+}
+
+.timeline-item strong {
+  color: #f3efe7;
+}
+
+.timeline-item span {
+  color: rgba(243, 239, 231, 0.58);
+  font-size: 0.92rem;
+}
+
+.timeline-item p {
+  margin: 0;
+  word-break: break-word;
+}
+
 .footer-panel {
   margin-top: 18px;
 }
@@ -297,7 +387,8 @@ pre {
 @media (max-width: 960px) {
   .hero,
   .grid,
-  .matrix-grid {
+  .matrix-grid,
+  .scenario-grid {
     grid-template-columns: 1fr;
   }
 

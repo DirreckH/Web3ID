@@ -514,6 +514,18 @@ export async function getAnalyzerRiskContext(apiUrl: string, identityId: Hex) {
   return response.json();
 }
 
+export async function exportAnalyzerAudit(apiUrl: string, input: {
+  identityId?: Hex;
+  rootIdentityId?: Hex;
+  subIdentityId?: Hex;
+  from?: string;
+  to?: string;
+  policyId?: string;
+  policyKind?: "access" | "warning";
+} = {}) {
+  return postJson(apiUrl, "/audit/export", input, "Analyzer service");
+}
+
 export async function getAnalyzerEvents(apiUrl: string, identityId: Hex) {
   const response = await fetch(`${apiUrl}/identities/${identityId}/events`);
   if (!response.ok) {
@@ -566,6 +578,43 @@ export async function getAnalyzerWatchStatus(apiUrl: string, input: { rootIdenti
     throw new Error(`Analyzer service responded with ${response.status}`);
   }
   return response.json();
+}
+
+export async function getAnalyzerListHistory(apiUrl: string, input: {
+  identityId?: Hex;
+  rootIdentityId?: Hex;
+  subIdentityId?: Hex;
+  listName?: "watchlist" | "restricted_list" | "blacklist_or_frozen_list";
+  action?: "auto_added" | "manually_added" | "removed" | "expired";
+  from?: string;
+  to?: string;
+} = {}) {
+  const query = new URLSearchParams();
+  if (input.identityId) query.set("identityId", input.identityId);
+  if (input.rootIdentityId) query.set("rootIdentityId", input.rootIdentityId);
+  if (input.subIdentityId) query.set("subIdentityId", input.subIdentityId);
+  if (input.listName) query.set("listName", input.listName);
+  if (input.action) query.set("action", input.action);
+  if (input.from) query.set("from", input.from);
+  if (input.to) query.set("to", input.to);
+  const response = await fetch(`${apiUrl}/lists/history${query.size ? `?${query.toString()}` : ""}`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getAnalyzerOperatorDashboard(apiUrl: string) {
+  const response = await fetch(`${apiUrl}/operator/dashboard`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getAnalyzerPolicyDecisionHistory(apiUrl: string, identityId: Hex) {
+  const context = await getAnalyzerRiskContext(apiUrl, identityId);
+  return context.policyDecisions ?? [];
 }
 
 export async function confirmAnalyzerReview(apiUrl: string, input: {

@@ -1,6 +1,8 @@
 
 import {
+  buildConfiguredPositiveSignals,
   buildAutomaticRecoverySignals,
+  buildRecoveryProgressSummary,
   buildDeterministicSignals,
   buildManualReleaseWindow,
   buildScoreBreakdown,
@@ -12,6 +14,7 @@ import {
   deriveListEntries,
   evaluateSubToRootPropagation,
   exportAuditBundle,
+  filterAuditByWindow,
   generateAiSuggestions,
   getOpenReviewItems,
   getRegistryVersion,
@@ -21,17 +24,23 @@ import {
   shouldAnchorState,
   summarizeLists,
   verifyBindingSubmission,
+  type AuditExportBundle,
   type AiSuggestion,
   type BehaviorBinding,
   type BindingType,
   type ManualListAction,
+  type OperatorDashboardSnapshot,
+  type PolicyDecisionKind,
+  type PolicyDecisionRecord,
+  type PolicyModePath,
+  type RiskListHistoryItem,
   type RiskSignal,
   type RiskSummary,
   type ReviewQueueCounts,
   type WatchStatusSummary,
 } from "../../../packages/risk/src/index.js";
 import { SubIdentityType, type RootIdentity, type SameRootProof, type SubIdentity, type SubIdentityLinkProof } from "../../../packages/identity/src/index.js";
-import { IdentityState, createRiskSignal, type IdentityStateContext, type RiskSignalInput } from "../../../packages/state/src/index.js";
+import { IdentityState, createRiskSignal, getActiveConsequences, type IdentityStateContext, type RiskSignalInput } from "../../../packages/state/src/index.js";
 import { createPublicClient, createWalletClient, getAddress, http, keccak256, stringToHex, type Address, type Hex } from "viem";
 import { analyzerConfig } from "./config.js";
 import { loadStore, saveStore, type AnalyzerIdentityRecord, type AnalyzerStore, type AnalyzerWatcherRecord } from "./store.js";
@@ -108,6 +117,40 @@ export type WatchScanInput = {
   toBlock?: bigint;
   recentBlocks?: number;
   pollIntervalMs?: number;
+};
+export type AuditExportInput = {
+  identityId?: Hex;
+  rootIdentityId?: Hex;
+  subIdentityId?: Hex;
+  from?: string;
+  to?: string;
+  policyId?: string;
+  policyKind?: PolicyDecisionKind;
+};
+export type RiskListHistoryInput = {
+  identityId?: Hex;
+  rootIdentityId?: Hex;
+  subIdentityId?: Hex;
+  listName?: "watchlist" | "restricted_list" | "blacklist_or_frozen_list";
+  action?: RiskListHistoryItem["action"];
+  from?: string;
+  to?: string;
+};
+export type PolicyDecisionSnapshotInput = {
+  kind: PolicyDecisionKind;
+  identityId: Hex;
+  rootIdentityId: Hex;
+  subIdentityId?: Hex;
+  policyId: string;
+  policyLabel: string;
+  policyVersion: number;
+  modePath: PolicyModePath;
+  decision: PolicyDecisionRecord["decision"];
+  reasons: string[];
+  warnings: string[];
+  evidenceRefs: string[];
+  auditRecordIds?: string[];
+  createdAt?: string;
 };
 
 function nowIso() { return new Date().toISOString(); }
@@ -356,6 +399,86 @@ function getAuditForIdentity(store: AnalyzerStore, identityId: Hex) {
     .filter((item) => item.identityId === identityId || item.rootIdentityId === identityId)
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 }
+function getPolicyDecisionsForIdentity(store: AnalyzerStore, identityId: Hex) {
+  return Object.values(store.policyDecisions)
+    .filter((item) => item.identityId === identityId || item.rootIdentityId === identityId)
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+function resolveAuditIdentityIds(store: AnalyzerStore, input: AuditExportInput) {
+  if (input.subIdentityId) {
+    return [input.subIdentityId];
+  }
+  if (input.identityId) {
+    const record = getIdentityRecordOrThrow(store, input.identityId);
+    if (record.kind === "root") {
+      const root = getRootContainerOrThrow(store, input.identityId);
+      return [input.identityId, ...root.subIdentityIds.map((item) => item as Hex)];
+    }
+    return [input.identityId];
+  }
+  if (input.rootIdentityId) {
+    const root = getRootContainerOrThrow(store, input.rootIdentityId);
+    return [input.rootIdentityId, ...root.subIdentityIds.map((item) => item as Hex)];
+  }
+  return Object.keys(store.identities).map((item) => item as Hex);
+}
+function summarizePropagation(record: AnalyzerIdentityRecord): RiskSummary["propagation"] {
+  return record.summary?.propagation;
+}
+function buildRiskListHistory(record: AnalyzerIdentityRecord, now = nowIso()) {
+  const items: RiskListHistoryItem[] = [];
+  for (const entry of record.listEntries) {
+    items.push({
+      itemId: `${entry.entryId}:added`,
+      entryId: entry.entryId,
+      identityId: entry.identityId,
+      rootIdentityId: entry.rootIdentityId,
+      subIdentityId: entry.subIdentityId,
+      listName: entry.listName,
+      state: entry.state,
+      action: entry.addedBy === "risk-engine" || entry.addedBy === "ai-assistant" ? "auto_added" : "manually_added",
+      timestamp: entry.addedAt,
+      reasonCode: entry.reasonCode,
+      actor: entry.addedBy,
+      evidenceRefs: entry.evidenceRefs,
+      expiresAt: entry.expiresAt,
+    });
+    if (entry.removedAt) {
+      items.push({
+        itemId: `${entry.entryId}:removed`,
+        entryId: entry.entryId,
+        identityId: entry.identityId,
+        rootIdentityId: entry.rootIdentityId,
+        subIdentityId: entry.subIdentityId,
+        listName: entry.listName,
+        state: entry.state,
+        action: "removed",
+        timestamp: entry.removedAt,
+        reasonCode: entry.removalReason ?? entry.reasonCode,
+        actor: entry.addedBy,
+        evidenceRefs: entry.evidenceRefs,
+        removalReason: entry.removalReason,
+      });
+    } else if (entry.expiresAt && Date.parse(entry.expiresAt) <= Date.parse(now)) {
+      items.push({
+        itemId: `${entry.entryId}:expired`,
+        entryId: entry.entryId,
+        identityId: entry.identityId,
+        rootIdentityId: entry.rootIdentityId,
+        subIdentityId: entry.subIdentityId,
+        listName: entry.listName,
+        state: entry.state,
+        action: "expired",
+        timestamp: entry.expiresAt,
+        reasonCode: entry.reasonCode,
+        actor: entry.addedBy,
+        evidenceRefs: entry.evidenceRefs,
+        expiresAt: entry.expiresAt,
+      });
+    }
+  }
+  return items.sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+}
 
 async function computeLocalRecord(store: AnalyzerStore, record: AnalyzerIdentityRecord, now = nowIso()): Promise<LocalComputation> {
   const identityId = (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex;
@@ -364,7 +487,16 @@ async function computeLocalRecord(store: AnalyzerStore, record: AnalyzerIdentity
   const subIdentityId = record.subIdentity?.identityId;
   const score = buildScoreBreakdown({ identityId, rootIdentityId, subIdentityId, events, now });
   const deterministicSignals = buildDeterministicSignals({ rootIdentityId, subIdentityId, events, score, now });
-  const preRecoverySignals = mergeSignals(deterministicSignals, record.manualSignals);
+  const baseSignals = mergeSignals(deterministicSignals, record.manualSignals);
+  const positiveSignals = buildConfiguredPositiveSignals({
+    identityId,
+    rootIdentityId,
+    subIdentityId,
+    signals: baseSignals,
+    score,
+    now,
+  });
+  const preRecoverySignals = mergeSignals(baseSignals, positiveSignals);
   const openReviewItems = getOpenReviewItems(getReviewsForIdentity(store, identityId), identityId);
   const preRecoveryContext = replaySignalTimeline(
     identityId,
@@ -474,12 +606,22 @@ function syncIdentityArtifacts(input: {
   evidenceRefs: string[];
   aiSuggestions: AiSuggestion[];
   listEntries: AnalyzerIdentityRecord["listEntries"];
+  propagation?: RiskSummary["propagation"];
   now: string;
 }) {
   const previousRiskRecord = input.record.riskRecord;
   const previousScore = input.record.score;
   const previousListSignature = (input.record.listEntries ?? []).map((entry) => `${entry.entryId}:${entry.removedAt ?? "active"}`).join("|");
   const nextListSignature = input.listEntries.map((entry) => `${entry.entryId}:${entry.removedAt ?? "active"}`).join("|");
+  const positiveSummary = {
+    ...buildRecoveryProgressSummary({
+      signals: input.stateContext.signals as RiskSignal[],
+      consequences: input.stateContext.consequences,
+      manualReleaseWindow: input.record.manualReleaseWindow ?? null,
+      now: input.now,
+    }),
+  };
+  const activePositiveSummary = getActiveConsequences(input.stateContext.consequences, input.now);
 
   input.record.score = input.score;
   input.record.signals = input.stateContext.signals as RiskSignal[];
@@ -504,6 +646,18 @@ function syncIdentityArtifacts(input: {
     activeManualOverrides: summarizeActiveManualOverrides(input.record, input.now),
     watchStatus: summarizeWatchStatus(input.store, input.identityId),
     reviewQueueCounts: summarizeReviewQueueCounts(getReviewsForIdentity(input.store, input.identityId)),
+    positiveSummary: {
+      activePositiveSignals: input.stateContext.signals.filter((signal) => signal.category === "positive") as RiskSignal[],
+      activeUnlocks: activePositiveSummary.filter((consequence) =>
+        ["trust_boost", "limit_relaxation", "access_unlock", "reputation_badge"].includes(consequence.consequenceType),
+      ),
+      activeRestrictions: activePositiveSummary.filter((consequence) =>
+        ["warn", "limit", "freeze", "review_required", "trust_decrease"].includes(consequence.consequenceType),
+      ),
+      demoDefaults: true,
+    },
+    recoveryProgress: positiveSummary,
+    propagation: input.propagation,
   } satisfies RiskSummary;
   input.record.riskRecord = {
     identityId: input.identityId,
@@ -744,6 +898,10 @@ async function recomputeRootState(store: AnalyzerStore, rootIdentityId: Hex, now
     evidenceRefs: uniqueStrings(rootEvidenceRefs),
     aiSuggestions: rootAiSuggestions,
     listEntries: rootListEntries,
+    propagation: {
+      reasonCodes: uniqueStrings(rootReasonCodes),
+      warnings: rootWarnings,
+    },
     now,
   });
   maybeQueueAnchor({
@@ -833,6 +991,12 @@ async function recomputeRootState(store: AnalyzerStore, rootIdentityId: Hex, now
       evidenceRefs: local.evidenceRefs,
       aiSuggestions,
       listEntries,
+      propagation: {
+        reasonCodes: subPropagationReasons.get(local.identityId) ?? [],
+        warnings,
+        siblingOverlayState,
+        rootEffectiveFloorState: effectiveState > overlayedLocalState ? effectiveState : undefined,
+      },
       now,
     });
     maybeQueueAnchor({
@@ -1363,6 +1527,8 @@ export async function getRiskContext(identityId: Hex) {
     reviewQueue,
     anchors: getAnchorsForIdentity(store, identityId),
     audit: getAuditForIdentity(store, identityId),
+    listHistory: buildRiskListHistory(record),
+    policyDecisions: getPolicyDecisionsForIdentity(store, identityId),
     subtree: record.kind === "root" ? rootContainer.subIdentityIds.map((subIdentityId) => {
       const subRecord = store.identities[subIdentityId];
       return { identityId: subIdentityId, scope: subRecord?.subIdentity?.scope, type: subRecord?.subIdentity?.type, storedState: subRecord?.summary?.storedState, effectiveState: subRecord?.summary?.effectiveState, warnings: subRecord?.summary?.warnings ?? [], reasonCodes: subRecord?.summary?.reasonCodes ?? [] };
@@ -1374,9 +1540,165 @@ export async function getIdentityEvents(identityId: Hex) {
   const store = await loadStore();
   return getEventsForIdentity(store, identityId);
 }
-export async function exportIdentityAudit(identityId: Hex) {
+export async function recordPolicyDecisionSnapshot(input: PolicyDecisionSnapshotInput) {
   const store = await loadStore();
-  return exportAuditBundle(Object.values(store.audits), identityId);
+  const record = getIdentityRecordOrThrow(store, input.identityId);
+  const createdAt = input.createdAt ?? nowIso();
+  const decisionId = keccak256(stringToHex([input.kind, input.identityId, input.policyId, createdAt].join(":")));
+  const snapshot: PolicyDecisionRecord = {
+    decisionId,
+    kind: input.kind,
+    identityId: input.identityId,
+    rootIdentityId: input.rootIdentityId,
+    subIdentityId: input.subIdentityId,
+    policyId: input.policyId,
+    policyLabel: input.policyLabel,
+    policyVersion: input.policyVersion,
+    modePath: input.modePath,
+    decision: input.decision,
+    reasons: [...new Set(input.reasons)],
+    warnings: [...new Set(input.warnings)],
+    evidenceRefs: [...new Set(input.evidenceRefs)],
+    createdAt,
+    auditRecordIds: input.auditRecordIds ?? [],
+  };
+  store.policyDecisions[snapshot.decisionId] = snapshot;
+  const audit = createAuditRecord({
+    identityId: input.identityId,
+    rootIdentityId: input.rootIdentityId,
+    subIdentityId: input.subIdentityId,
+    action: "POLICY_DECISION_MADE",
+    actor: "policy-api",
+    evidenceRefs: snapshot.evidenceRefs,
+    policyVersion: input.policyVersion,
+    metadata: {
+      policyId: input.policyId,
+      policyLabel: input.policyLabel,
+      policyKind: input.kind,
+      decision: input.decision,
+      modePath: input.modePath,
+      snapshotId: snapshot.decisionId,
+    },
+    timestamp: createdAt,
+  });
+  persistAudit(store, audit);
+  snapshot.auditRecordIds = [...snapshot.auditRecordIds, audit.auditId];
+  const identityHistory = record.summary?.warnings ?? [];
+  record.summary = record.summary ? { ...record.summary, warnings: uniqueStrings(identityHistory) } : record.summary;
+  await saveStore(store);
+  return snapshot;
+}
+export async function exportIdentityAudit(identityId: Hex) {
+  return exportStructuredAudit({ identityId });
+}
+export async function exportStructuredAudit(input: AuditExportInput): Promise<AuditExportBundle> {
+  const store = await loadStore();
+  const identityIds = resolveAuditIdentityIds(store, input);
+  const policyDecisions = Object.values(store.policyDecisions)
+    .filter((item) => identityIds.includes(item.identityId))
+    .filter((item) => !input.policyId || item.policyId === input.policyId)
+    .filter((item) => !input.policyKind || item.kind === input.policyKind)
+    .filter((item) => !input.from || Date.parse(item.createdAt) >= Date.parse(input.from))
+    .filter((item) => !input.to || Date.parse(item.createdAt) <= Date.parse(input.to))
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+
+  const records = filterAuditByWindow(
+    Object.values(store.audits).filter((record) => identityIds.includes(record.identityId)),
+    { from: input.from, to: input.to },
+  )
+    .filter((record) => {
+      if (!input.policyId && !input.policyKind) {
+        return true;
+      }
+      const metadata = record.metadata as Record<string, unknown> | undefined;
+      if (!metadata) {
+        return false;
+      }
+      if (input.policyId && metadata.policyId !== input.policyId) {
+        return false;
+      }
+      if (input.policyKind && metadata.policyKind !== input.policyKind) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+  const includedRecords = identityIds
+    .map((identityId) => store.identities[identityId])
+    .filter((record): record is AnalyzerIdentityRecord => Boolean(record));
+
+  return {
+    generatedAt: nowIso(),
+    filters: input,
+    identities: identityIds,
+    signals: includedRecords.flatMap((record) => record.signals),
+    assessments: includedRecords.flatMap((record) => record.stateContext?.assessments ?? []),
+    decisions: includedRecords.flatMap((record) => record.stateContext?.decisions ?? []),
+    consequences: includedRecords.flatMap((record) => record.stateContext?.consequences ?? []),
+    propagation: includedRecords.map((record) => ({
+      identityId: (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex,
+      summary: summarizePropagation(record) ?? null,
+    })),
+    reentryRecovery: includedRecords.map((record) => ({
+      identityId: (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex,
+      manualReleaseWindow: record.manualReleaseWindow ?? null,
+      recoveryProgress: record.summary?.recoveryProgress,
+      positiveSummary: record.summary?.positiveSummary,
+    })),
+    aiSuggestions: includedRecords.flatMap((record) => getSuggestionsForIdentity(store, (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex)),
+    reviewQueue: includedRecords.flatMap((record) => getReviewsForIdentity(store, (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex)),
+    policyDecisions,
+    anchors: includedRecords.flatMap((record) => getAnchorsForIdentity(store, (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex)),
+    auditRecords: records,
+    records,
+  };
+}
+export async function listRiskHistory(input: RiskListHistoryInput = {}) {
+  const store = await loadStore();
+  const identityIds = resolveAuditIdentityIds(store, {
+    identityId: input.identityId,
+    rootIdentityId: input.rootIdentityId,
+    subIdentityId: input.subIdentityId,
+  });
+  return identityIds
+    .flatMap((identityId) => {
+      const record = store.identities[identityId];
+      return record ? buildRiskListHistory(record) : [];
+    })
+    .filter((item) => !input.listName || item.listName === input.listName)
+    .filter((item) => !input.action || item.action === input.action)
+    .filter((item) => !input.from || Date.parse(item.timestamp) >= Date.parse(input.from))
+    .filter((item) => !input.to || Date.parse(item.timestamp) <= Date.parse(input.to))
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+}
+export async function getOperatorDashboard(): Promise<OperatorDashboardSnapshot> {
+  const store = await loadStore();
+  const identities = Object.values(store.identities);
+  const audits = Object.values(store.audits).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  const policyDecisions = Object.values(store.policyDecisions).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const highRiskIdentities = identities.filter((record) => (record.summary?.effectiveState ?? IdentityState.NORMAL) >= IdentityState.HIGH_RISK).length;
+  const frozenIdentities = identities.filter((record) => (record.summary?.effectiveState ?? IdentityState.NORMAL) === IdentityState.FROZEN).length;
+  const pendingReviewItems = Object.values(store.reviewQueue).filter((item) => item.status === "PENDING_REVIEW").length;
+  return {
+    generatedAt: nowIso(),
+    counts: {
+      highRiskIdentities,
+      frozenIdentities,
+      pendingReviewItems,
+      pendingAiReviews: pendingReviewItems,
+      activeWatchers: Object.values(store.watchers).filter((watcher) => watcher.status === "ACTIVE").length,
+    },
+    recentStateEscalations: audits.filter((audit) => audit.action === "STATE_COMPUTED").slice(0, 8),
+    recentHighRiskOrFrozen: audits.filter((audit) => {
+      const metadata = audit.metadata as Record<string, unknown> | undefined;
+      const effectiveState = typeof metadata?.effectiveState === "string" ? metadata.effectiveState : undefined;
+      return effectiveState === "HIGH_RISK" || effectiveState === "FROZEN";
+    }).slice(0, 8),
+    recentManualReleases: audits.filter((audit) => audit.action === "MANUAL_RELEASE_APPLIED").slice(0, 8),
+    recentWarningPolicies: policyDecisions.filter((decision) => decision.kind === "warning").slice(0, 8),
+    recentPolicyDecisions: policyDecisions.slice(0, 8),
+  };
 }
 export async function listReviewQueue(identityId?: Hex) {
   const store = await loadStore();

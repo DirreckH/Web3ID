@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "demoDefaults": true,
+  "signals": {
+    "long_term_good_standing": {
+      "daysWithoutIncident": 30,
+      "minReputationScore": 20
+    },
+    "repeated_governance_participation": {
+      "lookbackDays": 30,
+      "minEvents": 3
+    },
+    "trusted_protocol_usage": {
+      "lookbackDays": 14,
+      "minEvents": 2
+    },
+    "no_risk_incident_days": {
+      "daysWithoutIncident": 14
+    }
+  }
+}

@@ -1,8 +1,9 @@
 import { createPublicClient, http, type Hex } from "viem";
-import { POLICY_DEFINITIONS, getPolicyDefinition, type PolicyDefinition } from "../../../packages/policy/src/index.js";
+import { POLICY_DEFINITIONS, getPolicyDefinition, getPolicyModeDescriptor, type PolicyDefinition } from "../../../packages/policy/src/index.js";
 import { evaluateAccessRisk, evaluateWarningRisk, type PolicyDecision } from "../../../packages/risk/src/index.js";
 import { complianceVerifierAbi } from "../../../packages/sdk/src/index.js";
 import type { CredentialBundle } from "../../../packages/credential/src/index.js";
+import { resolveEffectiveMode } from "../../../packages/identity/src/index.js";
 import { policyApiConfig } from "./config.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
@@ -51,6 +52,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 async function loadRiskContext(identityId: Hex) {
   return fetchJson<{
     identityId: Hex;
+    rootIdentity: any;
+    subIdentity: any;
     summary: any;
     score: any;
     signals: any[];
@@ -72,6 +75,63 @@ function normalizePolicyDecision(decision: PolicyDecision) {
     policyReasons: decision.policyReasons ?? [],
     auditRecordIds: decision.auditRecordIds ?? [],
   };
+}
+
+function resolveModePath(input: {
+  context: RiskContextResponse;
+  policy: Pick<PolicyDefinition, "requiresComplianceMode">;
+  policyDescriptor: ReturnType<typeof getPolicyModeDescriptor>;
+  credentialBundles?: CredentialBundleLike[];
+}) {
+  if (input.context.subIdentity) {
+    const resolved = resolveEffectiveMode(
+      input.context.subIdentity,
+      input.policyDescriptor,
+      {
+        linkedCredentialTypes: (input.credentialBundles ?? []).map((bundle) => bundle.attestation.credentialType as Hex),
+      },
+    );
+    return resolved ?? (input.policy.requiresComplianceMode ? "COMPLIANCE_MODE" : "DEFAULT_BEHAVIOR_MODE");
+  }
+  return input.policy.requiresComplianceMode ? "COMPLIANCE_MODE" : "UNRESOLVED";
+}
+
+async function persistPolicyDecisionSnapshot(input: {
+  context: RiskContextResponse;
+  kind: "access" | "warning";
+  policyId: string;
+  policyVersion: number;
+  policyLabel: string;
+  decision: ReturnType<typeof normalizePolicyDecision>;
+  modePath: "DEFAULT_BEHAVIOR_MODE" | "COMPLIANCE_MODE" | "UNRESOLVED";
+}) {
+  try {
+    await fetchJson(`${policyApiConfig.analyzerApiUrl}/policy-decisions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: input.kind,
+        identityId: input.context.identityId,
+        rootIdentityId: input.context.rootIdentity.identityId,
+        subIdentityId: input.context.subIdentity?.identityId,
+        policyId: input.policyId,
+        policyLabel: input.policyLabel,
+        policyVersion: input.policyVersion,
+        modePath: input.modePath,
+        decision: input.decision.decision,
+        reasons: input.decision.reasons,
+        warnings: input.decision.warnings,
+        evidenceRefs: input.decision.evidenceRefs,
+        auditRecordIds: input.decision.auditRecordIds,
+      }),
+    });
+    return { snapshotPersisted: true as const, snapshotWarning: null };
+  } catch (error) {
+    return {
+      snapshotPersisted: false as const,
+      snapshotWarning: error instanceof Error ? error.message : "Failed to persist policy decision snapshot.",
+    };
+  }
 }
 
 function localCredentialChecks(input: { identityId: Hex; policyId: Hex; policyVersion: number; payload?: AccessPayloadLike | null; policy: PolicyDefinition }) {
@@ -261,7 +321,7 @@ export async function evaluateAccessDecision(input: {
     decision = "restrict";
   }
 
-  return normalizePolicyDecision({
+  const normalized = normalizePolicyDecision({
     ...riskDecision,
     decision,
     reasons: [
@@ -278,14 +338,43 @@ export async function evaluateAccessDecision(input: {
     ],
     evidenceRefs: [...new Set([...(riskDecision.evidenceRefs ?? []), ...(context.summary.evidenceRefs ?? [])])],
   });
+  const persistence = await persistPolicyDecisionSnapshot({
+    context,
+    kind: "access",
+    policyId: policy.policyId,
+    policyVersion: policy.policyVersion,
+    policyLabel,
+    decision: normalized,
+    modePath: resolveModePath({
+      context,
+      policy,
+      policyDescriptor: getPolicyModeDescriptor(policy),
+      credentialBundles: input.credentialBundles,
+    }),
+  });
+  return { ...normalized, ...persistence };
 }
 
 export async function evaluateWarningDecision(input: { identityId: Hex; policyId: string; policyVersion: number }) {
   const context = await loadRiskContext(input.identityId);
   if (!context.summary) throw new Error(`Risk summary unavailable for identity ${input.identityId}.`);
   const warningDecision = evaluateWarningRisk({ policyId: input.policyId, summary: context.summary, policyVersion: input.policyVersion });
-  return {
+  const normalized = {
     ...normalizePolicyDecision(warningDecision),
+    counterpartySummary: context.summary,
+  };
+  const persistence = await persistPolicyDecisionSnapshot({
+    context,
+    kind: "warning",
+    policyId: input.policyId,
+    policyVersion: input.policyVersion,
+    policyLabel: input.policyId,
+    decision: normalized,
+    modePath: "UNRESOLVED",
+  });
+  return {
+    ...normalized,
+    ...persistence,
     counterpartySummary: context.summary,
   };
 }

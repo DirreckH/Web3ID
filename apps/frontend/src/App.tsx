@@ -18,6 +18,10 @@ import {
   evaluatePolicyPreflight,
   evaluateAccessPolicy,
   evaluateWarningPolicy,
+  exportAnalyzerAudit,
+  getAnalyzerListHistory,
+  getAnalyzerOperatorDashboard,
+  getAnalyzerPolicyDecisionHistory,
   getAnalyzerWatchStatus,
   getIdentityCapabilities,
   getAnalyzerRiskContext,
@@ -43,12 +47,31 @@ import { computeSubjectBinding, holderAuthorizationTypes, type CredentialBundle,
 import { buildSignInMessage, createSameRootProof, createSubIdentityLinkProof, deriveRootIdentity, listDefaultSubIdentities, SubIdentityType } from "@web3id/identity";
 import { IdentityState } from "@web3id/state";
 import { pad, stringToHex } from "viem";
-
-type Scenario = "rwa" | "enterprise" | "social";
-type EnterpriseAction = "payment" | "audit";
-type SocialAction = "vote" | "airdrop" | "post";
-type IdentityContextResponse = Awaited<ReturnType<typeof getIdentityContext>>;
-type RiskContextResponse = Awaited<ReturnType<typeof getAnalyzerRiskContext>>;
+import { scenarioLabel, stateLabel } from "./console/formatters";
+import {
+  type AuditExportBundleResponse,
+  type AuditTargetScope,
+  type EnterpriseAction,
+  type IdentityContextResponse,
+  type ListHistoryActionFilter,
+  type ListHistoryNameFilter,
+  type ListHistoryResponse,
+  type OperatorDashboardResponse,
+  type PlatformEntryMeta,
+  type PolicyHistoryResponse,
+  type PolicyKindFilter,
+  type RiskContextResponse,
+  type Scenario,
+  type SocialAction,
+} from "./console/types";
+import { buildPlatformConsoleViewModels } from "./console/view-models";
+import { AiReviewPanel } from "./panels/AiReviewPanel";
+import { AuditEvidencePanel } from "./panels/AuditEvidencePanel";
+import { IdentityDetailPanel } from "./panels/IdentityDetailPanel";
+import { OperatorDashboardPanel } from "./panels/OperatorDashboardPanel";
+import { PlatformOverviewPanel } from "./panels/PlatformOverviewPanel";
+import { PolicyDecisionPanel } from "./panels/PolicyDecisionPanel";
+import { StateConsequencePanel } from "./panels/StateConsequencePanel";
 type ProofWorkerResponse =
   | { ok: true; result: { proofPoints: [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint]; publicSignals: [bigint] } }
   | { ok: false; error: string };
@@ -69,7 +92,7 @@ const DEFAULT_STATE_REGISTRY = (import.meta.env.VITE_STATE_REGISTRY_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as `0x${string}`;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 const PLATFORM_ENTRY = (import.meta.env.VITE_PLATFORM_ENTRY ?? "stage3") as "stage1" | "stage2" | "stage3" | "platform";
-const PLATFORM_ENTRY_META = {
+const PLATFORM_ENTRY_META: Record<"stage1" | "stage2" | "stage3" | "platform", PlatformEntryMeta> = {
   stage1: {
     label: "Stage1 Minimal Baseline",
     summary: "Anvil + issuer-service + frontend + proof happy path.",
@@ -94,24 +117,6 @@ const PLATFORM_ENTRY_META = {
 
 function textToBytes32(value: string) {
   return pad(stringToHex(value.slice(0, 31) || "ref"), { size: 32 });
-}
-
-function scenarioLabel(scenario: Scenario) {
-  if (scenario === "rwa") {
-    return "RWA Access";
-  }
-  if (scenario === "enterprise") {
-    return "Enterprise Treasury";
-  }
-  return "Social Governance";
-}
-
-function stateLabel(state: number | undefined) {
-  if (state === undefined) {
-    return "INIT";
-  }
-
-  return IdentityState[state] ?? "INIT";
 }
 
 function buildSameRootAuthorizationMessage(input: {
@@ -159,6 +164,10 @@ export function App() {
   const [verifierPreflight, setVerifierPreflight] = useState<string>("Not checked");
   const [identityContext, setIdentityContext] = useState<IdentityContextResponse | null>(null);
   const [riskContext, setRiskContext] = useState<RiskContextResponse | null>(null);
+  const [operatorDashboard, setOperatorDashboard] = useState<OperatorDashboardResponse | null>(null);
+  const [auditBundle, setAuditBundle] = useState<AuditExportBundleResponse | null>(null);
+  const [listHistory, setListHistory] = useState<ListHistoryResponse>([]);
+  const [policyHistory, setPolicyHistory] = useState<PolicyHistoryResponse>([]);
   const [accessDecision, setAccessDecision] = useState<any>(null);
   const [warningDecision, setWarningDecision] = useState<any>(null);
   const [watchStatus, setWatchStatus] = useState<any>(null);
@@ -177,6 +186,16 @@ export function App() {
   const [watchRecentBlocks, setWatchRecentBlocks] = useState("16");
   const [watchPollIntervalMs, setWatchPollIntervalMs] = useState("15000");
   const [watchScope, setWatchScope] = useState<"identity" | "root">("identity");
+  const [auditTarget, setAuditTarget] = useState<AuditTargetScope>("selected_sub");
+  const [auditFrom, setAuditFrom] = useState("");
+  const [auditTo, setAuditTo] = useState("");
+  const [auditPolicyId, setAuditPolicyId] = useState("");
+  const [auditPolicyKind, setAuditPolicyKind] = useState<PolicyKindFilter>("");
+  const [listTarget, setListTarget] = useState<AuditTargetScope>("selected_sub");
+  const [listNameFilter, setListNameFilter] = useState<ListHistoryNameFilter>("");
+  const [listActionFilter, setListActionFilter] = useState<ListHistoryActionFilter>("");
+  const [listFrom, setListFrom] = useState("");
+  const [listTo, setListTo] = useState("");
 
   const { address, chainId } = useAccount();
   const { connect, connectors, isPending: isConnecting } = useConnect();
@@ -229,6 +248,65 @@ export function App() {
   );
   const activePolicy = useMemo(() => getPolicyDefinition(activePolicyId), [activePolicyId]);
   const platformEntry = PLATFORM_ENTRY_META[PLATFORM_ENTRY] ?? PLATFORM_ENTRY_META.platform;
+  const consoleModels = useMemo(
+    () =>
+      buildPlatformConsoleViewModels({
+        scenario,
+        enterpriseAction,
+        socialAction,
+        platformEntry,
+        rootIdentity,
+        selectedSubIdentity,
+        subIdentities,
+        capabilities,
+        policySupport,
+        effectiveMode,
+        activePolicy,
+        identityContext,
+        riskContext,
+        accessDecision,
+        warningDecision,
+        watchStatus,
+        policyPreflight,
+        verifierPreflight,
+        bundles: currentBundles,
+        payload,
+        status,
+        mintedBalance,
+        operatorDashboard,
+        auditBundle,
+        listHistory,
+        policyHistory,
+      }),
+    [
+      scenario,
+      enterpriseAction,
+      socialAction,
+      platformEntry,
+      rootIdentity,
+      selectedSubIdentity,
+      subIdentities,
+      capabilities,
+      policySupport,
+      effectiveMode,
+      activePolicy,
+      identityContext,
+      riskContext,
+      accessDecision,
+      warningDecision,
+      watchStatus,
+      policyPreflight,
+      verifierPreflight,
+      currentBundles,
+      payload,
+      status,
+      mintedBalance,
+      operatorDashboard,
+      auditBundle,
+      listHistory,
+      policyHistory,
+    ],
+  );
 
   useEffect(() => {
     if (!subIdentities.length) {
@@ -248,6 +326,10 @@ export function App() {
     setPolicyPreflight(null);
     setVerifierPreflight("Not checked");
     setRiskContext(null);
+    setOperatorDashboard(null);
+    setAuditBundle(null);
+    setListHistory([]);
+    setPolicyHistory([]);
     setAccessDecision(null);
     setWarningDecision(null);
     setWatchStatus(null);
@@ -306,6 +388,7 @@ export function App() {
     }
     void refreshIdentityContext(selectedSubIdentity.identityId);
     void refreshRiskContext(selectedSubIdentity.identityId);
+    void refreshPlatformViews(selectedSubIdentity.identityId);
   }, [identityReady, selectedSubIdentity, status]);
 
   async function refreshIdentityContext(identityId: `0x${string}`) {
@@ -337,6 +420,118 @@ export function App() {
     }
   }
 
+  function buildAuditExportInput(target: AuditTargetScope = auditTarget) {
+    if (target === "root") {
+      if (!rootIdentity) {
+        return null;
+      }
+
+      return {
+        rootIdentityId: rootIdentity.identityId,
+        from: auditFrom || undefined,
+        to: auditTo || undefined,
+        policyId: auditPolicyId || undefined,
+        policyKind: auditPolicyKind || undefined,
+      };
+    }
+
+    if (!selectedSubIdentity) {
+      return null;
+    }
+
+    return {
+      identityId: selectedSubIdentity.identityId,
+      subIdentityId: selectedSubIdentity.identityId,
+      rootIdentityId: rootIdentity?.identityId,
+      from: auditFrom || undefined,
+      to: auditTo || undefined,
+      policyId: auditPolicyId || undefined,
+      policyKind: auditPolicyKind || undefined,
+    };
+  }
+
+  function buildListHistoryInput(target: AuditTargetScope = listTarget) {
+    if (target === "root") {
+      if (!rootIdentity) {
+        return null;
+      }
+
+      return {
+        rootIdentityId: rootIdentity.identityId,
+        listName: listNameFilter || undefined,
+        action: listActionFilter || undefined,
+        from: listFrom || undefined,
+        to: listTo || undefined,
+      };
+    }
+
+    if (!selectedSubIdentity) {
+      return null;
+    }
+
+    return {
+      identityId: selectedSubIdentity.identityId,
+      subIdentityId: selectedSubIdentity.identityId,
+      rootIdentityId: rootIdentity?.identityId,
+      listName: listNameFilter || undefined,
+      action: listActionFilter || undefined,
+      from: listFrom || undefined,
+      to: listTo || undefined,
+    };
+  }
+
+  async function refreshOperatorSummary() {
+    try {
+      const next = await getAnalyzerOperatorDashboard(ANALYZER_API_URL);
+      setOperatorDashboard(next);
+    } catch {
+      setOperatorDashboard(null);
+    }
+  }
+
+  async function refreshPolicyHistory(identityId: `0x${string}`) {
+    try {
+      const next = await getAnalyzerPolicyDecisionHistory(ANALYZER_API_URL, identityId);
+      setPolicyHistory(next);
+    } catch {
+      setPolicyHistory([]);
+    }
+  }
+
+  async function refreshListHistoryView(target: AuditTargetScope = listTarget) {
+    const input = buildListHistoryInput(target);
+    if (!input) {
+      setListHistory([]);
+      return;
+    }
+
+    try {
+      const next = await getAnalyzerListHistory(ANALYZER_API_URL, input);
+      setListHistory(next);
+    } catch {
+      setListHistory([]);
+    }
+  }
+
+  async function handleRunAuditExport() {
+    const input = buildAuditExportInput();
+    if (!input) {
+      setAuditBundle(null);
+      setStatus("Select a root or sub identity before exporting audit evidence.");
+      return;
+    }
+
+    try {
+      setStatus("Exporting structured audit bundle...");
+      const next = await exportAnalyzerAudit(ANALYZER_API_URL, input);
+      setAuditBundle(next);
+      setStatus("Structured audit bundle loaded.");
+    } catch (error) {
+      setAuditBundle(null);
+      setStatus(error instanceof Error ? error.message : "Failed to export audit bundle.");
+    }
+  }
+
   async function refreshRiskContext(identityId: `0x${string}`) {
     const [riskResult, watchResult, warningResult] = await Promise.allSettled([
       getAnalyzerRiskContext(ANALYZER_API_URL, identityId),
@@ -353,9 +548,18 @@ export function App() {
     setWarningDecision(warningResult.status === "fulfilled" ? warningResult.value : null);
   }
 
+  async function refreshPlatformViews(identityId: `0x${string}`) {
+    await Promise.all([
+      refreshOperatorSummary(),
+      refreshPolicyHistory(identityId),
+      refreshListHistoryView(),
+    ]);
+  }
+
   async function refreshPhase3State(identityId: `0x${string}`, nextPayload: AccessPayload | null = payload) {
     await refreshRiskContext(identityId);
     await reevaluateAccessDecision(identityId, nextPayload);
+    await refreshPlatformViews(identityId);
   }
 
   async function handleDeriveIdentity() {
@@ -817,16 +1021,18 @@ export function App() {
       <section className="hero">
         <div className="hero-stack">
           <p className="eyebrow">Web3ID Platform Baseline</p>
-          <h1>Identity, consequence, propagation, and policy stay on one frozen platform path.</h1>
+          <h1>Identity, state, consequence, policy, AI review, and operator evidence now read as one platform console.</h1>
           <p className="lede">
-            Capability-first identities, explicit default versus compliance paths, six-step state flow, and AI-offchain
-            review boundaries now share one P0 baseline. The console stays scenario-driven, but the frozen semantic
-            source is the platform baseline rather than isolated phase notes.
+            Scenario entry is now summary-first: RWA Access, Enterprise / Audit, and Social Governance all sit on the
+            same platform baseline while keeping stored versus effective state, state versus consequence, and AI versus
+            human review visibly separate.
           </p>
           <div className="hero-pills">
-            <span className="hero-pill">{platformEntry.label}</span>
-            <span className="hero-pill">Frozen baseline: docs/PLATFORM_BASELINE.md</span>
-            <span className="hero-pill">Acceptance: {platformEntry.acceptance}</span>
+            {consoleModels.overview.badges.map((badge) => (
+              <span className="hero-pill" key={badge}>
+                {badge}
+              </span>
+            ))}
           </div>
         </div>
         <div className="hero-card">
@@ -834,595 +1040,163 @@ export function App() {
           <strong>{platformEntry.label}</strong>
           <span>{platformEntry.summary}</span>
           <span>Current scenario: {scenarioLabel(scenario)}</span>
-          <strong>
-            {scenarioLabel(scenario)}
-          </strong>
+          <strong>{scenarioLabel(scenario)}</strong>
           <span>{selectedSubIdentity ? `${selectedSubIdentity.scope} / ${selectedSubIdentity.type}` : "Select identity"}</span>
           <span>Preferred mode: {capabilities?.preferredMode ?? "N/A"}</span>
           <span>Effective mode: {effectiveMode ?? "Unsupported"}</span>
+          <span>Stored state: {stateLabel(riskContext?.summary?.storedState ?? identityContext?.currentState)}</span>
+          <span>Effective state: {stateLabel(riskContext?.summary?.effectiveState)}</span>
           <span>Acceptance path: {platformEntry.acceptance}</span>
         </div>
       </section>
 
       <section className="grid">
-        <article className="panel">
-          <h2>1. Wallet & Root Identity</h2>
-          <p>{address ?? "Not connected"}</p>
-          <div className="actions">
-            <button disabled={isConnecting || connectors.length === 0} onClick={() => connect({ connector: connectors[0] })}>
-              {isConnecting ? "Connecting..." : "Connect Wallet"}
-            </button>
-            <button disabled={!address} onClick={handleDeriveIdentity}>
-              Sign Identity Challenge
-            </button>
-          </div>
-          {rootIdentity ? <pre>{JSON.stringify(rootIdentity, null, 2)}</pre> : <p>Connect and sign to derive the tree.</p>}
-        </article>
+        <PlatformOverviewPanel
+          model={consoleModels.overview}
+          scenario={scenario}
+          enterpriseAction={enterpriseAction}
+          socialAction={socialAction}
+          onScenarioChange={setScenario}
+          onEnterpriseActionChange={setEnterpriseAction}
+          onSocialActionChange={setSocialAction}
+        />
 
-        <article className="panel">
-          <h2>2. Scenario & Sub Identity</h2>
-          <div className="segmented">
-            <button className={scenario === "rwa" ? "active" : ""} onClick={() => setScenario("rwa")}>
-              RWA Access
-            </button>
-            <button className={scenario === "enterprise" ? "active" : ""} onClick={() => setScenario("enterprise")}>
-              Enterprise Treasury
-            </button>
-            <button className={scenario === "social" ? "active" : ""} onClick={() => setScenario("social")}>
-              Social Governance
-            </button>
-          </div>
-          {scenario === "enterprise" ? (
-            <div className="segmented compact">
-              <button className={enterpriseAction === "payment" ? "active" : ""} onClick={() => setEnterpriseAction("payment")}>
-                Payment
-              </button>
-              <button className={enterpriseAction === "audit" ? "active" : ""} onClick={() => setEnterpriseAction("audit")}>
-                Audit
-              </button>
-            </div>
-          ) : null}
-          {scenario === "social" ? (
-            <div className="segmented compact">
-              <button className={socialAction === "vote" ? "active" : ""} onClick={() => setSocialAction("vote")}>
-                Vote
-              </button>
-              <button className={socialAction === "airdrop" ? "active" : ""} onClick={() => setSocialAction("airdrop")}>
-                Airdrop
-              </button>
-              <button className={socialAction === "post" ? "active" : ""} onClick={() => setSocialAction("post")}>
-                Post
-              </button>
-            </div>
-          ) : null}
-          <select value={selectedSubIdentityId ?? ""} onChange={(event) => setSelectedSubIdentityId(event.target.value as `0x${string}`)}>
-            {subIdentities.map((item) => (
-              <option key={item.identityId} value={item.identityId}>
-                {item.scope} / {item.type}
-              </option>
-            ))}
-          </select>
-          {selectedSubIdentity ? <pre>{JSON.stringify(selectedSubIdentity, null, 2)}</pre> : <p>No sub identity selected.</p>}
-        </article>
+        <IdentityDetailPanel
+          model={consoleModels.identity}
+          address={address}
+          subIdentities={subIdentities.map((item) => ({ id: item.identityId, label: `${item.scope} / ${item.type}` }))}
+          selectedSubIdentityId={selectedSubIdentityId ?? ""}
+          onSelectedSubIdentityChange={(value) => setSelectedSubIdentityId(value as `0x${string}`)}
+          canConnect={connectors.length > 0}
+          isConnecting={isConnecting}
+          identityReady={identityReady}
+          canIssueCredentials={Boolean(selectedSubIdentity && address)}
+          onConnect={() => connect({ connector: connectors[0] })}
+          onDeriveIdentity={() => void handleDeriveIdentity()}
+          onIssueCredentials={() => void handleIssueCredentials()}
+        />
 
-        <article className="panel">
-          <h2>3. Mode & Policy</h2>
-          <div className="stack">
-            <p className="badge">State: {stateLabel(identityState ?? identityContext?.currentState)}</p>
-            <p className="badge">Preferred: {capabilities?.preferredMode ?? "N/A"}</p>
-            <p className="badge">Effective: {effectiveMode ?? "Unavailable"}</p>
-          </div>
-          <div className="meta-grid">
-            <div>
-              <strong>Policy</strong>
-              <p>{activePolicy.targetAction}</p>
-            </div>
-            <div>
-              <strong>Allowed Modes</strong>
-              <p>{activePolicy.allowedModes.join(", ")}</p>
-            </div>
-            <div>
-              <strong>Proof Kind</strong>
-              <p>{activePolicy.proofTemplate}</p>
-            </div>
-            <div>
-              <strong>Policy Support</strong>
-              <p>{policySupport?.supported ? "Supported" : policySupport?.reason ?? "Unknown"}</p>
-            </div>
-          </div>
-          <p>Policy preflight: {policyPreflight?.reason ?? "Not checked"}</p>
-          <p>Verifier preflight: {verifierPreflight}</p>
-          <p>Minted RWA balance: {mintedBalance}</p>
-        </article>
+        <StateConsequencePanel model={consoleModels.stateConsequence} />
 
-        <article className="panel">
-          <h2>4. Credentials</h2>
-          <button disabled={!selectedSubIdentity || !address || !identityReady} onClick={handleIssueCredentials}>
-            {scenario === "social" ? "Default Mode Uses No Credential" : "Issue Scenario Credential"}
-          </button>
-          {scenario === "social" ? (
-            <p className="hint">Social Governance stays in default mode and only uses deterministic mock/local signals.</p>
-          ) : bundles.length > 0 ? (
-            <pre>{JSON.stringify(bundles, null, 2)}</pre>
-          ) : (
-            <p>
-              {scenario === "rwa"
-                ? "Issues KYC/AML credential bound to the selected identity."
-                : "Issues an entity credential for treasury access."}
-            </p>
-          )}
-        </article>
+        <PolicyDecisionPanel
+          model={consoleModels.policy}
+          scenario={scenario}
+          enterpriseAction={enterpriseAction}
+          socialAction={socialAction}
+          payloadReady={Boolean(payload)}
+          isSubmitting={isSubmitting}
+          rwaGateAddress={rwaGateAddress}
+          enterpriseGateAddress={enterpriseGateAddress}
+          socialGateAddress={socialGateAddress}
+          assetAddress={assetAddress}
+          rwaAmount={rwaAmount}
+          paymentAmount={paymentAmount}
+          beneficiary={beneficiary}
+          paymentRef={paymentRef}
+          auditRef={auditRef}
+          proposalId={proposalId}
+          airdropRoundId={airdropRoundId}
+          postRef={postRef}
+          onRwaGateChange={(value) => setRwaGateAddress(value as `0x${string}`)}
+          onEnterpriseGateChange={(value) => setEnterpriseGateAddress(value as `0x${string}`)}
+          onSocialGateChange={(value) => setSocialGateAddress(value as `0x${string}`)}
+          onAssetChange={(value) => setAssetAddress(value as `0x${string}`)}
+          onRwaAmountChange={setRwaAmount}
+          onPaymentAmountChange={setPaymentAmount}
+          onBeneficiaryChange={setBeneficiary}
+          onPaymentRefChange={setPaymentRef}
+          onAuditRefChange={setAuditRef}
+          onProposalIdChange={setProposalId}
+          onAirdropRoundIdChange={setAirdropRoundId}
+          onPostRefChange={setPostRef}
+          onBuildPayload={() => void handleBuildPayload()}
+          onSubmitRwa={() => void handleSubmitRwa()}
+          onSubmitEnterprisePayment={() => void handleSubmitEnterprisePayment()}
+          onExportAudit={() => void handleExportAudit()}
+          onSubmitSocialAction={() => void handleSubmitSocialAction()}
+        />
 
-        <article className="panel">
-          <h2>5. Proof & Payload</h2>
-          <button disabled={!identityReady || !selectedSubIdentity} onClick={handleBuildPayload}>
-            Build Access Payload
-          </button>
-          {payload ? (
-            <pre>{JSON.stringify(payload, (_, value) => (typeof value === "bigint" ? value.toString() : value), 2)}</pre>
-          ) : (
-            <p>
-              {scenario === "social"
-                ? "Generate a holder-bound payload with no VC attachment."
-                : "Generate a credential-bound holder authorization and holder-binding proof."}
-            </p>
-          )}
-        </article>
+        <AuditEvidencePanel
+          model={consoleModels.auditEvidence}
+          auditTarget={auditTarget}
+          auditFrom={auditFrom}
+          auditTo={auditTo}
+          auditPolicyId={auditPolicyId}
+          auditPolicyKind={auditPolicyKind}
+          listTarget={listTarget}
+          listName={listNameFilter}
+          listAction={listActionFilter}
+          listFrom={listFrom}
+          listTo={listTo}
+          onAuditTargetChange={setAuditTarget}
+          onAuditFromChange={setAuditFrom}
+          onAuditToChange={setAuditTo}
+          onAuditPolicyIdChange={setAuditPolicyId}
+          onAuditPolicyKindChange={setAuditPolicyKind}
+          onListTargetChange={setListTarget}
+          onListNameChange={setListNameFilter}
+          onListActionChange={setListActionFilter}
+          onListFromChange={setListFrom}
+          onListToChange={setListTo}
+          onRunAuditExport={() => void handleRunAuditExport()}
+          onRefreshListHistory={() => void refreshListHistoryView()}
+        />
 
-        <article className="panel">
-          <h2>6. Actions</h2>
-          {scenario === "rwa" ? (
-            <>
-              <label>
-                RWA Gate Address
-                <input value={rwaGateAddress} onChange={(event) => setRwaGateAddress(event.target.value as `0x${string}`)} />
-              </label>
-              <label>
-                Asset Address
-                <input value={assetAddress} onChange={(event) => setAssetAddress(event.target.value as `0x${string}`)} />
-              </label>
-              <label>
-                Amount
-                <input value={rwaAmount} onChange={(event) => setRwaAmount(event.target.value)} />
-              </label>
-              <button disabled={!payload || isSubmitting} onClick={handleSubmitRwa}>
-                {isSubmitting ? "Submitting..." : "Submit buyRwa"}
-              </button>
-            </>
-          ) : scenario === "enterprise" ? (
-            enterpriseAction === "payment" ? (
-              <>
-                <label>
-                  Enterprise Gate Address
-                  <input value={enterpriseGateAddress} onChange={(event) => setEnterpriseGateAddress(event.target.value as `0x${string}`)} />
-                </label>
-                <label>
-                  Beneficiary
-                  <input value={beneficiary} onChange={(event) => setBeneficiary(event.target.value)} />
-                </label>
-                <label>
-                  Amount
-                  <input value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
-                </label>
-                <label>
-                  Payment Ref
-                  <input value={paymentRef} onChange={(event) => setPaymentRef(event.target.value)} />
-                </label>
-                <button disabled={!payload || isSubmitting} onClick={handleSubmitEnterprisePayment}>
-                  {isSubmitting ? "Submitting..." : "Submit Payment"}
-                </button>
-              </>
-            ) : (
-              <>
-                <label>
-                  Enterprise Gate Address
-                  <input value={enterpriseGateAddress} onChange={(event) => setEnterpriseGateAddress(event.target.value as `0x${string}`)} />
-                </label>
-                <label>
-                  Audit Ref
-                  <input value={auditRef} onChange={(event) => setAuditRef(event.target.value)} />
-                </label>
-                <button disabled={!payload || isSubmitting} onClick={handleExportAudit}>
-                  {isSubmitting ? "Submitting..." : "Export Audit Record"}
-                </button>
-              </>
-            )
-          ) : (
-            <>
-              <label>
-                Social Gate Address
-                <input value={socialGateAddress} onChange={(event) => setSocialGateAddress(event.target.value as `0x${string}`)} />
-              </label>
-              {socialAction === "vote" ? (
-                <label>
-                  Proposal Id
-                  <input value={proposalId} onChange={(event) => setProposalId(event.target.value)} />
-                </label>
-              ) : socialAction === "airdrop" ? (
-                <label>
-                  Round Id
-                  <input value={airdropRoundId} onChange={(event) => setAirdropRoundId(event.target.value)} />
-                </label>
-              ) : (
-                <label>
-                  Post Ref
-                  <input value={postRef} onChange={(event) => setPostRef(event.target.value)} />
-                </label>
-              )}
-              <button disabled={!payload || isSubmitting} onClick={handleSubmitSocialAction}>
-                {isSubmitting
-                  ? "Submitting..."
-                  : socialAction === "vote"
-                    ? "Submit Vote"
-                    : socialAction === "airdrop"
-                      ? "Submit Claim Airdrop"
-                      : "Submit Create Post"}
-              </button>
-            </>
-          )}
-        </article>
+        <OperatorDashboardPanel
+          model={consoleModels.operator}
+          identityReady={identityReady}
+          selectedSubIdentityId={selectedSubIdentityId}
+          manualReleaseReasonCode={manualReleaseReasonCode}
+          manualReleaseEvidence={manualReleaseEvidence}
+          manualReleaseNote={manualReleaseNote}
+          manualListName={manualListName}
+          manualListAction={manualListAction}
+          manualListReasonCode={manualListReasonCode}
+          manualListEvidence={manualListEvidence}
+          manualListExpiresAt={manualListExpiresAt}
+          watchScope={watchScope}
+          watchRecentBlocks={watchRecentBlocks}
+          watchPollIntervalMs={watchPollIntervalMs}
+          onBindRootController={() => void handleBindRootController()}
+          onBindSelectedSubIdentity={() => void handleBindSelectedSubIdentity()}
+          onBindSameRootExtension={() => void handleBindSameRootExtension()}
+          onWatch={(action) => void handleWatch(action)}
+          onApplySignal={(signalKey) => void handleApplySignal(signalKey)}
+          onManualReleaseReasonCodeChange={setManualReleaseReasonCode}
+          onManualReleaseEvidenceChange={setManualReleaseEvidence}
+          onManualReleaseNoteChange={setManualReleaseNote}
+          onManualListNameChange={setManualListName}
+          onManualListActionChange={setManualListAction}
+          onManualListReasonCodeChange={setManualListReasonCode}
+          onManualListEvidenceChange={setManualListEvidence}
+          onManualListExpiresAtChange={setManualListExpiresAt}
+          onWatchScopeChange={setWatchScope}
+          onWatchRecentBlocksChange={setWatchRecentBlocks}
+          onWatchPollIntervalMsChange={setWatchPollIntervalMs}
+          onManualRelease={() => void handleManualRelease()}
+          onManualListUpdate={() => void handleManualListUpdate()}
+        />
 
-        <article className="panel">
-          <h2>7. Demo Signals</h2>
-          <p className="hint">Deterministic local/mock signals only. No external indexer or third-party risk feed is used in this phase.</p>
-          <div className="actions">
-            <button disabled={!selectedSubIdentity} onClick={() => void handleApplySignal("new_wallet_observation")}>
-              Observe New Wallet
-            </button>
-            <button disabled={!selectedSubIdentity} onClick={() => void handleApplySignal("negative_risk_flag")}>
-              Apply Risk Flag
-            </button>
-            <button disabled={!selectedSubIdentity} onClick={() => void handleApplySignal("sanction_hit")}>
-              Freeze
-            </button>
-            <button disabled={!selectedSubIdentity} onClick={() => void handleApplySignal("governance_participation")}>
-              Governance Boost
-            </button>
-            <button disabled={!selectedSubIdentity} onClick={() => void handleApplySignal("good_standing")}>
-              Recover to Normal
-            </button>
-          </div>
-          <p>Signals are applied through the issuer-service demo control plane and synced to the on-chain state registry.</p>
-        </article>
-
-        <article className="panel">
-          <h2>8. Attribution & Consequences</h2>
-          {identityContext ? (
-            <>
-              <div className="meta-grid">
-                <div>
-                  <strong>Current State</strong>
-                  <p>{stateLabel(identityContext.currentState)}</p>
-                </div>
-                <div>
-                  <strong>Last Decision Ref</strong>
-                  <p>{identityContext.lastDecisionRef ?? "None"}</p>
-                </div>
-                <div>
-                  <strong>Active Consequences</strong>
-                  <p>{identityContext.activeConsequences.length}</p>
-                </div>
-                <div>
-                  <strong>Signals</strong>
-                  <p>{identityContext.signals.length}</p>
-                </div>
-              </div>
-              <div className="meta-grid">
-                <div>
-                  <strong>Latest Signal</strong>
-                  <p>{identityContext.signals.at(-1)?.reasonCode ?? "None"}</p>
-                </div>
-                <div>
-                  <strong>Latest Assessment</strong>
-                  <p>{identityContext.assessments.at(-1)?.assessmentResult ?? "None"}</p>
-                </div>
-                <div>
-                  <strong>Latest Decision</strong>
-                  <p>{identityContext.decisions.at(-1)?.reasonCode ?? "None"}</p>
-                </div>
-                <div>
-                  <strong>Recovery Rule</strong>
-                  <p>{identityContext.activeConsequences[0]?.recoveryRuleId ?? "None"}</p>
-                </div>
-              </div>
-              <pre>{JSON.stringify(identityContext, null, 2)}</pre>
-            </>
-          ) : (
-            <p>Register the identity tree to see state history, consequences, and recovery requirements.</p>
-          )}
-        </article>
-
-        <article className="panel">
-          <h2>9. Platform Risk View</h2>
-          {riskContext?.summary ? (
-            <>
-              <div className="meta-grid">
-                <div>
-                  <strong>Stored State</strong>
-                  <p>{stateLabel(riskContext.summary.storedState)}</p>
-                </div>
-                <div>
-                  <strong>Effective State</strong>
-                  <p>{stateLabel(riskContext.summary.effectiveState)}</p>
-                </div>
-                <div>
-                  <strong>Anchored State</strong>
-                  <p>{stateLabel(riskContext.summary.anchoredState)}</p>
-                </div>
-                <div>
-                  <strong>Risk Score</strong>
-                  <p>{riskContext.summary.riskScore}</p>
-                </div>
-              </div>
-              <div className="meta-grid">
-                <div>
-                  <strong>Bindings</strong>
-                  <p>{riskContext.bindings.length}</p>
-                </div>
-                <div>
-                  <strong>Review Queue</strong>
-                  <p>{riskContext.summary.reviewQueueCounts?.pending ?? riskContext.reviewQueue.length}</p>
-                </div>
-                <div>
-                  <strong>Anchors</strong>
-                  <p>{riskContext.anchors.length}</p>
-                </div>
-                <div>
-                  <strong>Watchers</strong>
-                  <p>{watchStatus?.items?.length ?? riskContext.summary.watchStatus?.items?.length ?? 0}</p>
-                </div>
-              </div>
-              <div className="meta-grid">
-                <div>
-                  <strong>Manual Release Floor</strong>
-                  <p>{riskContext.summary.manualReleaseWindow?.floorState !== undefined ? stateLabel(riskContext.summary.manualReleaseWindow.floorState) : "None"}</p>
-                </div>
-                <div>
-                  <strong>Floor Until</strong>
-                  <p>{riskContext.summary.manualReleaseWindow?.floorUntil ?? "N/A"}</p>
-                </div>
-                <div>
-                  <strong>Pending Reviews</strong>
-                  <p>{riskContext.summary.reviewQueueCounts?.pending ?? 0}</p>
-                </div>
-                <div>
-                  <strong>Expired Reviews</strong>
-                  <p>{riskContext.summary.reviewQueueCounts?.expired ?? 0}</p>
-                </div>
-              </div>
-              <div className="matrix-grid">
-                <div className="info-card">
-                  <h3>Propagation Matrix</h3>
-                  <table className="phase-table">
-                    <thead>
-                      <tr>
-                        <th>Route</th>
-                        <th>Rule</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td>sub -&gt; root OBSERVED</td>
-                        <td>14 days / 2 sub identities / same rule family</td>
-                      </tr>
-                      <tr>
-                        <td>sub -&gt; root RESTRICTED</td>
-                        <td>root_sensitive + canEscalateToRoot, or 30 days / 2 restricted or high-risk subs</td>
-                      </tr>
-                      <tr>
-                        <td>sub -&gt; root HIGH_RISK</td>
-                        <td>direct root evidence, root_sensitive escalation, or 30 days / 2 high-risk subs</td>
-                      </tr>
-                      <tr>
-                        <td>root -&gt; sub overlay</td>
-                        <td>effective-state floors only; stored child state stays local</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div className="info-card">
-                  <h3>Re-entry Cards</h3>
-                  <div className="reentry-card">
-                    <strong>OBSERVED</strong>
-                    <p>7 clean days or one positive signal to return to NORMAL.</p>
-                  </div>
-                  <div className="reentry-card">
-                    <strong>RESTRICTED</strong>
-                    <p>14 clean days, score below threshold, no pending review.</p>
-                  </div>
-                  <div className="reentry-card">
-                    <strong>HIGH_RISK</strong>
-                    <p>30 clean days, two positive signals, no critical hits or open review.</p>
-                  </div>
-                  <div className="reentry-card">
-                    <strong>FROZEN</strong>
-                    <p>Manual release only, then a 30-day HIGH_RISK floor.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="matrix-grid">
-                <div className="info-card">
-                  <h3>Binding Console</h3>
-                  <p className="hint">Challenge, signature, and evidence-linked bindings all run through the analyzer SDK path.</p>
-                  <div className="actions">
-                    <button disabled={!identityReady || !address} onClick={() => void handleBindRootController()}>
-                      Create Root Binding
-                    </button>
-                    <button disabled={!identityReady || !selectedSubIdentity || !address} onClick={() => void handleBindSelectedSubIdentity()}>
-                      Create Sub Binding
-                    </button>
-                    <button disabled={!identityReady || !address} onClick={() => void handleBindSameRootExtension()}>
-                      Create Same Root Extension
-                    </button>
-                  </div>
-                  <pre>{JSON.stringify(riskContext.bindings, null, 2)}</pre>
-                </div>
-                <div className="info-card">
-                  <h3>Watch Console</h3>
-                  <label>
-                    Watch Scope
-                    <select value={watchScope} onChange={(event) => setWatchScope(event.target.value as "identity" | "root")}>
-                      <option value="identity">Selected Identity</option>
-                      <option value="root">Root Overlay</option>
-                    </select>
-                  </label>
-                  <label>
-                    Recent Blocks
-                    <input value={watchRecentBlocks} onChange={(event) => setWatchRecentBlocks(event.target.value)} />
-                  </label>
-                  <label>
-                    Poll Interval (ms)
-                    <input value={watchPollIntervalMs} onChange={(event) => setWatchPollIntervalMs(event.target.value)} />
-                  </label>
-                  <div className="actions">
-                    <button disabled={!identityReady} onClick={() => void handleWatch("start")}>
-                      Start Watch
-                    </button>
-                    <button disabled={!identityReady} onClick={() => void handleWatch("refresh")}>
-                      Refresh Watch
-                    </button>
-                    <button disabled={!identityReady} onClick={() => void handleWatch("stop")}>
-                      Stop Watch
-                    </button>
-                  </div>
-                  <pre>{JSON.stringify(watchStatus ?? riskContext.summary.watchStatus ?? { items: [] }, null, 2)}</pre>
-                </div>
-              </div>
-              <pre>{JSON.stringify(riskContext.summary, null, 2)}</pre>
-              <pre>{JSON.stringify(riskContext.audit?.slice(-5) ?? [], null, 2)}</pre>
-            </>
-          ) : (
-            <p>Start the analyzer-service and register/bind identities to view platform stored/effective risk state.</p>
-          )}
-        </article>
-
-        <article className="panel">
-          <h2>10. Policy & Review Queue</h2>
-          <div className="meta-grid">
-            <div>
-              <strong>Access Decision</strong>
-              <p>{accessDecision?.decision ?? "Not evaluated"}</p>
-            </div>
-            <div>
-              <strong>Warning Decision</strong>
-              <p>{warningDecision?.decision ?? "Not evaluated"}</p>
-            </div>
-            <div>
-              <strong>Credential Reasons</strong>
-              <p>{accessDecision?.credentialReasons?.length ?? 0}</p>
-            </div>
-            <div>
-              <strong>Risk Reasons</strong>
-              <p>{accessDecision?.riskReasons?.length ?? 0}</p>
-            </div>
-          </div>
-          <div className="matrix-grid">
-            <div className="info-card">
-              <h3>Review Queue Console</h3>
-              <label>
-                Actor
-                <input value={phase3Actor} onChange={(event) => setPhase3Actor(event.target.value)} />
-              </label>
-              <label>
-                Requested State
-                <select value={String(reviewRequestedState)} onChange={(event) => setReviewRequestedState(Number(event.target.value))}>
-                  <option value={String(IdentityState.OBSERVED)}>OBSERVED</option>
-                  <option value={String(IdentityState.RESTRICTED)}>RESTRICTED</option>
-                  <option value={String(IdentityState.HIGH_RISK)}>HIGH_RISK</option>
-                  <option value={String(IdentityState.FROZEN)}>FROZEN</option>
-                </select>
-              </label>
-              <label>
-                Review Reason Code
-                <input value={reviewReasonCode} onChange={(event) => setReviewReasonCode(event.target.value)} />
-              </label>
-              <label>
-                Review Note
-                <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
-              </label>
-              {riskContext?.reviewQueue?.length ? (
-                <div className="review-list">
-                  {riskContext.reviewQueue.map((item: any) => (
-                    <div className="review-item" key={item.reviewItemId}>
-                      <strong>{item.status}</strong>
-                      <p>{item.reviewItemId}</p>
-                      <div className="actions">
-                        <button disabled={item.status !== "PENDING_REVIEW"} onClick={() => void handleConfirmReview(item.reviewItemId)}>
-                          Confirm Review
-                        </button>
-                        <button disabled={item.status !== "PENDING_REVIEW"} onClick={() => void handleDismissReview(item.reviewItemId)}>
-                          Dismiss Review
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="hint">AI outputs are limited to `watch`, `review`, or `warn_only`. Review items stay off-chain until a human confirms them.</p>
-              )}
-            </div>
-            <div className="info-card">
-              <h3>Manual Controls</h3>
-              <label>
-                Manual Release Reason
-                <input value={manualReleaseReasonCode} onChange={(event) => setManualReleaseReasonCode(event.target.value)} />
-              </label>
-              <label>
-                Manual Release Evidence
-                <input value={manualReleaseEvidence} onChange={(event) => setManualReleaseEvidence(event.target.value)} />
-              </label>
-              <label>
-                Manual Release Note
-                <input value={manualReleaseNote} onChange={(event) => setManualReleaseNote(event.target.value)} />
-              </label>
-              <button disabled={!selectedSubIdentity} onClick={() => void handleManualRelease()}>
-                Apply Manual Release
-              </button>
-              <label>
-                Manual List Name
-                <select value={manualListName} onChange={(event) => setManualListName(event.target.value as "watchlist" | "restricted_list" | "blacklist_or_frozen_list")}>
-                  <option value="watchlist">watchlist</option>
-                  <option value="restricted_list">restricted_list</option>
-                  <option value="blacklist_or_frozen_list">blacklist_or_frozen_list</option>
-                </select>
-              </label>
-              <label>
-                Manual List Action
-                <select value={manualListAction} onChange={(event) => setManualListAction(event.target.value as "add" | "remove")}>
-                  <option value="add">add</option>
-                  <option value="remove">remove</option>
-                </select>
-              </label>
-              <label>
-                Manual List Reason
-                <input value={manualListReasonCode} onChange={(event) => setManualListReasonCode(event.target.value)} />
-              </label>
-              <label>
-                Manual List Evidence
-                <input value={manualListEvidence} onChange={(event) => setManualListEvidence(event.target.value)} />
-              </label>
-              <label>
-                List Expiry (ISO, optional)
-                <input value={manualListExpiresAt} onChange={(event) => setManualListExpiresAt(event.target.value)} placeholder="2026-03-30T00:00:00.000Z" />
-              </label>
-              <button disabled={!selectedSubIdentity} onClick={() => void handleManualListUpdate()}>
-                Apply Manual List Override
-              </button>
-            </div>
-          </div>
-          {accessDecision ? (
-            <pre>{JSON.stringify(accessDecision, null, 2)}</pre>
-          ) : (
-            <p>Build a payload to evaluate the full AccessPolicy path: credential/proof validity + risk state + policy version.</p>
-          )}
-          {warningDecision ? <pre>{JSON.stringify(warningDecision, null, 2)}</pre> : null}
-        </article>
+        <AiReviewPanel
+          model={consoleModels.aiReview}
+          phase3Actor={phase3Actor}
+          reviewNote={reviewNote}
+          reviewReasonCode={reviewReasonCode}
+          reviewRequestedState={reviewRequestedState}
+          onActorChange={setPhase3Actor}
+          onReviewNoteChange={setReviewNote}
+          onReviewReasonCodeChange={setReviewReasonCode}
+          onReviewRequestedStateChange={setReviewRequestedState}
+          reviewQueue={riskContext?.reviewQueue ?? []}
+          onConfirmReview={(reviewItemId) => void handleConfirmReview(reviewItemId)}
+          onDismissReview={(reviewItemId) => void handleDismissReview(reviewItemId)}
+        />
       </section>
 
       <section className="footer-panel">
         <h2>Runtime Status</h2>
         <p>{status}</p>
-        <p className="hint">Frozen docs: PLATFORM_BASELINE / IDENTITY_INVARIANTS / STATE_SYSTEM_INVARIANTS / BOUNDARIES</p>
+        <p className="hint">Frozen docs: WHAT_IS_WEB3ID / PLATFORM_BASELINE / SYSTEM_INVARIANTS / IDENTITY_INVARIANTS / STATE_SYSTEM_INVARIANTS / BOUNDARIES</p>
         <p className="hint">Acceptance command: {platformEntry.acceptance}</p>
       </section>
     </main>

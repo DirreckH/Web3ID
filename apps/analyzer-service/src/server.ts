@@ -11,14 +11,18 @@ import {
   createBindingChallengeRecord,
   dismissReview,
   exportIdentityAudit,
+  exportStructuredAudit,
   flushAnchorQueue,
   getIdentityEvents,
+  getOperatorDashboard,
   getRiskContext,
   getWatchStatus,
   initializeAnalyzerWatchers,
+  listRiskHistory,
   listReviewQueue,
   manageWatchScan,
   recomputeIdentity,
+  recordPolicyDecisionSnapshot,
   registerIdentityTree,
   submitBinding,
 } from "./service.js";
@@ -142,6 +146,40 @@ const manualReleaseSchema = z.object({
 });
 const recomputeSchema = z.object({ identityId: hex32Schema });
 const anchorFlushSchema = z.object({ identityId: hex32Schema.optional() });
+const auditExportSchema = z.object({
+  identityId: hex32Schema.optional(),
+  rootIdentityId: hex32Schema.optional(),
+  subIdentityId: hex32Schema.optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  policyId: z.string().optional(),
+  policyKind: z.enum(["access", "warning"]).optional(),
+});
+const listHistorySchema = z.object({
+  identityId: hex32Schema.optional(),
+  rootIdentityId: hex32Schema.optional(),
+  subIdentityId: hex32Schema.optional(),
+  listName: z.enum(["watchlist", "restricted_list", "blacklist_or_frozen_list"]).optional(),
+  action: z.enum(["auto_added", "manually_added", "removed", "expired"]).optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+});
+const policyDecisionSnapshotSchema = z.object({
+  kind: z.enum(["access", "warning"]),
+  identityId: hex32Schema,
+  rootIdentityId: hex32Schema,
+  subIdentityId: hex32Schema.optional(),
+  policyId: z.string().min(1),
+  policyLabel: z.string().min(1),
+  policyVersion: z.number().int().positive(),
+  modePath: z.enum(["DEFAULT_BEHAVIOR_MODE", "COMPLIANCE_MODE", "UNRESOLVED"]),
+  decision: z.enum(["allow", "restrict", "deny", "info", "warn", "high_warn"]),
+  reasons: z.array(z.string()),
+  warnings: z.array(z.string()),
+  evidenceRefs: z.array(z.string()),
+  auditRecordIds: z.array(z.string()).optional(),
+  createdAt: z.string().optional(),
+});
 
 const app = express();
 app.set("json replacer", (_key: string, value: unknown) => (typeof value === "bigint" ? value.toString() : value));
@@ -194,6 +232,10 @@ app.get("/identities/:id/audit/export", async (req, res) => {
   try { res.json(await exportIdentityAudit(req.params.id as Hex)); }
   catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
 });
+app.post("/audit/export", async (req, res) => {
+  try { res.json(await exportStructuredAudit(auditExportSchema.parse(req.body ?? {}) as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
 app.post("/identities/:id/recompute", async (req, res) => {
   try {
     const body = recomputeSchema.parse({ identityId: req.params.id });
@@ -203,6 +245,21 @@ app.post("/identities/:id/recompute", async (req, res) => {
 app.post("/lists/manual", async (req, res) => {
   try { res.json(await applyManualListAction(manualListSchema.parse(req.body) as any)); }
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/lists/history", async (req, res) => {
+  try {
+    res.json({
+      items: await listRiskHistory(listHistorySchema.parse({
+        identityId: typeof req.query.identityId === "string" ? req.query.identityId : undefined,
+        rootIdentityId: typeof req.query.rootIdentityId === "string" ? req.query.rootIdentityId : undefined,
+        subIdentityId: typeof req.query.subIdentityId === "string" ? req.query.subIdentityId : undefined,
+        listName: typeof req.query.listName === "string" ? req.query.listName : undefined,
+        action: typeof req.query.action === "string" ? req.query.action : undefined,
+        from: typeof req.query.from === "string" ? req.query.from : undefined,
+        to: typeof req.query.to === "string" ? req.query.to : undefined,
+      }) as any),
+    });
+  } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
 });
 app.get("/review-queue", async (req, res) => {
   try { res.json({ items: await listReviewQueue(req.query.identityId as Hex | undefined) }); }
@@ -224,6 +281,14 @@ app.post("/manual-release", async (req, res) => {
 });
 app.post("/anchors/flush", async (req, res) => {
   try { res.json(await flushAnchorQueue(anchorFlushSchema.parse(req.body ?? {}) as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/operator/dashboard", async (_req, res) => {
+  try { res.json(await getOperatorDashboard()); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/policy-decisions", async (req, res) => {
+  try { res.json(await recordPolicyDecisionSnapshot(policyDecisionSnapshotSchema.parse(req.body) as any)); }
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
 });
 

@@ -1,74 +1,57 @@
-# Web3ID Platform Baseline
+# Web3ID
 
-Web3ID 现在按平台基线来理解，而不是只按单个阶段 demo 来理解。
+Web3ID 现在按“平台”来理解，而不是按孤立的 stage demo 来理解。
+
+它把 `identity / credential / proof / state / consequence / policy / governance / audit / AI assistance` 放进同一套 capability-first 控制平面里，并且明确区分：
+
+- `stored state` 和 `effective state`
+- `state` 和 `consequence`
+- `policy decision` 和 `identity fact`
+- `AI suggestion` 和 `human review result`
+- `default path` 和 `compliance path`
 
 ## 先看这些文档
 
+平台总叙事：
+
+- `docs/WHAT_IS_WEB3ID.md`
 - `docs/PLATFORM_BASELINE.md`
-  平台总览、模块边界、冻结语义、阶段映射。
+- `docs/SYSTEM_INVARIANTS.md`
+
+冻结语义与边界：
+
 - `docs/IDENTITY_INVARIANTS.md`
-  Root/Sub identity、capability-first、mode 判定。
 - `docs/STATE_SYSTEM_INVARIANTS.md`
-  状态主链路和对象模型。
 - `docs/PROPAGATION_AND_REENTRY.md`
-  传播、overlay、re-entry、名单映射。
 - `docs/BOUNDARIES.md`
-  AI / Risk / Policy / Governance 边界。
-- `docs/PROOF_RUNTIME.md`
-  proof runtime、冷重建与 smoke。
+- `docs/POSITIVE_SIGNALS_AND_RECOVERY.md`
+
+演示与控制台：
+
 - `docs/DEMO_MATRIX.md`
-  `stage1 / stage2 / stage3 / platform` 入口矩阵。
+- `docs/PLATFORM_CONSOLE.md`
+- `docs/OPERATOR_WORKFLOWS.md`
 
-补充资料：
+proof runtime 与阶段资料：
 
+- `docs/PROOF_RUNTIME.md`
 - `README_PHASE3.md`
 - `PHASE3_REPORT.md`
-- `docs/default-vs-compliance-mode.md`
-- `docs/ai-risk-policy-governance-boundaries.md`
-- `docs/state-attribution-and-consequence-flow.md`
-- `docs/system-invariants.md`
 
-## 平台概览
+## 场景优先入口
 
-Web3ID 是一套 capability-first 的 identity、credential、proof、state、risk、policy 平台。
+先想你要演示哪个平台场景，再决定跑哪个 demo 命令：
 
-- Default path
-  Social Governance 等 default-only policy 使用 `holder_bound_proof`。
-- Compliance path
-  RWA Access 与 Enterprise Treasury 使用 linked credentials + `credential_bound_proof`。
-- Platform control plane
-  analyzer-service、policy-api、review queue、anchors、stored/effective state 收口在完整平台入口。
+- `RWA Access`
+  重点看 compliance credential + proof + access policy
+- `Enterprise / Audit`
+  重点看 enterprise payment / audit export / policy snapshot / audit bundle
+- `Social Governance`
+  重点看 default path / warning policy / governance participation / AI suggestion boundary
 
-## 仓库结构
-
-- `apps/frontend`
-  平台控制台与 demo UI。
-- `apps/issuer-service`
-  issuer、credential、identity context 和 baseline demo service。
-- `apps/analyzer-service`
-  风险控制面、binding、review queue、watch、anchors。
-- `apps/policy-api`
-  access / warning policy decision service。
-- `packages/identity`
-  identity 派生、capabilities、policy support。
-- `packages/credential`
-  credential bundle、attestation、verification。
-- `packages/proof`
-  proof runtime、browser/node proving、artifact sync。
-- `packages/state`
-  signal、assessment、decision、consequence、recovery、propagation。
-- `packages/risk`
-  scoring、lists、AI suggestions、review queue、anchoring、risk summary。
-- `packages/policy`
-  policy definitions、mode descriptors、proof templates。
-- `packages/sdk`
-  frontend / integration / service orchestration helper。
-- `contracts`
-  verifier、registries、RWA / enterprise / social gates。
+详细映射见 `docs/DEMO_MATRIX.md`。
 
 ## 快速开始
-
-推荐直接走平台入口：
 
 ```powershell
 pnpm install
@@ -78,10 +61,61 @@ pnpm demo:platform
 
 默认本地服务：
 
-- Issuer service: `http://127.0.0.1:4100`
-- Analyzer service: `http://127.0.0.1:4200`
-- Policy API: `http://127.0.0.1:4300`
-- Frontend: `http://127.0.0.1:3000`
+- issuer-service: `http://127.0.0.1:4100`
+- analyzer-service: `http://127.0.0.1:4200`
+- policy-api: `http://127.0.0.1:4300`
+- frontend: `http://127.0.0.1:3000`
+
+## Demo Commands
+
+兼容命令仍然保留：
+
+- `pnpm demo:stage1`
+- `pnpm demo:stage2`
+- `pnpm demo:stage3`
+- `pnpm demo:platform`
+
+但 P1 的理解方式已经改成 `scenario-first`：
+
+- `stage1`
+  最适合快速演示 `RWA Access`
+- `stage2`
+  最适合演示 `RWA Access + Social Governance`
+- `stage3`
+  最适合演示完整 risk / policy / review / operator flow
+- `platform`
+  推荐统一入口，适合串联三类场景
+
+## Platform Console
+
+前端控制台在 P1 被收口成 summary-first 的平台控制台，固定包括：
+
+- `Platform Overview`
+- `Identity Detail`
+- `State & Consequence`
+- `Audit & Evidence`
+- `Policy Decisions`
+- `AI & Review`
+- `Operator Dashboard`
+
+其中低层操作，如 binding、watch、manual release、manual list override，被统一收进 `Operator Dashboard`，不再淹没首页主叙事。
+
+## Integration Suites
+
+非浏览器 integration 现在分为两层：
+
+- `basic-service-integration`
+  最小关键链路覆盖
+- `extended-service-integration`
+  扩展运营、传播、恢复、审计视图覆盖
+
+运行方式：
+
+```powershell
+pnpm test:integration
+```
+
+更多说明见 `tests/integration/README.md`。
 
 ## 常用命令
 
@@ -93,34 +127,18 @@ pnpm contracts:test
 pnpm proof:clean
 pnpm proof:setup
 pnpm proof:smoke
-pnpm demo:stage1
-pnpm demo:stage2
-pnpm demo:stage3
-pnpm demo:platform
 pnpm test:integration
+pnpm exec tsx scripts/verify-stage3-acceptance.ts stage1
+pnpm exec tsx scripts/verify-stage3-acceptance.ts stage2
+pnpm exec tsx scripts/verify-stage3-acceptance.ts stage3
 pnpm exec tsx scripts/verify-stage3-acceptance.ts platform
-pnpm demo:e2e:stage3
 ```
 
-## Demo 入口
+## 当前冻结结论
 
-- `pnpm demo:stage1`
-  最小可跑平台基线，聚焦 identity + credential + proof + RWA happy path。
-- `pnpm demo:stage2`
-  reinforced baseline。
-- `pnpm demo:stage3`
-  完整风险控制面。
-- `pnpm demo:platform`
-  推荐统一平台入口。
-
-## 当前冻结语义
-
-- Root Identity 唯一且不可变。
-- Sub Identity 由 `rootId + normalizedScope + subIdentityType` 派生。
-- Identity 不带永久 mode 标签；mode 通过 capability + policy 解析为 `effectiveMode`。
-- 状态链路顺序固定：
-  `signal -> assessment -> decision -> state update -> consequence application -> recovery/propagation`
-- `stored state` 与 `effective state` 分离。
-- propagated effect 只影响 overlay，不重写 child stored state。
-- AI 只能生成 suggestion，不是 final decision。
-- proof 只证明可证明事实，不能包装 AI 结论。
+- Root identity 唯一且不可变
+- Sub identity 由 normalized scope 派生
+- policy decision 只是 action-level audit snapshot
+- consequence 不能反写 state
+- AI 不能直接写 state 或直接 freeze
+- compliance hard requirements 不能被 default path 或 positive consequence 绕过

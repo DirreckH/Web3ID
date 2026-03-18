@@ -13,3 +13,4 @@ export * from "./review-queue.js";
 export * from "./ai-assistant.js";
 export * from "./policy.js";
 export * from "./explanation.js";
+export * from "./positive-signals.js";

@@ -10,6 +10,7 @@ import type {
   IdentityRiskRecord,
   ManualReleaseWindow,
   ManualListAction,
+  PolicyDecisionRecord,
   ReviewQueueItem,
   RiskListEntry,
   RiskSignal,
@@ -64,6 +65,7 @@ export type AnalyzerStore = {
   audits: Record<string, AuditRecord>;
   anchorQueue: Record<string, AnchorQueueEntry>;
   watchers: Record<string, AnalyzerWatcherRecord>;
+  policyDecisions: Record<string, PolicyDecisionRecord>;
 };
 
 function createEmptyStore(): AnalyzerStore {
@@ -78,6 +80,7 @@ function createEmptyStore(): AnalyzerStore {
     audits: {},
     anchorQueue: {},
     watchers: {},
+    policyDecisions: {},
   };
 }
 
@@ -111,6 +114,7 @@ function normalizeStore(parsed: Partial<AnalyzerStore>): AnalyzerStore {
     audits: parsed.audits ?? {},
     anchorQueue: parsed.anchorQueue ?? {},
     watchers: parsed.watchers ?? {},
+    policyDecisions: parsed.policyDecisions ?? {},
   };
 }
 

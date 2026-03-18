@@ -6,6 +6,7 @@ import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { deriveRootIdentity, deriveSubIdentity, SubIdentityType } from "../packages/identity/src/index.js";
+import { printDemoSummary } from "./demo-summary.ts";
 
 const ROOT = process.cwd();
 const DEMO_ENTRY = process.env.WEB3ID_DEMO_ENTRY ?? "stage2";
@@ -270,12 +271,27 @@ async function main() {
   spawnCommand(pnpm.command, [...pnpm.args, "--filter", "@web3id/issuer-service", "dev"], sharedEnv, "inherit");
   spawnCommand(pnpm.command, [...pnpm.args, "--filter", "@web3id/frontend", "dev"], sharedEnv, "inherit");
 
-  console.log(`Web3ID ${DEMO_ENTRY} demo running`);
-  console.log(`Issuer service: http://127.0.0.1:4100`);
-  console.log(`Frontend:      http://127.0.0.1:3000`);
-  console.log(`Holder:        ${DEFAULT_HOLDER}`);
-  console.log(`Proof setup:   pnpm proof:setup completed`);
-  console.log(`Docs:          docs/PLATFORM_BASELINE.md and docs/DEMO_MATRIX.md`);
+  printDemoSummary({
+    entry: DEMO_ENTRY as "stage1" | "stage2",
+    holder: DEFAULT_HOLDER,
+    proofStatus: "pnpm proof:setup completed",
+    services: ["anvil", "contracts", "issuer-service", "frontend", "proof runtime"],
+    urls: [
+      { label: "Issuer service", value: "http://127.0.0.1:4100" },
+      { label: "Frontend", value: "http://127.0.0.1:3000" },
+    ],
+    seededData: [
+      "local issuer store reset",
+      "contracts deployed to local anvil",
+      "identity state registry seeded for default demo identities",
+    ],
+    docs: [
+      "docs/WHAT_IS_WEB3ID.md",
+      "docs/PLATFORM_BASELINE.md",
+      "docs/DEMO_MATRIX.md",
+      "docs/PLATFORM_CONSOLE.md",
+    ],
+  });
 
   await new Promise<void>((resolve) => {
     const shutdown = () => {

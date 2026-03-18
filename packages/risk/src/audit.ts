@@ -52,3 +52,16 @@ export function exportAuditBundle(records: AuditRecord[], identityId: Hex) {
     records: filtered,
   };
 }
+
+export function filterAuditByWindow(records: AuditRecord[], input: { from?: string; to?: string }) {
+  return records.filter((record) => {
+    const timestamp = Date.parse(record.timestamp);
+    if (input.from && timestamp < Date.parse(input.from)) {
+      return false;
+    }
+    if (input.to && timestamp > Date.parse(input.to)) {
+      return false;
+    }
+    return true;
+  });
+}

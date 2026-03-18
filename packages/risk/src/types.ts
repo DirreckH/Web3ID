@@ -1,5 +1,11 @@
 import type { Address, Hex } from "viem";
-import type { IdentityState, RiskSignal as BaseRiskSignal } from "../../state/src/index.js";
+import type {
+  ConsequenceRecord,
+  IdentityState,
+  RiskAssessment,
+  RiskSignal as BaseRiskSignal,
+  StateTransitionDecision,
+} from "../../state/src/index.js";
 
 export type BehaviorKind =
   | "native_transfer"
@@ -46,6 +52,8 @@ export type WarningDecisionLevel = "info" | "warn" | "high_warn";
 export type AccessDecisionLevel = "allow" | "restrict" | "deny";
 export type AiSuggestionKind = "risk_hint" | "pattern_flag" | "explanation";
 export type AiRecommendedAction = "watch" | "review" | "warn_only";
+export type PolicyDecisionKind = "access" | "warning";
+export type PolicyModePath = "DEFAULT_BEHAVIOR_MODE" | "COMPLIANCE_MODE" | "UNRESOLVED";
 
 export type BehaviorBinding = {
   bindingId: string;
@@ -256,6 +264,29 @@ export type WatchStatusSummary = {
   items: WatchSummaryItem[];
 };
 
+export type PositiveSummary = {
+  activePositiveSignals: RiskSignal[];
+  activeUnlocks: ConsequenceRecord[];
+  activeRestrictions: ConsequenceRecord[];
+  demoDefaults: boolean;
+};
+
+export type RecoveryProgressSummary = {
+  releaseFloorActive: boolean;
+  floorUntil: string | null;
+  cooldownRemainingDays: number;
+  activeRestrictions: string[];
+  activeUnlocks: string[];
+  helpfulPositiveSignals: string[];
+};
+
+export type PropagationSummary = {
+  reasonCodes: string[];
+  warnings: string[];
+  siblingOverlayState?: IdentityState;
+  rootEffectiveFloorState?: IdentityState;
+};
+
 export type RiskSummary = {
   identityId: Hex;
   rootIdentityId: Hex;
@@ -277,6 +308,9 @@ export type RiskSummary = {
   activeManualOverrides?: ActiveManualOverridesSummary;
   watchStatus?: WatchStatusSummary;
   reviewQueueCounts?: ReviewQueueCounts;
+  positiveSummary?: PositiveSummary;
+  recoveryProgress?: RecoveryProgressSummary;
+  propagation?: PropagationSummary;
 };
 
 export type CredentialDecisionReason = {
@@ -295,6 +329,24 @@ export type PolicyDecision = {
   riskReasons?: CredentialDecisionReason[];
   policyReasons?: CredentialDecisionReason[];
   auditRecordIds?: string[];
+};
+
+export type PolicyDecisionRecord = {
+  decisionId: string;
+  kind: PolicyDecisionKind;
+  identityId: Hex;
+  rootIdentityId: Hex;
+  subIdentityId?: Hex;
+  policyId: string;
+  policyLabel: string;
+  policyVersion: number;
+  modePath: PolicyModePath;
+  decision: AccessDecisionLevel | WarningDecisionLevel;
+  reasons: string[];
+  warnings: string[];
+  evidenceRefs: string[];
+  createdAt: string;
+  auditRecordIds: string[];
 };
 
 export type BindingChallenge = {
@@ -356,4 +408,86 @@ export type IdentityRiskRecord = {
   lastEvidenceBundleHash?: Hex;
   lastDecisionId?: string;
   updatedAt: string;
+};
+
+export type RiskListHistoryItem = {
+  itemId: string;
+  entryId?: string;
+  identityId: Hex;
+  rootIdentityId: Hex;
+  subIdentityId?: Hex;
+  listName: RiskListName;
+  state: IdentityState;
+  action: "auto_added" | "manually_added" | "removed" | "expired";
+  timestamp: string;
+  reasonCode: string;
+  actor: string;
+  evidenceRefs: string[];
+  removalReason?: string;
+  expiresAt?: string;
+};
+
+export type OperatorDashboardSnapshot = {
+  generatedAt: string;
+  counts: {
+    highRiskIdentities: number;
+    frozenIdentities: number;
+    pendingReviewItems: number;
+    pendingAiReviews: number;
+    activeWatchers: number;
+  };
+  recentStateEscalations: AuditRecord[];
+  recentHighRiskOrFrozen: AuditRecord[];
+  recentManualReleases: AuditRecord[];
+  recentWarningPolicies: PolicyDecisionRecord[];
+  recentPolicyDecisions: PolicyDecisionRecord[];
+};
+
+export type AuditExportBundle = {
+  generatedAt: string;
+  filters: {
+    identityId?: Hex;
+    rootIdentityId?: Hex;
+    subIdentityId?: Hex;
+    from?: string;
+    to?: string;
+    policyId?: string;
+    policyKind?: PolicyDecisionKind;
+  };
+  identities: Hex[];
+  signals: RiskSignal[];
+  assessments: RiskAssessment[];
+  decisions: StateTransitionDecision[];
+  consequences: ConsequenceRecord[];
+  propagation: Array<{ identityId: Hex; summary: PropagationSummary | null }>;
+  reentryRecovery: Array<{
+    identityId: Hex;
+    manualReleaseWindow?: ManualReleaseWindow | null;
+    recoveryProgress?: RecoveryProgressSummary;
+    positiveSummary?: PositiveSummary;
+  }>;
+  aiSuggestions: AiSuggestion[];
+  reviewQueue: ReviewQueueItem[];
+  policyDecisions: PolicyDecisionRecord[];
+  anchors: AnchorQueueEntry[];
+  auditRecords: AuditRecord[];
+  records: AuditRecord[];
+};
+
+export type PositiveSignalThresholds = {
+  long_term_good_standing: {
+    daysWithoutIncident: number;
+    minReputationScore: number;
+  };
+  repeated_governance_participation: {
+    lookbackDays: number;
+    minEvents: number;
+  };
+  trusted_protocol_usage: {
+    lookbackDays: number;
+    minEvents: number;
+  };
+  no_risk_incident_days: {
+    daysWithoutIncident: number;
+  };
 };
