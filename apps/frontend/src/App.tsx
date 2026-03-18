@@ -2,6 +2,8 @@ import { startTransition, useEffect, useMemo, useState } from "react";
 import { useAccount, useConnect, usePublicClient, useSignMessage, useSignTypedData, useWriteContract } from "wagmi";
 import {
   applyDemoSignal,
+  applyAnalyzerManualListAction,
+  applyAnalyzerManualRelease,
   buildAirdropClaimRequestHash,
   buildCommunityPostRequestHash,
   buildEnterpriseAuditRequestHash,
@@ -9,26 +11,36 @@ import {
   buildGovernanceVoteRequestHash,
   buildHolderAuthorizationPayload,
   buildRwaRequestHash,
+  confirmAnalyzerReview,
+  createAnalyzerBindingChallenge,
+  dismissAnalyzerReview,
   enterpriseTreasuryGateAbi,
   evaluatePolicyPreflight,
+  evaluateAccessPolicy,
+  evaluateWarningPolicy,
+  getAnalyzerWatchStatus,
   getIdentityCapabilities,
+  getAnalyzerRiskContext,
   getIdentityContext,
   getIdentityState,
   getPolicyDefinition,
   issuePhase2Credential,
+  manageAnalyzerWatch,
   mockRwaAssetAbi,
   policyIds,
   registerIdentityTree,
+  registerAnalyzerIdentityTree,
   resolveEffectiveMode,
   rwaGateAbi,
   socialGovernanceGateAbi,
+  submitAnalyzerBinding,
   supportsPolicy,
   verifyAccess,
   type AccessPayload,
   type PolicyPreflightResult,
 } from "@web3id/sdk";
 import { computeSubjectBinding, holderAuthorizationTypes, type CredentialBundle, type HolderAuthorizationPayload } from "@web3id/credential";
-import { buildSignInMessage, deriveRootIdentity, listDefaultSubIdentities, SubIdentityType } from "@web3id/identity";
+import { buildSignInMessage, createSameRootProof, createSubIdentityLinkProof, deriveRootIdentity, listDefaultSubIdentities, SubIdentityType } from "@web3id/identity";
 import { IdentityState } from "@web3id/state";
 import { pad, stringToHex } from "viem";
 
@@ -36,11 +48,14 @@ type Scenario = "rwa" | "enterprise" | "social";
 type EnterpriseAction = "payment" | "audit";
 type SocialAction = "vote" | "airdrop" | "post";
 type IdentityContextResponse = Awaited<ReturnType<typeof getIdentityContext>>;
+type RiskContextResponse = Awaited<ReturnType<typeof getAnalyzerRiskContext>>;
 type ProofWorkerResponse =
   | { ok: true; result: { proofPoints: [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint]; publicSignals: [bigint] } }
   | { ok: false; error: string };
 
 const ISSUER_API_URL = import.meta.env.VITE_ISSUER_API_URL ?? "http://127.0.0.1:4100";
+const ANALYZER_API_URL = import.meta.env.VITE_ANALYZER_API_URL ?? "http://127.0.0.1:4200";
+const POLICY_API_URL = import.meta.env.VITE_POLICY_API_URL ?? "http://127.0.0.1:4300";
 const DEFAULT_RWA_GATE = (import.meta.env.VITE_RWA_GATE_ADDRESS ?? "0x0000000000000000000000000000000000000000") as `0x${string}`;
 const DEFAULT_ENTERPRISE_GATE = (import.meta.env.VITE_ENTERPRISE_GATE_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as `0x${string}`;
@@ -64,6 +79,21 @@ function stateLabel(state: number | undefined) {
   }
 
   return IdentityState[state] ?? "INIT";
+}
+
+function buildSameRootAuthorizationMessage(input: {
+  challengeHash: `0x${string}`;
+  candidateAddress: `0x${string}`;
+  rootIdentityId: `0x${string}`;
+  authorizerAddress: `0x${string}`;
+}) {
+  return [
+    "Web3ID Same Root Authorization",
+    `challengeHash: ${input.challengeHash}`,
+    `candidateAddress: ${input.candidateAddress}`,
+    `rootIdentityId: ${input.rootIdentityId}`,
+    `authorizerAddress: ${input.authorizerAddress}`,
+  ].join("\n");
 }
 
 export function App() {
@@ -95,6 +125,25 @@ export function App() {
   const [policyPreflight, setPolicyPreflight] = useState<PolicyPreflightResult | null>(null);
   const [verifierPreflight, setVerifierPreflight] = useState<string>("Not checked");
   const [identityContext, setIdentityContext] = useState<IdentityContextResponse | null>(null);
+  const [riskContext, setRiskContext] = useState<RiskContextResponse | null>(null);
+  const [accessDecision, setAccessDecision] = useState<any>(null);
+  const [warningDecision, setWarningDecision] = useState<any>(null);
+  const [watchStatus, setWatchStatus] = useState<any>(null);
+  const [phase3Actor, setPhase3Actor] = useState("risk-ops");
+  const [reviewNote, setReviewNote] = useState("Reviewed by risk ops");
+  const [reviewReasonCode, setReviewReasonCode] = useState("AI_CONFIRMED_SIGNAL");
+  const [reviewRequestedState, setReviewRequestedState] = useState<number>(IdentityState.RESTRICTED);
+  const [manualReleaseReasonCode, setManualReleaseReasonCode] = useState("MANUAL_RELEASE_REVIEWED");
+  const [manualReleaseEvidence, setManualReleaseEvidence] = useState("manual:review:frontend");
+  const [manualReleaseNote, setManualReleaseNote] = useState("Manual release approved after review.");
+  const [manualListName, setManualListName] = useState<"watchlist" | "restricted_list" | "blacklist_or_frozen_list">("watchlist");
+  const [manualListAction, setManualListAction] = useState<"add" | "remove">("add");
+  const [manualListReasonCode, setManualListReasonCode] = useState("MANUAL_LIST_OVERRIDE");
+  const [manualListEvidence, setManualListEvidence] = useState("manual:list:frontend");
+  const [manualListExpiresAt, setManualListExpiresAt] = useState("");
+  const [watchRecentBlocks, setWatchRecentBlocks] = useState("16");
+  const [watchPollIntervalMs, setWatchPollIntervalMs] = useState("15000");
+  const [watchScope, setWatchScope] = useState<"identity" | "root">("identity");
 
   const { address, chainId } = useAccount();
   const { connect, connectors, isPending: isConnecting } = useConnect();
@@ -164,6 +213,10 @@ export function App() {
     setPayload(null);
     setPolicyPreflight(null);
     setVerifierPreflight("Not checked");
+    setRiskContext(null);
+    setAccessDecision(null);
+    setWarningDecision(null);
+    setWatchStatus(null);
   }, [scenario, subIdentities]);
 
   useEffect(() => {
@@ -218,6 +271,7 @@ export function App() {
       return;
     }
     void refreshIdentityContext(selectedSubIdentity.identityId);
+    void refreshRiskContext(selectedSubIdentity.identityId);
   }, [identityReady, selectedSubIdentity, status]);
 
   async function refreshIdentityContext(identityId: `0x${string}`) {
@@ -227,6 +281,47 @@ export function App() {
     } catch {
       setIdentityContext(null);
     }
+  }
+
+  async function reevaluateAccessDecision(identityId: `0x${string}`, nextPayload: AccessPayload | null = payload) {
+    if (!nextPayload) {
+      setAccessDecision(null);
+      return;
+    }
+    try {
+      const policyDecision = await evaluateAccessPolicy(POLICY_API_URL, {
+        identityId,
+        policyId: activePolicyId,
+        policyVersion: activePolicy.policyVersion,
+        payload: nextPayload,
+        credentialBundles: currentBundles,
+        verifierAddress,
+      });
+      setAccessDecision(policyDecision);
+    } catch {
+      setAccessDecision(null);
+    }
+  }
+
+  async function refreshRiskContext(identityId: `0x${string}`) {
+    const [riskResult, watchResult, warningResult] = await Promise.allSettled([
+      getAnalyzerRiskContext(ANALYZER_API_URL, identityId),
+      getAnalyzerWatchStatus(ANALYZER_API_URL, { identityId }),
+      evaluateWarningPolicy(POLICY_API_URL, {
+        identityId,
+        policyId: "COUNTERPARTY_WARNING_V1",
+        policyVersion: activePolicy.policyVersion,
+      }),
+    ]);
+
+    setRiskContext(riskResult.status === "fulfilled" ? riskResult.value : null);
+    setWatchStatus(watchResult.status === "fulfilled" ? watchResult.value : null);
+    setWarningDecision(warningResult.status === "fulfilled" ? warningResult.value : null);
+  }
+
+  async function refreshPhase3State(identityId: `0x${string}`, nextPayload: AccessPayload | null = payload) {
+    await refreshRiskContext(identityId);
+    await reevaluateAccessDecision(identityId, nextPayload);
   }
 
   async function handleDeriveIdentity() {
@@ -242,11 +337,90 @@ export function App() {
       rootIdentity,
       subIdentities,
     });
+    await registerAnalyzerIdentityTree(ANALYZER_API_URL, {
+      rootIdentity,
+      subIdentities,
+    });
     setIdentityReady(true);
     if (selectedSubIdentity) {
       await refreshIdentityContext(selectedSubIdentity.identityId);
+      await refreshPhase3State(selectedSubIdentity.identityId, null);
     }
     setStatus("Identity tree ready.");
+  }
+
+  async function handleBindRootController() {
+    if (!rootIdentity || !address) {
+      return;
+    }
+    setStatus("Creating root-controller binding challenge...");
+    const challenge = await createAnalyzerBindingChallenge(ANALYZER_API_URL, {
+      bindingType: "root_controller",
+      candidateAddress: address,
+      rootIdentityId: rootIdentity.identityId,
+    });
+    const candidateSignature = await signMessageAsync({ message: challenge.challengeMessage });
+    await submitAnalyzerBinding(ANALYZER_API_URL, {
+      challengeId: challenge.challengeId,
+      candidateSignature,
+      metadata: { source: "frontend-root-controller" },
+    });
+    await refreshPhase3State(selectedSubIdentity?.identityId ?? rootIdentity.identityId, payload);
+    setStatus("Root-controller binding recorded.");
+  }
+
+  async function handleBindSelectedSubIdentity() {
+    if (!rootIdentity || !selectedSubIdentity || !address) {
+      return;
+    }
+    setStatus("Creating sub-identity binding challenge...");
+    const challenge = await createAnalyzerBindingChallenge(ANALYZER_API_URL, {
+      bindingType: "sub_identity_link",
+      candidateAddress: address,
+      rootIdentityId: rootIdentity.identityId,
+      subIdentityId: selectedSubIdentity.identityId,
+    });
+    const candidateSignature = await signMessageAsync({ message: challenge.challengeMessage });
+    await submitAnalyzerBinding(ANALYZER_API_URL, {
+      challengeId: challenge.challengeId,
+      candidateSignature,
+      linkProof: createSubIdentityLinkProof(rootIdentity, selectedSubIdentity),
+      metadata: { source: "frontend-sub-identity-link" },
+    });
+    await refreshPhase3State(selectedSubIdentity.identityId, payload);
+    setStatus("Sub-identity binding recorded.");
+  }
+
+  async function handleBindSameRootExtension() {
+    if (!rootIdentity || !address || subIdentities.length < 2) {
+      return;
+    }
+    setStatus("Creating same-root extension challenge...");
+    const challenge = await createAnalyzerBindingChallenge(ANALYZER_API_URL, {
+      bindingType: "same_root_extension",
+      candidateAddress: address,
+      rootIdentityId: rootIdentity.identityId,
+    });
+    const candidateSignature = await signMessageAsync({ message: challenge.challengeMessage });
+    const sameRootProof = createSameRootProof(rootIdentity, subIdentities.slice(0, 2));
+    const authorizerSignature = await signMessageAsync({
+      message: buildSameRootAuthorizationMessage({
+        challengeHash: challenge.challengeHash,
+        candidateAddress: address,
+        rootIdentityId: rootIdentity.identityId,
+        authorizerAddress: address,
+      }),
+    });
+    await submitAnalyzerBinding(ANALYZER_API_URL, {
+      challengeId: challenge.challengeId,
+      candidateSignature,
+      sameRootProof,
+      authorizerAddress: address,
+      authorizerSignature,
+      metadata: { source: "frontend-same-root-extension" },
+    });
+    await refreshPhase3State(selectedSubIdentity?.identityId ?? rootIdentity.identityId, payload);
+    setStatus("Same-root extension binding recorded.");
   }
 
   async function handleIssueCredentials() {
@@ -345,9 +519,7 @@ export function App() {
       },
       types: holderAuthorizationTypes,
       primaryType: "HolderAuthorization",
-      message: {
-        ...holderPayload,
-      },
+      message: holderPayload as any,
     });
 
     setStatus("Generating holder-binding proof...");
@@ -412,6 +584,20 @@ export function App() {
     } else {
       setVerifierPreflight("Not checked");
     }
+
+    try {
+      const policyDecision = await evaluateAccessPolicy(POLICY_API_URL, {
+        identityId: selectedSubIdentity.identityId,
+        policyId: activePolicyId,
+        policyVersion: activePolicy.policyVersion,
+        payload: nextPayload,
+        credentialBundles: currentBundles,
+        verifierAddress,
+      });
+      setAccessDecision(policyDecision);
+    } catch {
+      setAccessDecision(null);
+    }
   }
 
   async function handleSubmitRwa() {
@@ -424,7 +610,7 @@ export function App() {
       abi: rwaGateAbi,
       address: rwaGateAddress,
       functionName: "buyRwa",
-      args: [payload, BigInt(rwaAmount)],
+      args: [payload as any, BigInt(rwaAmount)],
     });
     setStatus("RWA transaction submitted.");
   }
@@ -439,7 +625,7 @@ export function App() {
       abi: enterpriseTreasuryGateAbi,
       address: enterpriseGateAddress,
       functionName: "submitPayment",
-      args: [payload, beneficiary as `0x${string}`, BigInt(paymentAmount), textToBytes32(paymentRef)],
+      args: [payload as any, beneficiary as `0x${string}`, BigInt(paymentAmount), textToBytes32(paymentRef)],
     });
     setStatus("Enterprise payment submitted.");
   }
@@ -454,7 +640,7 @@ export function App() {
       abi: enterpriseTreasuryGateAbi,
       address: enterpriseGateAddress,
       functionName: "exportAuditRecord",
-      args: [payload, textToBytes32(auditRef)],
+      args: [payload as any, textToBytes32(auditRef)],
     });
     setStatus("Audit export submitted.");
   }
@@ -470,21 +656,21 @@ export function App() {
         abi: socialGovernanceGateAbi,
         address: socialGateAddress,
         functionName: "vote",
-        args: [payload, textToBytes32(proposalId)],
+        args: [payload as any, textToBytes32(proposalId)],
       });
     } else if (socialAction === "airdrop") {
       await writeContractAsync({
         abi: socialGovernanceGateAbi,
         address: socialGateAddress,
         functionName: "claimAirdrop",
-        args: [payload, textToBytes32(airdropRoundId)],
+        args: [payload as any, textToBytes32(airdropRoundId)],
       });
     } else {
       await writeContractAsync({
         abi: socialGovernanceGateAbi,
         address: socialGateAddress,
         functionName: "createPost",
-        args: [payload, textToBytes32(postRef)],
+        args: [payload as any, textToBytes32(postRef)],
       });
     }
     setStatus("Social governance action submitted.");
@@ -501,9 +687,95 @@ export function App() {
       signalKey,
     });
     await refreshIdentityContext(selectedSubIdentity.identityId);
+    await refreshPhase3State(selectedSubIdentity.identityId, payload);
     setPolicyPreflight(null);
     setVerifierPreflight("Not checked");
     setStatus(`Signal applied: ${signalKey}`);
+  }
+
+  async function handleConfirmReview(reviewItemId: string) {
+    if (!selectedSubIdentity) {
+      return;
+    }
+    setStatus(`Confirming review item ${reviewItemId.slice(0, 10)}...`);
+    await confirmAnalyzerReview(ANALYZER_API_URL, {
+      reviewItemId,
+      actor: phase3Actor,
+      requestedState: reviewRequestedState as IdentityState,
+      reasonCode: reviewReasonCode,
+      note: reviewNote,
+    });
+    await refreshPhase3State(selectedSubIdentity.identityId, payload);
+    setStatus("Review item confirmed.");
+  }
+
+  async function handleDismissReview(reviewItemId: string) {
+    if (!selectedSubIdentity) {
+      return;
+    }
+    setStatus(`Dismissing review item ${reviewItemId.slice(0, 10)}...`);
+    await dismissAnalyzerReview(ANALYZER_API_URL, {
+      reviewItemId,
+      actor: phase3Actor,
+      reason: reviewNote,
+    });
+    await refreshPhase3State(selectedSubIdentity.identityId, payload);
+    setStatus("Review item dismissed.");
+  }
+
+  async function handleManualRelease() {
+    if (!selectedSubIdentity) {
+      return;
+    }
+    setStatus("Applying manual release...");
+    await applyAnalyzerManualRelease(ANALYZER_API_URL, {
+      identityId: selectedSubIdentity.identityId,
+      actor: phase3Actor,
+      reasonCode: manualReleaseReasonCode,
+      evidenceRefs: manualReleaseEvidence.split(",").map((value) => value.trim()).filter(Boolean),
+      note: manualReleaseNote,
+    });
+    await refreshPhase3State(selectedSubIdentity.identityId, payload);
+    setStatus("Manual release applied.");
+  }
+
+  async function handleManualListUpdate() {
+    if (!selectedSubIdentity || !rootIdentity) {
+      return;
+    }
+    setStatus("Applying manual list override...");
+    await applyAnalyzerManualListAction(ANALYZER_API_URL, {
+      identityId: selectedSubIdentity.identityId,
+      rootIdentityId: rootIdentity.identityId,
+      subIdentityId: selectedSubIdentity.identityId,
+      listName: manualListName,
+      action: manualListAction,
+      actor: phase3Actor,
+      reasonCode: manualListReasonCode,
+      evidenceRefs: manualListEvidence.split(",").map((value) => value.trim()).filter(Boolean),
+      expiresAt: manualListExpiresAt || undefined,
+    });
+    await refreshPhase3State(selectedSubIdentity.identityId, payload);
+    setStatus("Manual list override applied.");
+  }
+
+  async function handleWatch(action: "refresh" | "start" | "stop") {
+    if (!rootIdentity) {
+      return;
+    }
+    const identityId = watchScope === "identity" ? selectedSubIdentity?.identityId : undefined;
+    setStatus(`${action === "refresh" ? "Refreshing" : action === "start" ? "Starting" : "Stopping"} watcher...`);
+    await manageAnalyzerWatch(ANALYZER_API_URL, {
+      action,
+      rootIdentityId: rootIdentity.identityId,
+      identityId,
+      recentBlocks: Number(watchRecentBlocks),
+      pollIntervalMs: Number(watchPollIntervalMs),
+    });
+    if (selectedSubIdentity) {
+      await refreshPhase3State(selectedSubIdentity.identityId, payload);
+    }
+    setStatus(`Watcher ${action} completed.`);
   }
 
   return (
@@ -814,6 +1086,292 @@ export function App() {
           ) : (
             <p>Register the identity tree to see state history, consequences, and recovery requirements.</p>
           )}
+        </article>
+
+        <article className="panel">
+          <h2>9. Phase3 Risk View</h2>
+          {riskContext?.summary ? (
+            <>
+              <div className="meta-grid">
+                <div>
+                  <strong>Stored State</strong>
+                  <p>{stateLabel(riskContext.summary.storedState)}</p>
+                </div>
+                <div>
+                  <strong>Effective State</strong>
+                  <p>{stateLabel(riskContext.summary.effectiveState)}</p>
+                </div>
+                <div>
+                  <strong>Anchored State</strong>
+                  <p>{stateLabel(riskContext.summary.anchoredState)}</p>
+                </div>
+                <div>
+                  <strong>Risk Score</strong>
+                  <p>{riskContext.summary.riskScore}</p>
+                </div>
+              </div>
+              <div className="meta-grid">
+                <div>
+                  <strong>Bindings</strong>
+                  <p>{riskContext.bindings.length}</p>
+                </div>
+                <div>
+                  <strong>Review Queue</strong>
+                  <p>{riskContext.summary.reviewQueueCounts?.pending ?? riskContext.reviewQueue.length}</p>
+                </div>
+                <div>
+                  <strong>Anchors</strong>
+                  <p>{riskContext.anchors.length}</p>
+                </div>
+                <div>
+                  <strong>Watchers</strong>
+                  <p>{watchStatus?.items?.length ?? riskContext.summary.watchStatus?.items?.length ?? 0}</p>
+                </div>
+              </div>
+              <div className="meta-grid">
+                <div>
+                  <strong>Manual Release Floor</strong>
+                  <p>{riskContext.summary.manualReleaseWindow?.floorState !== undefined ? stateLabel(riskContext.summary.manualReleaseWindow.floorState) : "None"}</p>
+                </div>
+                <div>
+                  <strong>Floor Until</strong>
+                  <p>{riskContext.summary.manualReleaseWindow?.floorUntil ?? "N/A"}</p>
+                </div>
+                <div>
+                  <strong>Pending Reviews</strong>
+                  <p>{riskContext.summary.reviewQueueCounts?.pending ?? 0}</p>
+                </div>
+                <div>
+                  <strong>Expired Reviews</strong>
+                  <p>{riskContext.summary.reviewQueueCounts?.expired ?? 0}</p>
+                </div>
+              </div>
+              <div className="matrix-grid">
+                <div className="info-card">
+                  <h3>Propagation Matrix</h3>
+                  <table className="phase-table">
+                    <thead>
+                      <tr>
+                        <th>Route</th>
+                        <th>Rule</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>sub -&gt; root OBSERVED</td>
+                        <td>14 days / 2 sub identities / same rule family</td>
+                      </tr>
+                      <tr>
+                        <td>sub -&gt; root RESTRICTED</td>
+                        <td>root_sensitive + canEscalateToRoot, or 30 days / 2 restricted or high-risk subs</td>
+                      </tr>
+                      <tr>
+                        <td>sub -&gt; root HIGH_RISK</td>
+                        <td>direct root evidence, root_sensitive escalation, or 30 days / 2 high-risk subs</td>
+                      </tr>
+                      <tr>
+                        <td>root -&gt; sub overlay</td>
+                        <td>effective-state floors only; stored child state stays local</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="info-card">
+                  <h3>Re-entry Cards</h3>
+                  <div className="reentry-card">
+                    <strong>OBSERVED</strong>
+                    <p>7 clean days or one positive signal to return to NORMAL.</p>
+                  </div>
+                  <div className="reentry-card">
+                    <strong>RESTRICTED</strong>
+                    <p>14 clean days, score below threshold, no pending review.</p>
+                  </div>
+                  <div className="reentry-card">
+                    <strong>HIGH_RISK</strong>
+                    <p>30 clean days, two positive signals, no critical hits or open review.</p>
+                  </div>
+                  <div className="reentry-card">
+                    <strong>FROZEN</strong>
+                    <p>Manual release only, then a 30-day HIGH_RISK floor.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="matrix-grid">
+                <div className="info-card">
+                  <h3>Binding Console</h3>
+                  <p className="hint">Challenge, signature, and evidence-linked bindings all run through the analyzer SDK path.</p>
+                  <div className="actions">
+                    <button disabled={!identityReady || !address} onClick={() => void handleBindRootController()}>
+                      Create Root Binding
+                    </button>
+                    <button disabled={!identityReady || !selectedSubIdentity || !address} onClick={() => void handleBindSelectedSubIdentity()}>
+                      Create Sub Binding
+                    </button>
+                    <button disabled={!identityReady || !address} onClick={() => void handleBindSameRootExtension()}>
+                      Create Same Root Extension
+                    </button>
+                  </div>
+                  <pre>{JSON.stringify(riskContext.bindings, null, 2)}</pre>
+                </div>
+                <div className="info-card">
+                  <h3>Watch Console</h3>
+                  <label>
+                    Watch Scope
+                    <select value={watchScope} onChange={(event) => setWatchScope(event.target.value as "identity" | "root")}>
+                      <option value="identity">Selected Identity</option>
+                      <option value="root">Root Overlay</option>
+                    </select>
+                  </label>
+                  <label>
+                    Recent Blocks
+                    <input value={watchRecentBlocks} onChange={(event) => setWatchRecentBlocks(event.target.value)} />
+                  </label>
+                  <label>
+                    Poll Interval (ms)
+                    <input value={watchPollIntervalMs} onChange={(event) => setWatchPollIntervalMs(event.target.value)} />
+                  </label>
+                  <div className="actions">
+                    <button disabled={!identityReady} onClick={() => void handleWatch("start")}>
+                      Start Watch
+                    </button>
+                    <button disabled={!identityReady} onClick={() => void handleWatch("refresh")}>
+                      Refresh Watch
+                    </button>
+                    <button disabled={!identityReady} onClick={() => void handleWatch("stop")}>
+                      Stop Watch
+                    </button>
+                  </div>
+                  <pre>{JSON.stringify(watchStatus ?? riskContext.summary.watchStatus ?? { items: [] }, null, 2)}</pre>
+                </div>
+              </div>
+              <pre>{JSON.stringify(riskContext.summary, null, 2)}</pre>
+              <pre>{JSON.stringify(riskContext.audit?.slice(-5) ?? [], null, 2)}</pre>
+            </>
+          ) : (
+            <p>Start the analyzer-service and register/bind identities to view Phase3 stored/effective risk state.</p>
+          )}
+        </article>
+
+        <article className="panel">
+          <h2>10. Policy & Review Queue</h2>
+          <div className="meta-grid">
+            <div>
+              <strong>Access Decision</strong>
+              <p>{accessDecision?.decision ?? "Not evaluated"}</p>
+            </div>
+            <div>
+              <strong>Warning Decision</strong>
+              <p>{warningDecision?.decision ?? "Not evaluated"}</p>
+            </div>
+            <div>
+              <strong>Credential Reasons</strong>
+              <p>{accessDecision?.credentialReasons?.length ?? 0}</p>
+            </div>
+            <div>
+              <strong>Risk Reasons</strong>
+              <p>{accessDecision?.riskReasons?.length ?? 0}</p>
+            </div>
+          </div>
+          <div className="matrix-grid">
+            <div className="info-card">
+              <h3>Review Queue Console</h3>
+              <label>
+                Actor
+                <input value={phase3Actor} onChange={(event) => setPhase3Actor(event.target.value)} />
+              </label>
+              <label>
+                Requested State
+                <select value={String(reviewRequestedState)} onChange={(event) => setReviewRequestedState(Number(event.target.value))}>
+                  <option value={String(IdentityState.OBSERVED)}>OBSERVED</option>
+                  <option value={String(IdentityState.RESTRICTED)}>RESTRICTED</option>
+                  <option value={String(IdentityState.HIGH_RISK)}>HIGH_RISK</option>
+                  <option value={String(IdentityState.FROZEN)}>FROZEN</option>
+                </select>
+              </label>
+              <label>
+                Review Reason Code
+                <input value={reviewReasonCode} onChange={(event) => setReviewReasonCode(event.target.value)} />
+              </label>
+              <label>
+                Review Note
+                <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
+              </label>
+              {riskContext?.reviewQueue?.length ? (
+                <div className="review-list">
+                  {riskContext.reviewQueue.map((item: any) => (
+                    <div className="review-item" key={item.reviewItemId}>
+                      <strong>{item.status}</strong>
+                      <p>{item.reviewItemId}</p>
+                      <div className="actions">
+                        <button disabled={item.status !== "PENDING_REVIEW"} onClick={() => void handleConfirmReview(item.reviewItemId)}>
+                          Confirm Review
+                        </button>
+                        <button disabled={item.status !== "PENDING_REVIEW"} onClick={() => void handleDismissReview(item.reviewItemId)}>
+                          Dismiss Review
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="hint">AI outputs are limited to `watch`, `review`, or `warn_only`. Review items stay off-chain until a human confirms them.</p>
+              )}
+            </div>
+            <div className="info-card">
+              <h3>Manual Controls</h3>
+              <label>
+                Manual Release Reason
+                <input value={manualReleaseReasonCode} onChange={(event) => setManualReleaseReasonCode(event.target.value)} />
+              </label>
+              <label>
+                Manual Release Evidence
+                <input value={manualReleaseEvidence} onChange={(event) => setManualReleaseEvidence(event.target.value)} />
+              </label>
+              <label>
+                Manual Release Note
+                <input value={manualReleaseNote} onChange={(event) => setManualReleaseNote(event.target.value)} />
+              </label>
+              <button disabled={!selectedSubIdentity} onClick={() => void handleManualRelease()}>
+                Apply Manual Release
+              </button>
+              <label>
+                Manual List Name
+                <select value={manualListName} onChange={(event) => setManualListName(event.target.value as "watchlist" | "restricted_list" | "blacklist_or_frozen_list")}>
+                  <option value="watchlist">watchlist</option>
+                  <option value="restricted_list">restricted_list</option>
+                  <option value="blacklist_or_frozen_list">blacklist_or_frozen_list</option>
+                </select>
+              </label>
+              <label>
+                Manual List Action
+                <select value={manualListAction} onChange={(event) => setManualListAction(event.target.value as "add" | "remove")}>
+                  <option value="add">add</option>
+                  <option value="remove">remove</option>
+                </select>
+              </label>
+              <label>
+                Manual List Reason
+                <input value={manualListReasonCode} onChange={(event) => setManualListReasonCode(event.target.value)} />
+              </label>
+              <label>
+                Manual List Evidence
+                <input value={manualListEvidence} onChange={(event) => setManualListEvidence(event.target.value)} />
+              </label>
+              <label>
+                List Expiry (ISO, optional)
+                <input value={manualListExpiresAt} onChange={(event) => setManualListExpiresAt(event.target.value)} placeholder="2026-03-30T00:00:00.000Z" />
+              </label>
+              <button disabled={!selectedSubIdentity} onClick={() => void handleManualListUpdate()}>
+                Apply Manual List Override
+              </button>
+            </div>
+          </div>
+          {accessDecision ? (
+            <pre>{JSON.stringify(accessDecision, null, 2)}</pre>
+          ) : (
+            <p>Build a payload to evaluate the full AccessPolicy path: credential/proof validity + risk state + policy version.</p>
+          )}
+          {warningDecision ? <pre>{JSON.stringify(warningDecision, null, 2)}</pre> : null}
         </article>
       </section>
 

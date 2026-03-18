@@ -36,8 +36,23 @@ contract RegistriesTest is Test {
         stateRegistry.setState(identityId, IdentityState.OBSERVED, keccak256("reason"), 2);
         assertEq(uint8(stateRegistry.getState(identityId)), uint8(IdentityState.OBSERVED));
 
+        stateRegistry.setStateWithAnchorHashes(
+            identityId,
+            IdentityState.RESTRICTED,
+            keccak256("phase3"),
+            3,
+            keccak256("decision"),
+            keccak256("evidence"),
+            keccak256("stateHash"),
+            keccak256("bundleHash")
+        );
+        (,, uint256 version,, bytes32 stateHash, bytes32 evidenceBundleHash) = stateRegistry.getStateSnapshotV2(identityId);
+        assertEq(version, 3);
+        assertEq(stateHash, keccak256("stateHash"));
+        assertEq(evidenceBundleHash, keccak256("bundleHash"));
+
         vm.expectRevert();
-        stateRegistry.setState(identityId, IdentityState.INIT, keccak256("rollback"), 3);
+        stateRegistry.setState(identityId, IdentityState.INIT, keccak256("rollback"), 4);
     }
 
     function testPolicyAndRiskSourceRegistries() external {

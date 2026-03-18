@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "accessPolicies": {
+    "RWA_BUY_V2": {
+      "requiresProof": true,
+      "requiresCredential": true,
+      "restrictStates": ["RESTRICTED"],
+      "denyStates": ["HIGH_RISK", "FROZEN"]
+    },
+    "ENTITY_PAYMENT_V1": {
+      "requiresProof": true,
+      "requiresCredential": true,
+      "restrictStates": ["HIGH_RISK"],
+      "denyStates": ["FROZEN"]
+    },
+    "ENTITY_AUDIT_V1": {
+      "requiresProof": true,
+      "requiresCredential": true,
+      "restrictStates": [],
+      "denyStates": ["FROZEN"]
+    }
+  },
+  "warningPolicies": {
+    "COUNTERPARTY_WARNING_V1": {
+      "infoStates": ["NORMAL"],
+      "warnStates": ["OBSERVED", "RESTRICTED"],
+      "highWarnStates": ["HIGH_RISK", "FROZEN"]
+    },
+    "GOVERNANCE_WARNING_V1": {
+      "infoStates": ["NORMAL"],
+      "warnStates": ["OBSERVED", "RESTRICTED"],
+      "highWarnStates": ["HIGH_RISK", "FROZEN"]
+    }
+  }
+}

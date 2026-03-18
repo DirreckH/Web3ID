@@ -256,6 +256,20 @@ export const identityStateRegistryAbi = [
     inputs: [{ name: "identityId", type: "bytes32" }],
     outputs: [{ type: "bytes32" }, { type: "bytes32" }],
   },
+  {
+    type: "function",
+    name: "getStateSnapshotV2",
+    stateMutability: "view",
+    inputs: [{ name: "identityId", type: "bytes32" }],
+    outputs: [{ type: "uint8" }, { type: "bytes32" }, { type: "uint256" }, { type: "uint256" }, { type: "bytes32" }, { type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "getAuditAnchorsV2",
+    stateMutability: "view",
+    inputs: [{ name: "identityId", type: "bytes32" }],
+    outputs: [{ type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }],
+  },
 ] as const;
 
 export const policyRegistryAbi = [
@@ -479,6 +493,150 @@ export async function getIdentityContext(apiUrl: string, identityId: Hex) {
   return response.json();
 }
 
+async function postJson(apiUrl: string, path: string, body: unknown, errorLabel: string) {
+  const response = await fetch(`${apiUrl}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body, (_key, value) => (typeof value === "bigint" ? value.toString() : value)),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`${errorLabel} responded with ${response.status}${errorText ? `: ${errorText}` : ""}`);
+  }
+  return response.json();
+}
+
+export async function getAnalyzerRiskContext(apiUrl: string, identityId: Hex) {
+  const response = await fetch(`${apiUrl}/identities/${identityId}/risk-context`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getAnalyzerEvents(apiUrl: string, identityId: Hex) {
+  const response = await fetch(`${apiUrl}/identities/${identityId}/events`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function registerAnalyzerIdentityTree(apiUrl: string, input: { rootIdentity: RootIdentity; subIdentities: SubIdentity[] }) {
+  return postJson(apiUrl, "/identities/register-tree", input, "Analyzer service");
+}
+
+export async function createAnalyzerBindingChallenge(apiUrl: string, input: {
+  bindingType: "root_controller" | "sub_identity_link" | "same_root_extension";
+  candidateAddress: Address;
+  rootIdentityId: Hex;
+  subIdentityId?: Hex;
+}) {
+  return postJson(apiUrl, "/bindings/challenge", input, "Analyzer service");
+}
+
+export async function submitAnalyzerBinding(apiUrl: string, input: {
+  challengeId: string;
+  candidateSignature: Hex;
+  linkProof?: unknown;
+  sameRootProof?: unknown;
+  authorizerAddress?: Address;
+  authorizerSignature?: Hex;
+  metadata?: Record<string, unknown>;
+}) {
+  return postJson(apiUrl, "/bindings", input, "Analyzer service");
+}
+
+export async function manageAnalyzerWatch(apiUrl: string, input: {
+  action?: "refresh" | "start" | "stop";
+  rootIdentityId?: Hex;
+  identityId?: Hex;
+  recentBlocks?: number;
+  pollIntervalMs?: number;
+}) {
+  return postJson(apiUrl, "/scan/watch", input, "Analyzer service");
+}
+
+export async function getAnalyzerWatchStatus(apiUrl: string, input: { rootIdentityId?: Hex; identityId?: Hex } = {}) {
+  const query = new URLSearchParams();
+  if (input.rootIdentityId) query.set("rootIdentityId", input.rootIdentityId);
+  if (input.identityId) query.set("identityId", input.identityId);
+  const response = await fetch(`${apiUrl}/scan/watch/status${query.size ? `?${query.toString()}` : ""}`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function confirmAnalyzerReview(apiUrl: string, input: {
+  reviewItemId: string;
+  actor: string;
+  requestedState?: IdentityState;
+  reasonCode?: string;
+  note?: string;
+}) {
+  return postJson(apiUrl, `/review-queue/${input.reviewItemId}/confirm`, {
+    actor: input.actor,
+    requestedState: input.requestedState,
+    reasonCode: input.reasonCode,
+    note: input.note,
+  }, "Analyzer service");
+}
+
+export async function dismissAnalyzerReview(apiUrl: string, input: {
+  reviewItemId: string;
+  actor: string;
+  reason?: string;
+}) {
+  return postJson(apiUrl, `/review-queue/${input.reviewItemId}/dismiss`, {
+    actor: input.actor,
+    reason: input.reason,
+  }, "Analyzer service");
+}
+
+export async function applyAnalyzerManualRelease(apiUrl: string, input: {
+  identityId: Hex;
+  actor: string;
+  reasonCode: string;
+  evidenceRefs: string[];
+  note?: string;
+}) {
+  return postJson(apiUrl, "/manual-release", input, "Analyzer service");
+}
+
+export async function applyAnalyzerManualListAction(apiUrl: string, input: {
+  identityId: Hex;
+  rootIdentityId: Hex;
+  subIdentityId?: Hex;
+  listName: "watchlist" | "restricted_list" | "blacklist_or_frozen_list";
+  actor: string;
+  action: "add" | "remove";
+  reasonCode: string;
+  evidenceRefs: string[];
+  expiresAt?: string;
+}) {
+  return postJson(apiUrl, "/lists/manual", input, "Analyzer service");
+}
+
+export async function evaluateAccessPolicy(apiUrl: string, input: {
+  identityId: Hex;
+  policyId: Hex;
+  policyVersion: number;
+  payload?: AccessPayload | null;
+  credentialBundles?: CredentialBundle[];
+  verifierAddress?: Address;
+}) {
+  return postJson(apiUrl, "/policies/access/evaluate", input, "Policy API");
+}
+
+export async function evaluateWarningPolicy(apiUrl: string, input: {
+  identityId: Hex;
+  policyId: string;
+  policyVersion: number;
+}) {
+  return postJson(apiUrl, "/policies/warning/evaluate", input, "Policy API");
+}
+
 export async function registerIdentityTree(apiUrl: string, input: { rootIdentity: RootIdentity; subIdentities: SubIdentity[] }) {
   const response = await fetch(`${apiUrl}/identities/register-tree`, {
     method: "POST",
@@ -643,6 +801,24 @@ export async function getIdentityState(publicClient: PublicClient, registryAddre
     args: [identityId],
   });
   return Number(state) as IdentityState;
+}
+
+export async function getIdentityStateSnapshotV2(publicClient: PublicClient, registryAddress: Address, identityId: Hex) {
+  return publicClient.readContract({
+    abi: identityStateRegistryAbi as any,
+    address: registryAddress,
+    functionName: "getStateSnapshotV2",
+    args: [identityId],
+  });
+}
+
+export async function getIdentityAuditAnchorsV2(publicClient: PublicClient, registryAddress: Address, identityId: Hex) {
+  return publicClient.readContract({
+    abi: identityStateRegistryAbi as any,
+    address: registryAddress,
+    functionName: "getAuditAnchorsV2",
+    args: [identityId],
+  });
 }
 
 export const policyIds = POLICY_IDS;

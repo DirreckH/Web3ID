@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "thresholds": {
+    "observed": 15,
+    "restricted": 40,
+    "highRisk": 75,
+    "frozen": 100
+  },
+  "negativeDecay": {
+    "startDays": 7,
+    "everyDays": 7,
+    "percent": 10
+  },
+  "positiveDecay": {
+    "windowDays": 90,
+    "everyDays": 30,
+    "percent": 5
+  },
+  "rules": {
+    "mixer_interaction": {
+      "riskDelta": 80,
+      "reputationDelta": -10,
+      "confidenceDelta": 20,
+      "targetState": "HIGH_RISK",
+      "ruleFamily": "mixer",
+      "propagationMode": "local_only",
+      "rootSensitive": true,
+      "hardRule": true,
+      "sticky": true
+    },
+    "sanctioned_interaction": {
+      "riskDelta": 100,
+      "reputationDelta": -25,
+      "confidenceDelta": 30,
+      "targetState": "FROZEN",
+      "ruleFamily": "sanctioned",
+      "propagationMode": "root_sensitive",
+      "rootSensitive": true,
+      "hardRule": true,
+      "sticky": true
+    },
+    "high_risk_counterparty": {
+      "riskDelta": 55,
+      "reputationDelta": -15,
+      "confidenceDelta": 15,
+      "targetState": "RESTRICTED",
+      "ruleFamily": "counterparty",
+      "propagationMode": "local_only",
+      "rootSensitive": true,
+      "hardRule": false,
+      "sticky": false
+    },
+    "trusted_defi_interaction": {
+      "riskDelta": -5,
+      "reputationDelta": 18,
+      "confidenceDelta": 10,
+      "targetState": "NORMAL",
+      "ruleFamily": "trusted_defi",
+      "propagationMode": "local_only",
+      "rootSensitive": false,
+      "hardRule": false,
+      "sticky": false
+    },
+    "governance_vote": {
+      "riskDelta": -5,
+      "reputationDelta": 12,
+      "confidenceDelta": 8,
+      "targetState": "NORMAL",
+      "ruleFamily": "governance_positive",
+      "propagationMode": "local_only",
+      "rootSensitive": false,
+      "hardRule": false,
+      "sticky": false
+    },
+    "native_transfer": {
+      "riskDelta": 0,
+      "reputationDelta": 0,
+      "confidenceDelta": 1,
+      "targetState": "NORMAL",
+      "ruleFamily": "neutral",
+      "propagationMode": "local_only",
+      "rootSensitive": false,
+      "hardRule": false,
+      "sticky": false
+    },
+    "erc20_transfer": {
+      "riskDelta": 0,
+      "reputationDelta": 0,
+      "confidenceDelta": 2,
+      "targetState": "NORMAL",
+      "ruleFamily": "neutral",
+      "propagationMode": "local_only",
+      "rootSensitive": false,
+      "hardRule": false,
+      "sticky": false
+    },
+    "nft_transfer": {
+      "riskDelta": 0,
+      "reputationDelta": 0,
+      "confidenceDelta": 2,
+      "targetState": "NORMAL",
+      "ruleFamily": "neutral",
+      "propagationMode": "local_only",
+      "rootSensitive": false,
+      "hardRule": false,
+      "sticky": false
+    },
+    "contract_call": {
+      "riskDelta": 2,
+      "reputationDelta": 0,
+      "confidenceDelta": 3,
+      "targetState": "NORMAL",
+      "ruleFamily": "neutral",
+      "propagationMode": "local_only",
+      "rootSensitive": false,
+      "hardRule": false,
+      "sticky": false
+    },
+    "unknown_contract_repetition": {
+      "riskDelta": 25,
+      "reputationDelta": -5,
+      "confidenceDelta": 6,
+      "targetState": "OBSERVED",
+      "ruleFamily": "scope_class",
+      "propagationMode": "scope_class",
+      "rootSensitive": false,
+      "hardRule": false,
+      "sticky": false
+    }
+  }
+}

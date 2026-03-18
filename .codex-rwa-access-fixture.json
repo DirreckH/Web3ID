@@ -1,0 +1,110 @@
+{
+  "bundle": {
+    "credential": {
+      "credentialId": "f8364018-bdac-4913-a30a-8a8bc478e2f3",
+      "issuer": "did:ethr:0x683347DB4eB056fC3850D0156F360bFD9451fCA6",
+      "issuerAddress": "0x683347DB4eB056fC3850D0156F360bFD9451fCA6",
+      "holder": "did:pkh:eip155:31337:0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "holderIdentityId": "0x386fa1765077c3a4dac5e22c6d5eebf98e855f44a890dc704c7e7aa1aea9ad60",
+      "credentialType": "0x227c114d869a8295a3044239323aa291f5d9e21afc56ae79ea37a5b5134ef778",
+      "credentialTypeLabel": "KycAmlCredential",
+      "subjectBinding": "0x09707d0e6171f728f7473c24cc0432a9b07eaaf1efed6a137a4a8c12c79552d9",
+      "claimSet": {
+        "amlPassed": true,
+        "nonUSResident": true,
+        "accreditedInvestor": true
+      },
+      "issueTime": "2026-03-18T02:52:18.281Z",
+      "expiry": 1774407138,
+      "revocationId": "0x713aef099feac937dc02049cf2709487ab67b17db480f91873f1f5d4281c240e",
+      "schemaVersion": "2.0",
+      "policyHints": [
+        "0xe824d45c201eedd88f29f57b718dc5250034640823c127cee9c32a963e71d007"
+      ]
+    },
+    "attestation": {
+      "credentialType": "0x227c114d869a8295a3044239323aa291f5d9e21afc56ae79ea37a5b5134ef778",
+      "credentialHash": "0x4e7d5705e3c7f4c534f43e381b362c374057f419e87b2af60fe4e285fec19f55",
+      "revocationId": "0x713aef099feac937dc02049cf2709487ab67b17db480f91873f1f5d4281c240e",
+      "subjectBinding": "0x09707d0e6171f728f7473c24cc0432a9b07eaaf1efed6a137a4a8c12c79552d9",
+      "issuer": "0x683347DB4eB056fC3850D0156F360bFD9451fCA6",
+      "expiration": 1774407138,
+      "claimsHash": "0x32d7a8c6dcb0efcd9fb080f0360d846089d13cfc352f84959fc0bb84244bd599",
+      "policyHintsHash": "0x96da8ead8d4fa645aa2c13edc5494b096731ac629a131edc3ce10244ed15f278",
+      "policyHints": [
+        "0xe824d45c201eedd88f29f57b718dc5250034640823c127cee9c32a963e71d007"
+      ],
+      "signature": "0x9c7c4a085db42ff0c4d97723eb52e58b550fd0236e44f9f7a2474659fb65556f418febbeb6109862903454f9fd84156e0b7eea424a629901eb37da304aa426a31c"
+    },
+    "w3c": {
+      "@context": [
+        "https://www.w3.org/2018/credentials/v1"
+      ],
+      "type": [
+        "VerifiableCredential",
+        "KycAmlCredential"
+      ],
+      "issuer": "did:ethr:0x683347DB4eB056fC3850D0156F360bFD9451fCA6",
+      "issuanceDate": "2026-03-18T02:52:18.281Z",
+      "expirationDate": "2026-03-25T02:52:18.000Z",
+      "credentialSubject": {
+        "holder": "did:pkh:eip155:31337:0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "holderIdentityId": "0x386fa1765077c3a4dac5e22c6d5eebf98e855f44a890dc704c7e7aa1aea9ad60",
+        "subjectBinding": "0x09707d0e6171f728f7473c24cc0432a9b07eaaf1efed6a137a4a8c12c79552d9",
+        "claimSet": {
+          "amlPassed": true,
+          "nonUSResident": true,
+          "accreditedInvestor": true
+        },
+        "policyHints": [
+          "0xe824d45c201eedd88f29f57b718dc5250034640823c127cee9c32a963e71d007"
+        ]
+      }
+    }
+  },
+  "payload": {
+    "identityId": "0x386fa1765077c3a4dac5e22c6d5eebf98e855f44a890dc704c7e7aa1aea9ad60",
+    "credentialAttestations": [
+      {
+        "credentialType": "0x227c114d869a8295a3044239323aa291f5d9e21afc56ae79ea37a5b5134ef778",
+        "credentialHash": "0x4e7d5705e3c7f4c534f43e381b362c374057f419e87b2af60fe4e285fec19f55",
+        "revocationId": "0x713aef099feac937dc02049cf2709487ab67b17db480f91873f1f5d4281c240e",
+        "subjectBinding": "0x09707d0e6171f728f7473c24cc0432a9b07eaaf1efed6a137a4a8c12c79552d9",
+        "issuer": "0x683347DB4eB056fC3850D0156F360bFD9451fCA6",
+        "expiration": 1774407138,
+        "claimsHash": "0x32d7a8c6dcb0efcd9fb080f0360d846089d13cfc352f84959fc0bb84244bd599",
+        "policyHintsHash": "0x96da8ead8d4fa645aa2c13edc5494b096731ac629a131edc3ce10244ed15f278",
+        "policyHints": [
+          "0xe824d45c201eedd88f29f57b718dc5250034640823c127cee9c32a963e71d007"
+        ],
+        "signature": "0x9c7c4a085db42ff0c4d97723eb52e58b550fd0236e44f9f7a2474659fb65556f418febbeb6109862903454f9fd84156e0b7eea424a629901eb37da304aa426a31c"
+      }
+    ],
+    "zkProof": {
+      "proofPoints": [
+        "13122372145947736466215110589086593424969819421568502311814817140510255388779",
+        "11787358258584064952942909854067898297594773774633455905750490717289687803437",
+        "14107949736790722902603583410399654372709982465456445450719954945915678412459",
+        "9785936997078988836922225143728102757907830846656362841118139076774926239364",
+        "8040581014653838442221190141950333874040576881913776978408098382742702200161",
+        "13923702086693704559744298793842223172811566886326384347643412351152431201826",
+        "3142118871755198499349118933991585226890346794618921237576094869922164069639",
+        "9128433068517416820211289626332730482933802718411124296238631767069737268345"
+      ],
+      "publicSignals": [
+        "4269565614499353667294251126978624193695206283651045130337043166278272242393"
+      ]
+    },
+    "policyVersion": 1,
+    "holderAuthorization": {
+      "identityId": "0x386fa1765077c3a4dac5e22c6d5eebf98e855f44a890dc704c7e7aa1aea9ad60",
+      "subjectBinding": "0x09707d0e6171f728f7473c24cc0432a9b07eaaf1efed6a137a4a8c12c79552d9",
+      "policyId": "0xe824d45c201eedd88f29f57b718dc5250034640823c127cee9c32a963e71d007",
+      "requestHash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "chainId": 31337,
+      "nonce": "1",
+      "deadline": "1773803238",
+      "signature": "0x2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+    }
+  }
+}

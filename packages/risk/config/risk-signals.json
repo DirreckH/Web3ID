@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "mixerProtocols": [
+    {
+      "address": "0x00000000000000000000000000000000000000a1",
+      "label": "Demo Mixer",
+      "ruleFamily": "mixer",
+      "protocolType": "mixer"
+    }
+  ],
+  "sanctionedAddresses": [
+    {
+      "address": "0x00000000000000000000000000000000000000b1",
+      "label": "Demo Sanctioned Counterparty",
+      "ruleFamily": "sanctioned"
+    }
+  ],
+  "highRiskCounterparties": [
+    {
+      "address": "0x00000000000000000000000000000000000000c1",
+      "label": "Demo High Risk Counterparty",
+      "ruleFamily": "counterparty"
+    }
+  ],
+  "trustedDefiProtocols": [
+    {
+      "address": "0x00000000000000000000000000000000000000d1",
+      "label": "Demo SafeSwap",
+      "ruleFamily": "trusted_defi",
+      "protocolType": "dex"
+    },
+    {
+      "address": "0x00000000000000000000000000000000000000d2",
+      "label": "Demo SafeLend",
+      "ruleFamily": "trusted_defi",
+      "protocolType": "lending"
+    }
+  ],
+  "governanceContracts": [
+    {
+      "address": "0x00000000000000000000000000000000000000e1",
+      "label": "Demo Governor",
+      "ruleFamily": "governance",
+      "protocolType": "governance"
+    }
+  ],
+  "trustedIssuers": [],
+  "riskSignalSources": [
+    {
+      "id": "analyzer-service",
+      "label": "Analyzer Service",
+      "type": "TRUSTED_ANALYZER"
+    },
+    {
+      "id": "manual-reviewer",
+      "label": "Manual Reviewer",
+      "type": "MANUAL_REVIEWER"
+    }
+  ]
+}

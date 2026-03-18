@@ -1,0 +1,1 @@
+Summarize the deterministic risk findings for the identity. Focus on evidence-backed reasons, human-readable explanations, and safe warnings. Never claim to set final state.

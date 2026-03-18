@@ -7,6 +7,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "concurrently -n issuer,frontend \"pnpm --filter @web3id/issuer-service dev\" \"pnpm --filter @web3id/frontend dev\"",
+    "dev:stage3": "concurrently -n issuer,analyzer,policy,frontend \"pnpm --filter @web3id/issuer-service dev\" \"pnpm --filter @web3id/analyzer-service dev\" \"pnpm --filter @web3id/policy-api dev\" \"pnpm --filter @web3id/frontend dev\"",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "contracts:test": "pnpm --dir contracts test",
@@ -14,7 +15,9 @@
     "demo:issue-vc": "pnpm --filter @web3id/issuer-service demo:issue",
     "demo:proof": "pnpm --filter @web3id/proof demo:proof",
     "demo:e2e": "pnpm --filter @web3id/frontend e2e",
-    "demo:stage2": "tsx scripts/demo-stage2.ts"
+    "demo:e2e:stage3": "pnpm --filter @web3id/frontend e2e:stage3",
+    "demo:stage2": "tsx scripts/demo-stage2.ts",
+    "demo:stage3": "tsx scripts/demo-stage3.ts"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

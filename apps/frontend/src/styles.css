@@ -14,7 +14,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -147,12 +148,18 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   border: 1px solid rgba(243, 239, 231, 0.16);
   border-radius: 16px;
   padding: 12px 14px;
   background: rgba(255, 255, 255, 0.04);
   color: #f3efe7;
+}
+
+textarea {
+  min-height: 96px;
+  resize: vertical;
 }
 
 .badge {
@@ -194,13 +201,81 @@ pre {
   border: 1px solid rgba(124, 195, 255, 0.12);
 }
 
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.info-card {
+  border: 1px solid rgba(240, 177, 90, 0.14);
+  border-radius: 20px;
+  padding: 16px;
+  background: rgba(3, 11, 18, 0.38);
+}
+
+.info-card h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+}
+
+.phase-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.phase-table th,
+.phase-table td {
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(243, 239, 231, 0.08);
+}
+
+.phase-table th {
+  color: #9fd9ff;
+}
+
+.reentry-card {
+  border: 1px solid rgba(124, 195, 255, 0.12);
+  border-radius: 16px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: rgba(124, 195, 255, 0.04);
+}
+
+.reentry-card p {
+  margin-bottom: 0;
+}
+
+.review-list {
+  display: grid;
+  gap: 10px;
+}
+
+.review-item {
+  border: 1px solid rgba(243, 239, 231, 0.08);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.review-item p {
+  margin-top: 4px;
+  word-break: break-all;
+}
+
 .footer-panel {
   margin-top: 18px;
 }
 
 @media (max-width: 960px) {
   .hero,
-  .grid {
+  .grid,
+  .matrix-grid {
     grid-template-columns: 1fr;
   }
 

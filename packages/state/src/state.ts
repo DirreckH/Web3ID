@@ -82,6 +82,17 @@ export function canTransition(fromState: IdentityState, toState: IdentityState) 
 }
 
 export function mapRiskSignalToState(currentState: IdentityState, signal: Pick<RiskSignal, "signalType" | "type" | "category" | "requestedState">): IdentityState {
+  if (signal.requestedState !== undefined) {
+    if (
+      signal.category === "positive" ||
+      signal.signalType === "MANUAL_REVIEW_RESULT" ||
+      signal.signalType === "GOVERNANCE_ACTION"
+    ) {
+      return signal.requestedState;
+    }
+    return signal.requestedState >= currentState ? signal.requestedState : currentState;
+  }
+
   const signalType = signal.signalType;
   if (signal.category === "positive") {
     return currentState;
