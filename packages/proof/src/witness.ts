@@ -2,7 +2,7 @@ import { addressToBytes, computeSubjectBinding, parseCredentialBundle, verifyCre
 import { getAddress, type Address } from "viem";
 
 export type CircuitInput = {
-  statementSignal: bigint;
+  zkCommitment: bigint;
   subjectBytes: bigint[];
 };
 
@@ -41,7 +41,7 @@ export function buildSubjectCircuitInput(subjectAddress: Address): {
   return {
     publicSignals: [BigInt(subjectBinding)],
     circuitInput: {
-      statementSignal: BigInt(subjectBinding),
+      zkCommitment: BigInt(subjectBinding),
       subjectBytes,
     },
   };

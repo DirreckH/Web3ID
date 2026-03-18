@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import { deriveRootIdentity } from "./root.js";
 import { IdentityMode, SubIdentityType } from "./types.js";
 import {
+  canEnterCompliancePath,
+  canUseDefaultPath,
   createSameRootProof,
   createSubIdentityLinkProof,
   deriveSubIdentity,
   getIdentityCapabilities,
+  isComplianceCapableSubIdentityType,
+  isDefaultOnlySubIdentityType,
   normalizeScope,
   resolveEffectiveMode,
   supportsPolicy,
@@ -67,6 +71,10 @@ describe("identity derivation", () => {
 
     const socialCapabilities = getIdentityCapabilities(social);
     expect(socialCapabilities.supportedProofKinds).toEqual(["holder_bound_proof"]);
+    expect(isDefaultOnlySubIdentityType(SubIdentityType.SOCIAL)).toBe(true);
+    expect(isComplianceCapableSubIdentityType(SubIdentityType.RWA_INVEST)).toBe(true);
+    expect(canUseDefaultPath(social)).toBe(true);
+    expect(canEnterCompliancePath(rwa)).toBe(false);
 
     expect(resolveEffectiveMode(social, govPolicy)).toBe("DEFAULT_BEHAVIOR_MODE");
     expect(resolveEffectiveMode(rwa, rwaPolicy)).toBeNull();
@@ -75,6 +83,11 @@ describe("identity derivation", () => {
         linkedCredentialTypes: ["0x0000000000000000000000000000000000000000000000000000000000000001"],
       }),
     ).toBe("COMPLIANCE_MODE");
+    expect(
+      canEnterCompliancePath(rwa, {
+        linkedCredentialTypes: ["0x0000000000000000000000000000000000000000000000000000000000000001"],
+      }),
+    ).toBe(true);
 
     expect(supportsPolicy(social, rwaPolicy).supported).toBe(false);
   });

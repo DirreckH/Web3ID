@@ -1,5 +1,7 @@
 # Web3ID Phase3
 
+`README_PHASE3.md` 是 Phase3 补充说明。P0 收口后的冻结基线请先看 `docs/PLATFORM_BASELINE.md`。
+
 ## What Landed
 - `packages/risk` now owns Phase3 risk ingestion, scoring, propagation, re-entry, list management, binding verification, AI suggestions, review queue, anchoring, and policy helpers.
 - `apps/analyzer-service` adds the off-chain risk control plane.

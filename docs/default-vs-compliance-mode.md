@@ -1,5 +1,7 @@
 # Default Mode vs Compliance Mode
 
+本页是补充资料。平台冻结基线请以 `docs/PLATFORM_BASELINE.md` 为准。
+
 Web3ID uses a capability-first model.
 
 - `IdentityMode` is not a permanent label on an identity.

@@ -1,5 +1,7 @@
 # System Invariants
 
+本页是补充资料。平台冻结基线请以 `docs/PLATFORM_BASELINE.md`、`docs/IDENTITY_INVARIANTS.md`、`docs/STATE_SYSTEM_INVARIANTS.md` 为准。
+
 The following rules are treated as system invariants for the reinforced Phase2 baseline.
 
 ## Identity and Policy

@@ -79,6 +79,12 @@ async function generateNodeProof(
   witness: Record<string, any>,
   context: Required<Pick<HolderBindingContext, "wasmPath" | "zkeyPath">>,
 ) {
+  const { existsSync } = await import("node:fs");
+  if (!existsSync(context.wasmPath) || !existsSync(context.zkeyPath)) {
+    throw new Error(
+      `Proof runtime is missing (${context.wasmPath}, ${context.zkeyPath}). Run \`pnpm proof:setup\` before Node proving.`,
+    );
+  }
   const loadNodeHelper = Function('return import("./generateProofNode.js")');
   const { generateProofNode } = (await loadNodeHelper()) as typeof import("./generateProofNode.js");
   return generateProofNode(witness, context);

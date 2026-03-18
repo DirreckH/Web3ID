@@ -149,7 +149,7 @@ describe("analyzer service", () => {
       recommendedAction: "review",
       modelInfo: { provider: "deterministic", model: "fallback-template", promptVersion: "test" },
       createdAt: new Date("2026-03-01T00:00:00Z").toISOString(),
-    };
+    } as any;
     store.reviewQueue["stale-review"] = {
       reviewItemId: "stale-review",
       identityId: rwaIdentity.identityId,
@@ -165,6 +165,7 @@ describe("analyzer service", () => {
 
     const recomputed = await recomputeIdentity({ identityId: rwaIdentity.identityId });
     expect(recomputed.reviewQueue.find((item: { reviewItemId: string }) => item.reviewItemId === "stale-review")?.status).toBe("EXPIRED");
+    expect(recomputed.aiSuggestions.find((item: { id: string }) => item.id === "stale-suggestion")?.audit.recommendedAction).toBe("review");
 
     const audit = await exportIdentityAudit(rwaIdentity.identityId);
     expect(audit.records.some((record: { action: string }) => record.action === "AI_REVIEW_ITEM_EXPIRED")).toBe(true);

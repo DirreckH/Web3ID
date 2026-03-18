@@ -6,11 +6,15 @@ export type AssessmentEngineType = "rule" | "manual" | "ai";
 export type AssessmentResult = "allow" | "observe" | "restrict" | "review_required" | "freeze" | "recover";
 
 export type AiAssessmentMetadata = {
-  modelName: string;
+  provider: string;
+  model: string;
   modelVersion: string;
+  promptVersion: string;
   inputHash: Hex;
+  evidenceRefs: string[];
   outputSummary: string;
   confidence: number;
+  recommendedAction: "watch" | "review" | "warn_only";
   humanReviewRequired: boolean;
 };
 
@@ -40,6 +44,9 @@ export function buildRiskAssessment(input: {
   aiMetadata?: AiAssessmentMetadata;
 }): RiskAssessment {
   const [primarySignal] = input.signals;
+  if (input.engineType === "ai" && !input.aiMetadata) {
+    throw new Error("AI assessments require aiMetadata and must remain reviewable.");
+  }
   const createdAt = new Date().toISOString();
   const assessmentResult = selectAssessmentResult(primarySignal.category, input.recommendedState);
   const scoreDelta = primarySignal.category === "positive" ? 10 : scoreDeltaForSeverity(primarySignal.severity);

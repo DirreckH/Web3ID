@@ -68,9 +68,42 @@ const DEFAULT_VERIFIER = (import.meta.env.VITE_COMPLIANCE_VERIFIER_ADDRESS ??
 const DEFAULT_STATE_REGISTRY = (import.meta.env.VITE_STATE_REGISTRY_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as `0x${string}`;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+const PLATFORM_ENTRY = (import.meta.env.VITE_PLATFORM_ENTRY ?? "stage3") as "stage1" | "stage2" | "stage3" | "platform";
+const PLATFORM_ENTRY_META = {
+  stage1: {
+    label: "Stage1 Minimal Baseline",
+    summary: "Anvil + issuer-service + frontend + proof happy path.",
+    acceptance: "pnpm tsx scripts/verify-stage3-acceptance.ts stage1",
+  },
+  stage2: {
+    label: "Stage2 Reinforced Baseline",
+    summary: "Identity + credential + proof + issuer state demo.",
+    acceptance: "pnpm tsx scripts/verify-stage3-acceptance.ts stage2",
+  },
+  stage3: {
+    label: "Stage3 Full Stack",
+    summary: "Identity + risk + policy + propagation + review queue.",
+    acceptance: "pnpm tsx scripts/verify-stage3-acceptance.ts stage3",
+  },
+  platform: {
+    label: "Platform Recommended Entry",
+    summary: "Unified P0 platform baseline with the full narrative stack.",
+    acceptance: "pnpm tsx scripts/verify-stage3-acceptance.ts platform",
+  },
+} as const;
 
 function textToBytes32(value: string) {
   return pad(stringToHex(value.slice(0, 31) || "ref"), { size: 32 });
+}
+
+function scenarioLabel(scenario: Scenario) {
+  if (scenario === "rwa") {
+    return "RWA Access";
+  }
+  if (scenario === "enterprise") {
+    return "Enterprise Treasury";
+  }
+  return "Social Governance";
 }
 
 function stateLabel(state: number | undefined) {
@@ -195,6 +228,7 @@ export function App() {
     [activePolicyId, currentBundles, selectedSubIdentity],
   );
   const activePolicy = useMemo(() => getPolicyDefinition(activePolicyId), [activePolicyId]);
+  const platformEntry = PLATFORM_ENTRY_META[PLATFORM_ENTRY] ?? PLATFORM_ENTRY_META.platform;
 
   useEffect(() => {
     if (!subIdentities.length) {
@@ -781,22 +815,32 @@ export function App() {
   return (
     <main className="shell">
       <section className="hero">
-        <div>
-          <p className="eyebrow">Web3ID Phase2+</p>
-          <h1>Identity, state, consequence, and access control on one console.</h1>
+        <div className="hero-stack">
+          <p className="eyebrow">Web3ID Platform Baseline</p>
+          <h1>Identity, consequence, propagation, and policy stay on one frozen platform path.</h1>
           <p className="lede">
-            Capability-first identities, explicit default versus compliance policy paths, state attribution, lightweight
-            consequence handling, and three demos: RWA, enterprise treasury, and social governance.
+            Capability-first identities, explicit default versus compliance paths, six-step state flow, and AI-offchain
+            review boundaries now share one P0 baseline. The console stays scenario-driven, but the frozen semantic
+            source is the platform baseline rather than isolated phase notes.
           </p>
+          <div className="hero-pills">
+            <span className="hero-pill">{platformEntry.label}</span>
+            <span className="hero-pill">Frozen baseline: docs/PLATFORM_BASELINE.md</span>
+            <span className="hero-pill">Acceptance: {platformEntry.acceptance}</span>
+          </div>
         </div>
         <div className="hero-card">
-          <p>Current scenario</p>
+          <p>Platform entry</p>
+          <strong>{platformEntry.label}</strong>
+          <span>{platformEntry.summary}</span>
+          <span>Current scenario: {scenarioLabel(scenario)}</span>
           <strong>
-            {scenario === "rwa" ? "RWA Access" : scenario === "enterprise" ? "Enterprise Treasury" : "Social Governance"}
+            {scenarioLabel(scenario)}
           </strong>
           <span>{selectedSubIdentity ? `${selectedSubIdentity.scope} / ${selectedSubIdentity.type}` : "Select identity"}</span>
           <span>Preferred mode: {capabilities?.preferredMode ?? "N/A"}</span>
           <span>Effective mode: {effectiveMode ?? "Unsupported"}</span>
+          <span>Acceptance path: {platformEntry.acceptance}</span>
         </div>
       </section>
 
@@ -1089,7 +1133,7 @@ export function App() {
         </article>
 
         <article className="panel">
-          <h2>9. Phase3 Risk View</h2>
+          <h2>9. Platform Risk View</h2>
           {riskContext?.summary ? (
             <>
               <div className="meta-grid">
@@ -1248,7 +1292,7 @@ export function App() {
               <pre>{JSON.stringify(riskContext.audit?.slice(-5) ?? [], null, 2)}</pre>
             </>
           ) : (
-            <p>Start the analyzer-service and register/bind identities to view Phase3 stored/effective risk state.</p>
+            <p>Start the analyzer-service and register/bind identities to view platform stored/effective risk state.</p>
           )}
         </article>
 
@@ -1378,6 +1422,8 @@ export function App() {
       <section className="footer-panel">
         <h2>Runtime Status</h2>
         <p>{status}</p>
+        <p className="hint">Frozen docs: PLATFORM_BASELINE / IDENTITY_INVARIANTS / STATE_SYSTEM_INVARIANTS / BOUNDARIES</p>
+        <p className="hint">Acceptance command: {platformEntry.acceptance}</p>
       </section>
     </main>
   );

@@ -5,7 +5,7 @@ import { IdentityState } from "../../state/src/index.js";
 import { createBindingChallenge, buildSameRootAuthorizationMessage, verifyBindingSubmission } from "./bindings.js";
 import { createAnchorQueueEntry, shouldAnchorState } from "./anchoring.js";
 import { generateAiSuggestions } from "./ai-assistant.js";
-import { deriveListEntries, summarizeLists } from "./lists.js";
+import { deriveListEntries, listNameForIdentityState, normalizeRiskListEntryState, statesForRiskList, summarizeLists } from "./lists.js";
 import { evaluateAccessRisk, evaluateWarningRisk } from "./policy.js";
 import { evaluateSubToRootPropagation, computeEffectiveSubState } from "./propagation.js";
 import { buildAutomaticRecoverySignals, buildManualReleaseWindow } from "./reentry.js";
@@ -208,6 +208,7 @@ describe("risk package", () => {
       signals: buildDeterministicSignals({ rootIdentityId, subIdentityId, events: [makeEvent("mixer_interaction", new Date().toISOString())] }),
     });
     expect(["watch", "review", "warn_only"]).toContain(ai[0].recommendedAction);
+    expect(ai[0].audit.recommendedAction).toBe(ai[0].recommendedAction);
 
     const lists = summarizeLists(
       deriveListEntries({
@@ -221,8 +222,12 @@ describe("risk package", () => {
         aiSuggestions: ai,
       }),
     );
+    expect(listNameForIdentityState(IdentityState.HIGH_RISK)).toBe("restricted_list");
+    expect(statesForRiskList("restricted_list")).toEqual([IdentityState.RESTRICTED, IdentityState.HIGH_RISK]);
+    expect(normalizeRiskListEntryState("blacklist_or_frozen_list")).toBe(IdentityState.FROZEN);
     expect(lists.restrictedList).toHaveLength(1);
     expect(lists.watchlist.length).toBeGreaterThan(0);
+    expect(lists.watchlist.every((entry) => entry.state === IdentityState.OBSERVED)).toBe(true);
   });
 
   it("evaluates access and warning policy decisions separately", () => {

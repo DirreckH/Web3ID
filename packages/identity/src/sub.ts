@@ -1,7 +1,10 @@
 import { encodePacked, keccak256, type Hex } from "viem";
 import {
+  COMPLIANCE_CAPABLE_SUB_IDENTITY_TYPES,
+  DEFAULT_ONLY_SUB_IDENTITY_TYPES,
   IdentityMode,
   LinkabilityLevel,
+  type IdentityLike,
   type PolicyModeDescriptor,
   type PolicySupportResult,
   RiskIsolationLevel,
@@ -16,6 +19,14 @@ import {
 import { computeRootIdentityId } from "./root.js";
 
 const DEFAULT_PROOF_TYPES = ["HOLDER_BINDING_GROTH16_V1", "EIP712_CREDENTIAL_ATTESTATION_V2"];
+
+export function isDefaultOnlySubIdentityType(type: SubIdentityType) {
+  return DEFAULT_ONLY_SUB_IDENTITY_TYPES.includes(type as (typeof DEFAULT_ONLY_SUB_IDENTITY_TYPES)[number]);
+}
+
+export function isComplianceCapableSubIdentityType(type: SubIdentityType) {
+  return COMPLIANCE_CAPABLE_SUB_IDENTITY_TYPES.includes(type as (typeof COMPLIANCE_CAPABLE_SUB_IDENTITY_TYPES)[number]);
+}
 
 export function normalizeScope(scope: string): string {
   return scope
@@ -127,10 +138,7 @@ export function deriveSubIdentity(input: {
     createdAt: input.createdAt ?? new Date().toISOString(),
     permissions: input.permissions ?? defaultPermissionProfile(input.type),
     capabilities: deriveIdentityCapabilities(input.permissions ?? defaultPermissionProfile(input.type), {
-      preferredMode:
-        input.type === SubIdentityType.SOCIAL || input.type === SubIdentityType.ANONYMOUS_LOWRISK
-          ? IdentityMode.DEFAULT_BEHAVIOR_MODE
-          : IdentityMode.COMPLIANCE_MODE,
+      preferredMode: isDefaultOnlySubIdentityType(input.type) ? IdentityMode.DEFAULT_BEHAVIOR_MODE : IdentityMode.COMPLIANCE_MODE,
     }),
   };
 }
@@ -221,7 +229,7 @@ export function listDefaultSubIdentities(rootIdentity: Pick<RootIdentity, "rootI
 }
 
 export function getIdentityCapabilities(
-  identity: Pick<SubIdentity, "capabilities" | "permissions"> | Pick<RootIdentity, "capabilities">,
+  identity: IdentityLike,
   options: { linkedCredentialTypes?: Hex[] } = {},
 ): IdentityCapabilities {
   if ("permissions" in identity) {
@@ -238,18 +246,29 @@ export function getPreferredMode(identity: Pick<SubIdentity, "capabilities"> | P
   return identity.capabilities.preferredMode;
 }
 
+export function canUseDefaultPath(identity: IdentityLike, options: { linkedCredentialTypes?: Hex[] } = {}) {
+  const capabilities = getIdentityCapabilities(identity, options);
+  return capabilities.supportedProofKinds.includes("holder_bound_proof");
+}
+
+export function canEnterCompliancePath(identity: IdentityLike, options: { linkedCredentialTypes?: Hex[] } = {}) {
+  const capabilities = getIdentityCapabilities(identity, options);
+  return (
+    capabilities.supportsIssuerValidation &&
+    capabilities.supportedProofKinds.includes("credential_bound_proof") &&
+    capabilities.hasLinkedCredentials
+  );
+}
+
 export function resolveEffectiveMode(
-  identity: Pick<SubIdentity, "capabilities" | "permissions"> | Pick<RootIdentity, "capabilities">,
+  identity: IdentityLike,
   policy: PolicyModeDescriptor,
   options: { linkedCredentialTypes?: Hex[] } = {},
 ): IdentityMode | null {
-  const capabilities = getIdentityCapabilities(identity as Pick<SubIdentity, "capabilities" | "permissions">, options);
+  const capabilities = getIdentityCapabilities(identity, options);
   const allowsDefault = policy.allowedModes.includes(IdentityMode.DEFAULT_BEHAVIOR_MODE);
   const allowsCompliance = policy.allowedModes.includes(IdentityMode.COMPLIANCE_MODE);
-  const complianceReady =
-    capabilities.supportsIssuerValidation &&
-    capabilities.supportedProofKinds.includes("credential_bound_proof") &&
-    capabilities.hasLinkedCredentials;
+  const complianceReady = canEnterCompliancePath(identity, options);
 
   if (policy.requiresComplianceMode) {
     return complianceReady && allowsCompliance ? IdentityMode.COMPLIANCE_MODE : null;
@@ -259,7 +278,7 @@ export function resolveEffectiveMode(
     return IdentityMode.COMPLIANCE_MODE;
   }
 
-  if (allowsDefault && capabilities.supportedProofKinds.includes("holder_bound_proof")) {
+  if (allowsDefault && canUseDefaultPath(identity, options)) {
     return IdentityMode.DEFAULT_BEHAVIOR_MODE;
   }
 
@@ -271,7 +290,7 @@ export function resolveEffectiveMode(
 }
 
 export function supportsPolicy(
-  identity: Pick<SubIdentity, "capabilities" | "permissions"> | Pick<RootIdentity, "capabilities">,
+  identity: IdentityLike,
   policy: PolicyModeDescriptor,
   options: { linkedCredentialTypes?: Hex[] } = {},
 ): PolicySupportResult {

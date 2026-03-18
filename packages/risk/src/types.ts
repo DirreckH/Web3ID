@@ -169,6 +169,18 @@ export type AuditRecord = {
   metadata?: Record<string, unknown>;
 };
 
+export type AiSuggestionAudit = {
+  provider: string;
+  model: string;
+  modelVersion: string;
+  promptVersion: string;
+  inputHash: Hex;
+  evidenceRefs: string[];
+  outputSummary: string;
+  confidence: number;
+  recommendedAction: AiRecommendedAction;
+};
+
 export type AiSuggestion = {
   id: string;
   identityId: Hex;
@@ -179,7 +191,8 @@ export type AiSuggestion = {
   summary: string;
   evidenceRefs: string[];
   recommendedAction?: AiRecommendedAction;
-  modelInfo: {
+  audit: AiSuggestionAudit;
+  modelInfo?: {
     provider: string;
     model: string;
     promptVersion: string;

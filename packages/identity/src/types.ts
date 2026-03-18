@@ -14,6 +14,16 @@ export enum SubIdentityType {
   ANONYMOUS_LOWRISK = "ANONYMOUS_LOWRISK",
 }
 
+export const DEFAULT_ONLY_SUB_IDENTITY_TYPES = [
+  SubIdentityType.SOCIAL,
+  SubIdentityType.ANONYMOUS_LOWRISK,
+] as const;
+
+export const COMPLIANCE_CAPABLE_SUB_IDENTITY_TYPES = [
+  SubIdentityType.RWA_INVEST,
+  SubIdentityType.PAYMENTS,
+] as const;
+
 export enum RiskIsolationLevel {
   LOW = "LOW",
   MEDIUM = "MEDIUM",
@@ -96,3 +106,7 @@ export type PolicySupportResult = {
   effectiveMode: IdentityMode | null;
   reason: string | null;
 };
+
+export type IdentityLike =
+  | Pick<SubIdentity, "capabilities" | "permissions">
+  | Pick<RootIdentity, "capabilities">;

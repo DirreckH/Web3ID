@@ -1,6 +1,40 @@
 import { IdentityState } from "../../state/src/index.js";
 import { keccak256, stringToHex, type Hex } from "viem";
-import type { AiSuggestion, ManualListAction, RiskListEntry, RiskSummary } from "./types.js";
+import type { AiSuggestion, ManualListAction, RiskListEntry, RiskListName, RiskSummary } from "./types.js";
+
+export const RISK_LIST_STATE_MATRIX = {
+  watchlist: [IdentityState.OBSERVED],
+  restricted_list: [IdentityState.RESTRICTED, IdentityState.HIGH_RISK],
+  blacklist_or_frozen_list: [IdentityState.FROZEN],
+} satisfies Record<RiskListName, IdentityState[]>;
+
+export function statesForRiskList(listName: RiskListName) {
+  return [...RISK_LIST_STATE_MATRIX[listName]];
+}
+
+export function primaryStateForRiskList(listName: RiskListName) {
+  return RISK_LIST_STATE_MATRIX[listName][0];
+}
+
+export function listNameForIdentityState(state: IdentityState): RiskListName | null {
+  if (state === IdentityState.OBSERVED) {
+    return "watchlist";
+  }
+  if (state === IdentityState.RESTRICTED || state === IdentityState.HIGH_RISK) {
+    return "restricted_list";
+  }
+  if (state === IdentityState.FROZEN) {
+    return "blacklist_or_frozen_list";
+  }
+  return null;
+}
+
+export function normalizeRiskListEntryState(listName: RiskListName, state?: IdentityState) {
+  if (state !== undefined && statesForRiskList(listName).some((allowedState) => allowedState === state)) {
+    return state;
+  }
+  return primaryStateForRiskList(listName);
+}
 
 function makeEntryId(identityId: Hex, listName: string, reasonCode: string) {
   return keccak256(stringToHex([identityId, listName, reasonCode].join(":")));
@@ -33,27 +67,12 @@ export function deriveListEntries(input: {
     evidenceRefs: input.evidenceRefs,
   };
 
-  if (input.state === IdentityState.OBSERVED) {
+  const baseListName = listNameForIdentityState(input.state);
+  if (baseListName) {
     entries.push({
-      entryId: makeEntryId(input.identityId, "watchlist", input.reasonCode),
-      listName: "watchlist",
-      state: input.state,
-      ...base,
-    });
-  }
-  if (input.state === IdentityState.RESTRICTED || input.state === IdentityState.HIGH_RISK) {
-    entries.push({
-      entryId: makeEntryId(input.identityId, "restricted_list", input.reasonCode),
-      listName: "restricted_list",
-      state: input.state,
-      ...base,
-    });
-  }
-  if (input.state === IdentityState.FROZEN) {
-    entries.push({
-      entryId: makeEntryId(input.identityId, "blacklist_or_frozen_list", input.reasonCode),
-      listName: "blacklist_or_frozen_list",
-      state: input.state,
+      entryId: makeEntryId(input.identityId, baseListName, input.reasonCode),
+      listName: baseListName,
+      state: normalizeRiskListEntryState(baseListName, input.state),
       ...base,
     });
   }
@@ -68,7 +87,7 @@ export function deriveListEntries(input: {
       identityId: input.identityId,
       rootIdentityId: input.rootIdentityId,
       subIdentityId: input.subIdentityId,
-      state: input.state,
+      state: normalizeRiskListEntryState("watchlist"),
       reasonCode: suggestion.recommendedAction === "review" ? "AI_REVIEW_QUEUE" : "AI_WATCH_HINT",
       sourceSignalIds: [],
       sourceSuggestionId: suggestion.id,
@@ -91,7 +110,7 @@ export function applyManualListActions(entries: RiskListEntry[], manualActions: 
         identityId: action.identityId,
         rootIdentityId: action.rootIdentityId,
         subIdentityId: action.subIdentityId,
-        state: IdentityState.OBSERVED,
+        state: normalizeRiskListEntryState(action.listName),
         reasonCode: action.reasonCode,
         sourceSignalIds: [],
         addedBy: action.actor,

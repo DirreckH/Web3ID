@@ -8,6 +8,7 @@ import { foundry } from "viem/chains";
 import { deriveRootIdentity, deriveSubIdentity, SubIdentityType } from "../packages/identity/src/index.js";
 
 const ROOT = process.cwd();
+const DEMO_ENTRY = process.env.WEB3ID_DEMO_ENTRY ?? "stage2";
 const RPC_URL = process.env.ANVIL_RPC_URL ?? "http://127.0.0.1:8545";
 const DEPLOYER_PRIVATE_KEY =
   (process.env.PRIVATE_KEY ??
@@ -245,6 +246,7 @@ async function main() {
 
   const sharedEnv = {
     ...process.env,
+    WEB3ID_DEMO_ENTRY: DEMO_ENTRY,
     ANVIL_RPC_URL: RPC_URL,
     PRIVATE_KEY: DEPLOYER_PRIVATE_KEY,
     RISK_MANAGER_PRIVATE_KEY: DEPLOYER_PRIVATE_KEY,
@@ -255,6 +257,7 @@ async function main() {
     STATE_REGISTRY_ADDRESS: deployment.stateRegistry,
     VITE_CHAIN_ID: "31337",
     VITE_ANVIL_RPC_URL: RPC_URL,
+    VITE_PLATFORM_ENTRY: process.env.VITE_PLATFORM_ENTRY ?? DEMO_ENTRY,
     VITE_COMPLIANCE_VERIFIER_ADDRESS: deployment.complianceVerifier,
     VITE_STATE_REGISTRY_ADDRESS: deployment.stateRegistry,
     VITE_MOCK_RWA_ASSET_ADDRESS: deployment.asset,
@@ -262,15 +265,17 @@ async function main() {
     VITE_ENTERPRISE_GATE_ADDRESS: deployment.enterpriseGate,
     VITE_SOCIAL_GATE_ADDRESS: deployment.socialGate,
   };
+  const pnpm = resolvePnpmCommand();
 
-  spawnCommand("cmd", ["/c", "pnpm --filter @web3id/issuer-service dev"], sharedEnv, "inherit");
-  spawnCommand("cmd", ["/c", "pnpm --filter @web3id/frontend dev"], sharedEnv, "inherit");
+  spawnCommand(pnpm.command, [...pnpm.args, "--filter", "@web3id/issuer-service", "dev"], sharedEnv, "inherit");
+  spawnCommand(pnpm.command, [...pnpm.args, "--filter", "@web3id/frontend", "dev"], sharedEnv, "inherit");
 
-  console.log("Phase2 demo running");
+  console.log(`Web3ID ${DEMO_ENTRY} demo running`);
   console.log(`Issuer service: http://127.0.0.1:4100`);
   console.log(`Frontend:      http://127.0.0.1:3000`);
   console.log(`Holder:        ${DEFAULT_HOLDER}`);
   console.log(`Proof setup:   pnpm proof:setup completed`);
+  console.log(`Docs:          docs/PLATFORM_BASELINE.md and docs/DEMO_MATRIX.md`);
 
   await new Promise<void>((resolve) => {
     const shutdown = () => {

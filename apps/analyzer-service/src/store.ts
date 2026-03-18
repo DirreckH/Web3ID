@@ -16,6 +16,7 @@ import type {
   RiskSummary,
   ScoreBreakdown,
 } from "../../../packages/risk/src/index.js";
+import { normalizeAiSuggestion } from "../../../packages/risk/src/index.js";
 import type { IdentityStateContext } from "../../../packages/state/src/index.js";
 import { analyzerConfig } from "./config.js";
 
@@ -89,13 +90,23 @@ function delay(ms: number) {
 }
 
 function normalizeStore(parsed: Partial<AnalyzerStore>): AnalyzerStore {
+  const normalizedAiSuggestions = Object.fromEntries(
+    Object.entries(parsed.aiSuggestions ?? {}).map(([id, suggestion]) => [
+      id,
+      normalizeAiSuggestion({
+        ...(suggestion as AiSuggestion),
+        id: suggestion.id ?? id,
+      }),
+    ]),
+  );
+
   return {
     roots: parsed.roots ?? {},
     identities: parsed.identities ?? {},
     bindings: parsed.bindings ?? {},
     bindingChallenges: parsed.bindingChallenges ?? {},
     events: parsed.events ?? {},
-    aiSuggestions: parsed.aiSuggestions ?? {},
+    aiSuggestions: normalizedAiSuggestions,
     reviewQueue: parsed.reviewQueue ?? {},
     audits: parsed.audits ?? {},
     anchorQueue: parsed.anchorQueue ?? {},

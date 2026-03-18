@@ -14,7 +14,9 @@
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
+    "clean": "tsx scripts/clean.ts",
     "setup": "tsx scripts/setup.ts",
+    "smoke": "tsx scripts/smoke.ts",
     "demo:proof": "tsx scripts/demo-proof.ts"
   },
   "dependencies": {
