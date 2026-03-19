@@ -15,7 +15,7 @@ async function waitFor<T>(callback: () => Promise<T | null>, timeoutMs = 60_000,
 }
 
 describe.sequential("basic service integration", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createServiceHarness(13055 + (process.pid % 100));
@@ -24,7 +24,7 @@ describe.sequential("basic service integration", () => {
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("covers social default path and compliance access policy decisions", async () => {

@@ -37,6 +37,23 @@ const accessPayloadSchema = z.object({
     deadline: bigNumberishSchema,
     signature: hexSchema,
   }),
+  proofDescriptor: z.object({
+    proofType: z.string().optional(),
+    privacyMode: z.string().optional(),
+    disclosureProfile: z.enum(["public", "selective_disclosure", "policy_minimal_disclosure"]).optional(),
+    disclosedClaims: z.array(z.string()).optional(),
+    minimumDisclosureSet: z.array(z.string()).optional(),
+    auditVisibleFacts: z.array(z.string()).optional(),
+    verificationRule: z.enum(["legacy_verify", "descriptor_verify"]).optional(),
+    versionEnvelope: z.object({
+      schemaVersion: z.string().optional(),
+      systemModelVersion: z.string().optional(),
+      explanationSchemaVersion: z.string().optional(),
+      policyVersion: z.number().int().positive().optional(),
+      registryVersion: z.number().int().positive().optional(),
+      auditBundleVersion: z.string().optional(),
+    }).optional(),
+  }).optional(),
 });
 const accessDecisionSchema = z.object({
   identityId: hex32Schema,

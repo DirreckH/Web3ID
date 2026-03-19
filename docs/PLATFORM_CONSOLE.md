@@ -1,17 +1,19 @@
-# PLATFORM CONSOLE
+# Platform Console
 
-前端控制台现在是 `System Entry`，不是单纯的 platform dashboard。
+The frontend console is centered on `System Entry`, not a narrow platform dashboard. It is meant to read like one system narrative.
 
-## 绑定实现
+## Key Implementation Files
 
 - `apps/frontend/src/panels/PlatformOverviewPanel.tsx`
 - `apps/frontend/src/console/view-models.ts`
 - `apps/frontend/src/panels/StateConsequencePanel.tsx`
+- `apps/frontend/src/panels/RecoveryHooksPanel.tsx`
 - `apps/frontend/src/panels/PolicyDecisionPanel.tsx`
 - `apps/frontend/src/panels/AiReviewPanel.tsx`
 - `apps/frontend/src/panels/AuditEvidencePanel.tsx`
+- `apps/frontend/src/panels/OperatorDashboardPanel.tsx`
 
-## 面板顺序
+## Panel Order
 
 1. `System Entry`
 2. `Identity Detail`
@@ -22,14 +24,14 @@
 7. `AI & Review`
 8. `Operator Dashboard`
 
-## 首页变化
+## Phase4 Console Additions
 
-- 标题改成 `System Entry`
-- 新增 `System Map`
-- 新增 `System Architecture Summary`
-- 先解释 identity/state/consequence/policy/audit/explanation 连接，再暴露 operator actions
+- Recovery cases, approval tickets, and cross-chain inbox items now surface inside the existing console narrative.
+- Operator metrics now include pending recovery, pending approvals, and active positive uplift counts.
+- Policy notes call out disclosure profiles and verified cross-chain hints.
+- Recovery copy now reflects the governed Phase4 workflow instead of the older passive-hook framing.
 
-## Why 视图
+## Why Views
 
 - `State & Consequence`
   - `Why: State Summary`
@@ -45,7 +47,9 @@
   - `Explanation Chain`
   - `Export Consistency`
 
-## 控制台边界
+## Console Boundaries
 
-- AI 只展示 explanation，不直接下 state final decision。
-- operator controls 保持显式，不再覆盖系统主叙事。
+- AI can explain and recommend, but it cannot become the final state writer.
+- Policy can read state, consequence, proof, disclosure, and hints, but it cannot rewrite stored facts.
+- Operator controls remain explicit and separated from the summary-first system map.
+- Break-glass stays limited to queue unblock, temporary release, and consequence rollback.

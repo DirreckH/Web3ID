@@ -1,5 +1,5 @@
 import { createPublicClient, http, type Hex } from "viem";
-import { POLICY_DEFINITIONS, getPolicyDefinition, getPolicyModeDescriptor, type PolicyDefinition } from "../../../packages/policy/src/index.js";
+import { POLICY_DEFINITIONS, getPolicyDefinition, getPolicyDisclosureRequirement, getPolicyModeDescriptor, type PolicyDefinition } from "../../../packages/policy/src/index.js";
 import { evaluateAccessRisk, evaluateWarningRisk, type PolicyDecision } from "../../../packages/risk/src/index.js";
 import { complianceVerifierAbi } from "../../../packages/sdk/src/index.js";
 import type { CredentialBundle } from "../../../packages/credential/src/index.js";
@@ -38,6 +38,23 @@ type AccessPayloadLike = {
     deadline: bigint | number;
     signature: Hex;
   };
+  proofDescriptor?: {
+    proofType?: string;
+    privacyMode?: string;
+    disclosureProfile?: "public" | "selective_disclosure" | "policy_minimal_disclosure";
+    disclosedClaims?: string[];
+    minimumDisclosureSet?: string[];
+    auditVisibleFacts?: string[];
+    verificationRule?: "legacy_verify" | "descriptor_verify";
+    versionEnvelope?: {
+      schemaVersion?: string;
+      systemModelVersion?: string;
+      explanationSchemaVersion?: string;
+      policyVersion?: number;
+      registryVersion?: number;
+      auditBundleVersion?: string;
+    };
+  };
 };
 type CredentialBundleLike = CredentialBundle;
 
@@ -59,6 +76,9 @@ async function loadRiskContext(identityId: Hex) {
     signals: any[];
     reviewQueue: any[];
     riskRecord: any;
+    crossChainInbox?: any[];
+    recoveryCases?: any[];
+    approvalTickets?: any[];
   }>(`${policyApiConfig.analyzerApiUrl}/identities/${identityId}/risk-context`);
 }
 
@@ -75,6 +95,78 @@ function normalizePolicyDecision(decision: PolicyDecision) {
     policyReasons: decision.policyReasons ?? [],
     auditRecordIds: decision.auditRecordIds ?? [],
     explanation: decision.explanation,
+  };
+}
+
+function resolveProofDescriptor(input: { payload?: AccessPayloadLike | null; credentialBundles?: CredentialBundleLike[] }) {
+  const descriptor = input.payload?.proofDescriptor;
+  if (descriptor) {
+    return {
+      proofType: descriptor.proofType ?? (input.credentialBundles?.length ? "credential_bound_proof" : "holder_bound_proof"),
+      privacyMode: descriptor.privacyMode ?? (input.credentialBundles?.length ? "credential_bound" : "holder_binding"),
+      disclosureProfile: descriptor.disclosureProfile ?? "public",
+      disclosedClaims: descriptor.disclosedClaims ?? [],
+      minimumDisclosureSet: descriptor.minimumDisclosureSet ?? [],
+      auditVisibleFacts: descriptor.auditVisibleFacts ?? [],
+      verificationRule: descriptor.verificationRule ?? "legacy_verify",
+      versionEnvelope: descriptor.versionEnvelope ?? null,
+    };
+  }
+
+  return {
+    proofType: input.credentialBundles?.length ? "credential_bound_proof" : "holder_bound_proof",
+    privacyMode: input.credentialBundles?.length ? "credential_bound" : "holder_binding",
+    disclosureProfile: "public" as const,
+    disclosedClaims: [] as string[],
+    minimumDisclosureSet: [] as string[],
+    auditVisibleFacts: [] as string[],
+    verificationRule: "legacy_verify" as const,
+    versionEnvelope: null,
+  };
+}
+
+function evaluateDisclosureRequirement(policy: PolicyDefinition, proofDescriptor: ReturnType<typeof resolveProofDescriptor>) {
+  const requirement = getPolicyDisclosureRequirement(policy);
+  const reasons: Array<{ code: string; message: string }> = [];
+  const providedClaims = new Set([...proofDescriptor.disclosedClaims, ...proofDescriptor.minimumDisclosureSet]);
+  const auditVisibleFacts = new Set(proofDescriptor.auditVisibleFacts);
+
+  if (!requirement.allowedDisclosureProfiles.includes(proofDescriptor.disclosureProfile)) {
+    reasons.push({
+      code: "DISCLOSURE_PROFILE_REJECTED",
+      message: `Disclosure profile ${proofDescriptor.disclosureProfile} is not allowed for policy ${policy.targetAction}.`,
+    });
+  }
+
+  for (const claim of requirement.minimumDisclosureSet) {
+    if (!providedClaims.has(claim)) {
+      reasons.push({
+        code: "DISCLOSURE_MINIMUM_MISSING",
+        message: `Minimum disclosure claim ${claim} is missing from the provided proof descriptor.`,
+      });
+    }
+  }
+
+  for (const fact of requirement.auditVisibleMinimumFacts) {
+    if (!auditVisibleFacts.has(fact)) {
+      reasons.push({
+        code: "AUDIT_VISIBLE_FACT_MISSING",
+        message: `Audit-visible minimum fact ${fact} is missing from the provided proof descriptor.`,
+      });
+    }
+  }
+
+  return { requirement, reasons };
+}
+
+function summarizeCrossChainHints(context: RiskContextResponse) {
+  const inbox = (context.crossChainInbox ?? []).filter((item: any) => item.verification?.verified);
+  return {
+    verifiedCount: inbox.length,
+    consumedCount: inbox.filter((item: any) => item.consumed).length,
+    reviewTriggers: inbox.filter((item: any) => item.message?.consumerPolicyHint === "review_trigger").length,
+    eligibilitySignals: inbox.filter((item: any) => item.message?.consumerPolicyHint === "eligibility_signal").length,
+    riskHints: inbox.filter((item: any) => item.message?.consumerPolicyHint === "risk_hint").length,
   };
 }
 
@@ -294,6 +386,9 @@ export async function evaluateAccessDecision(input: {
 
   const policyLabel = Object.entries(POLICY_DEFINITIONS).find(([, definition]) => definition.policyId === input.policyId)?.[0] ?? input.policyId;
   const riskDecision = evaluateAccessRisk({ policyLabel, summary: context.summary, policyVersion: input.policyVersion });
+  const proofDescriptor = resolveProofDescriptor({ payload: input.payload, credentialBundles: input.credentialBundles });
+  const disclosureCheck = evaluateDisclosureRequirement(policy, proofDescriptor);
+  const crossChainHints = summarizeCrossChainHints(context);
   const credentialCheck = localCredentialChecks({
     identityId: input.identityId,
     policyId: input.policyId,
@@ -313,9 +408,10 @@ export async function evaluateAccessDecision(input: {
     ...issuerCheck.reasons,
     ...(onChainCheck.valid ? [] : [onChainCheck.reason]),
   ];
+  const policyGuardrailReasons = [...policyReasons, ...disclosureCheck.reasons];
 
   let decision: "allow" | "restrict" | "deny" = "allow";
-  if (policyReasons.length > 0 || credentialReasons.length > 0) {
+  if (policyGuardrailReasons.length > 0 || credentialReasons.length > 0) {
     decision = "deny";
   } else if (riskDecision.decision === "deny") {
     decision = "deny";
@@ -329,14 +425,17 @@ export async function evaluateAccessDecision(input: {
     reasons: [
       ...riskDecision.reasons,
       ...credentialReasons.map((reason) => reason.message),
-      ...policyReasons.map((reason) => reason.message),
+      ...policyGuardrailReasons.map((reason) => reason.message),
     ],
     credentialReasons,
     riskReasons: riskDecision.riskReasons ?? [],
-    policyReasons,
+    policyReasons: policyGuardrailReasons,
     warnings: [
       ...riskDecision.warnings,
       ...(context.reviewQueue?.some((item: { status: string }) => item.status === "PENDING_REVIEW") ? ["Pending AI review item is still open."] : []),
+      ...(crossChainHints.reviewTriggers > 0 ? [`${crossChainHints.reviewTriggers} verified cross-chain review trigger(s) are waiting for local review.`] : []),
+      ...(crossChainHints.riskHints > 0 ? [`${crossChainHints.riskHints} verified cross-chain risk hint(s) are available for local policy interpretation.`] : []),
+      ...(crossChainHints.eligibilitySignals > 0 ? [`${crossChainHints.eligibilitySignals} verified cross-chain eligibility signal(s) support positive uplift review.`] : []),
     ],
     evidenceRefs: [...new Set([...(riskDecision.evidenceRefs ?? []), ...(context.summary.evidenceRefs ?? [])])],
   });
@@ -354,7 +453,13 @@ export async function evaluateAccessDecision(input: {
       credentialBundles: input.credentialBundles,
     }),
   });
-  return { ...normalized, ...persistence };
+  return {
+    ...normalized,
+    ...persistence,
+    proofDescriptor,
+    disclosureRequirement: disclosureCheck.requirement,
+    crossChainHints,
+  };
 }
 
 export async function evaluateWarningDecision(input: { identityId: Hex; policyId: string; policyVersion: number }) {

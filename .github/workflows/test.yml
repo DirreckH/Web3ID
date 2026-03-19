@@ -78,3 +78,6 @@ jobs:
 
       - name: System acceptance suite
         run: pnpm test:system
+
+      - name: Phase4 smoke suite
+        run: pnpm test:phase4:smoke

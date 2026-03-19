@@ -1,5 +1,6 @@
 import { IdentityMode, type PolicyModeDescriptor, type SupportedProofKind } from "../../identity/src/index.js";
-import { proofPrivacyModes, type ProofPrivacyMode } from "../../proof/src/index.js";
+import { proofPrivacyModes, type DisclosureProfile, type ProofPrivacyMode } from "../../proof/src/index.js";
+import { createVersionEnvelope, type VersionEnvelope } from "../../identity/src/index.js";
 import { IdentityState } from "../../state/src/index.js";
 import { keccak256, stringToHex, type Address, type Hex } from "viem";
 import { z } from "zod";
@@ -68,12 +69,26 @@ export const policySchema = z.object({
   stateOverrideRule: z.string().optional(),
   acceptedPrivacyModes: z.array(proofPrivacyModeSchema).optional(),
   issuerDisclosureRequirement: z.enum(["full", "hash_only", "hidden_reserved"]).optional(),
+  disclosureProfiles: z.array(z.enum(["public", "selective_disclosure", "policy_minimal_disclosure"])).optional(),
+  minimumDisclosureSet: z.array(z.string()).optional(),
+  auditVisibleMinimumFacts: z.array(z.string()).optional(),
 });
 
 export type PolicyDefinition = z.infer<typeof policySchema>;
 export type PolicyPrivacyRequirement = {
   acceptedPrivacyModes?: ProofPrivacyMode[];
   issuerDisclosureRequirement?: "full" | "hash_only" | "hidden_reserved";
+};
+
+export type PolicyDisclosureRequirement = {
+  policyId: Hex;
+  policyVersion: number;
+  requiredClaims: string[];
+  requiredIssuerVisibility: "full" | "hash_only" | "hidden_reserved";
+  allowedDisclosureProfiles: DisclosureProfile[];
+  minimumDisclosureSet: string[];
+  auditVisibleMinimumFacts: string[];
+  versionEnvelope: VersionEnvelope;
 };
 
 export const proofRequestSchema = z.object({
@@ -256,6 +271,22 @@ export function getPolicyModeDescriptor(input: Hex | PolicyLabel | PolicyDefinit
 
 export function getRequiredProofKind(input: Hex | PolicyLabel | PolicyDefinition): SupportedProofKind {
   return getPolicyDefinition(input).proofTemplate;
+}
+
+export function getPolicyDisclosureRequirement(input: Hex | PolicyLabel | PolicyDefinition): PolicyDisclosureRequirement {
+  const definition = getPolicyDefinition(input);
+  return {
+    policyId: definition.policyId as Hex,
+    policyVersion: definition.policyVersion,
+    requiredClaims: definition.requiredCredentialTypes.map((item) => item.toString()),
+    requiredIssuerVisibility: definition.issuerDisclosureRequirement ?? (definition.requiresComplianceMode ? "full" : "hash_only"),
+    allowedDisclosureProfiles: definition.disclosureProfiles ?? (definition.requiresComplianceMode ? ["public", "selective_disclosure"] : ["public", "selective_disclosure", "policy_minimal_disclosure"]),
+    minimumDisclosureSet: definition.minimumDisclosureSet ?? [],
+    auditVisibleMinimumFacts: definition.auditVisibleMinimumFacts ?? [],
+    versionEnvelope: createVersionEnvelope({
+      policyVersion: definition.policyVersion,
+    }),
+  };
 }
 
 export function createProofRequest(input: {

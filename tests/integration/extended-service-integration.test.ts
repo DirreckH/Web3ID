@@ -14,7 +14,7 @@ async function waitFor<T>(callback: () => Promise<T | null>, timeoutMs = 60_000,
 }
 
 describe.sequential("extended service integration", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createServiceHarness(13555 + (process.pid % 100));
@@ -23,7 +23,7 @@ describe.sequential("extended service integration", () => {
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("covers propagation boundaries and keeps sub risk localized by default", async () => {

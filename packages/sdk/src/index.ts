@@ -16,6 +16,7 @@ import {
   resolveEffectiveMode as resolveIdentityEffectiveMode,
   supportsPolicy as resolveIdentityPolicySupport,
   type GuardianMetadata,
+  type RecoveryCase,
   type RecoveryIntent,
   type RecoveryPolicySlot,
   type RootIdentity,
@@ -43,7 +44,9 @@ import {
   getActiveConsequences,
   isStateInRange,
   type ConsequenceRecord,
+  type CrossChainInboxItem,
   type CrossChainStateMessage,
+  type CrossChainStateMessageV2,
   type StateSnapshot,
   type StateSnapshotSource,
 } from "@web3id/state";
@@ -698,6 +701,192 @@ export async function getAnalyzerOperatorDashboard(apiUrl: string) {
     throw new Error(`Analyzer service responded with ${response.status}`);
   }
   return response.json();
+}
+
+export async function listAnalyzerRecoveryCases(apiUrl: string, input: { rootIdentityId?: Hex; identityId?: Hex } = {}): Promise<RecoveryCase[]> {
+  const query = new URLSearchParams();
+  if (input.rootIdentityId) query.set("rootIdentityId", input.rootIdentityId);
+  if (input.identityId) query.set("identityId", input.identityId);
+  const response = await fetch(`${apiUrl}/recovery/cases${query.size ? `?${query.toString()}` : ""}`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  const body = await response.json();
+  return body.items ?? [];
+}
+
+export async function createAnalyzerRecoveryCase(apiUrl: string, input: {
+  rootIdentityId: Hex;
+  targetIdentityId?: Hex;
+  targetSubIdentityId?: Hex;
+  action: "rebind" | "capability_restore" | "consequence_release" | "access_path_unlock";
+  requestedBy: string;
+  scope: "selected_sub_identity" | "capability" | "consequence" | "access_path";
+  breakGlassAction?: "queue_unblock" | "temporary_release" | "consequence_rollback";
+  idempotencyKey?: string;
+}) {
+  return postJson(apiUrl, "/recovery/cases", input, "Analyzer service");
+}
+
+export async function appendAnalyzerRecoveryEvidence(apiUrl: string, input: {
+  caseId: string;
+  actor: string;
+  actorRole: "requester" | "guardian" | "operator" | "governance_reviewer" | "auditor";
+  kind: "binding_proof" | "guardian_attestation" | "policy_basis" | "audit_ref" | "manual_note";
+  summary: string;
+  evidenceRefs: string[];
+  idempotencyKey?: string;
+}) {
+  return postJson(apiUrl, `/recovery/cases/${input.caseId}/evidence`, {
+    actor: input.actor,
+    actorRole: input.actorRole,
+    kind: input.kind,
+    summary: input.summary,
+    evidenceRefs: input.evidenceRefs,
+    idempotencyKey: input.idempotencyKey,
+  }, "Analyzer service");
+}
+
+export async function decideAnalyzerRecoveryCase(apiUrl: string, input: {
+  caseId: string;
+  actor: string;
+  actorRole: "guardian" | "operator" | "governance_reviewer" | "auditor";
+  outcome: "approved" | "rejected" | "revoked";
+  reasonCode: string;
+  explanation: string;
+  evidenceRefs: string[];
+  idempotencyKey?: string;
+}) {
+  return postJson(apiUrl, `/recovery/cases/${input.caseId}/decision`, {
+    actor: input.actor,
+    actorRole: input.actorRole,
+    outcome: input.outcome,
+    reasonCode: input.reasonCode,
+    explanation: input.explanation,
+    evidenceRefs: input.evidenceRefs,
+    idempotencyKey: input.idempotencyKey,
+  }, "Analyzer service");
+}
+
+export async function executeAnalyzerRecoveryCase(apiUrl: string, input: {
+  caseId: string;
+  actor: string;
+  action: "rebind" | "capability_restore" | "consequence_release" | "access_path_unlock";
+  breakGlassAction?: "queue_unblock" | "temporary_release" | "consequence_rollback";
+  idempotencyKey?: string;
+}) {
+  return postJson(apiUrl, `/recovery/cases/${input.caseId}/execute`, {
+    actor: input.actor,
+    action: input.action,
+    breakGlassAction: input.breakGlassAction,
+    idempotencyKey: input.idempotencyKey,
+  }, "Analyzer service");
+}
+
+export async function listAnalyzerApprovalTickets(apiUrl: string, input: { rootIdentityId?: Hex; identityId?: Hex } = {}) {
+  const query = new URLSearchParams();
+  if (input.rootIdentityId) query.set("rootIdentityId", input.rootIdentityId);
+  if (input.identityId) query.set("identityId", input.identityId);
+  const response = await fetch(`${apiUrl}/approvals${query.size ? `?${query.toString()}` : ""}`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  const body = await response.json();
+  return body.items ?? [];
+}
+
+export async function createAnalyzerApprovalTicket(apiUrl: string, input: {
+  action: "recovery_execution" | "break_glass" | "positive_uplift" | "policy_exception" | "cross_chain_consume";
+  rootIdentityId: Hex;
+  identityId?: Hex;
+  requiredRoles: Array<"viewer" | "analyst" | "operator" | "recovery_operator" | "governance_reviewer" | "auditor" | "admin">;
+  requiredApprovals: number;
+  reasonCode: string;
+  explanation: string;
+  beforeSnapshot?: Record<string, unknown>;
+  afterSnapshot?: Record<string, unknown>;
+  idempotencyKey?: string;
+}) {
+  return postJson(apiUrl, "/approvals", input, "Analyzer service");
+}
+
+export async function decideAnalyzerApprovalTicket(apiUrl: string, input: {
+  ticketId: string;
+  actor: string;
+  decision: "approve" | "reject" | "cancel";
+  idempotencyKey?: string;
+}) {
+  return postJson(apiUrl, `/approvals/${input.ticketId}/decision`, {
+    actor: input.actor,
+    decision: input.decision,
+    idempotencyKey: input.idempotencyKey,
+  }, "Analyzer service");
+}
+
+export async function createAnalyzerCrossChainMessage(apiUrl: string, input: {
+  identityId: Hex;
+  targetChainId: number;
+  sourceDomain?: string;
+  targetDomain?: string;
+  ttlSeconds?: number;
+  consumerPolicyHint?: "warning_hint" | "review_trigger" | "risk_hint" | "eligibility_signal";
+  idempotencyKey?: string;
+}): Promise<{ snapshot: StateSnapshot; message: CrossChainStateMessageV2 }> {
+  return postJson(apiUrl, "/cross-chain/messages/create", input, "Analyzer service");
+}
+
+export async function ingestAnalyzerCrossChainMessage(apiUrl: string, input: { message: CrossChainStateMessageV2; idempotencyKey?: string }): Promise<CrossChainInboxItem> {
+  return postJson(apiUrl, "/cross-chain/inbox/ingest", input, "Analyzer service");
+}
+
+export async function listAnalyzerCrossChainInbox(apiUrl: string, input: { rootIdentityId?: Hex; identityId?: Hex } = {}): Promise<CrossChainInboxItem[]> {
+  const query = new URLSearchParams();
+  if (input.rootIdentityId) query.set("rootIdentityId", input.rootIdentityId);
+  if (input.identityId) query.set("identityId", input.identityId);
+  const response = await fetch(`${apiUrl}/cross-chain/inbox${query.size ? `?${query.toString()}` : ""}`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  const body = await response.json();
+  return body.items ?? [];
+}
+
+export async function consumeAnalyzerCrossChainInboxItem(apiUrl: string, input: {
+  inboxId: string;
+  actor: string;
+  effect?: "hint_recorded" | "review_recommended" | "eligibility_noted";
+  idempotencyKey?: string;
+}) {
+  return postJson(apiUrl, `/cross-chain/inbox/${input.inboxId}/consume`, {
+    actor: input.actor,
+    effect: input.effect,
+    idempotencyKey: input.idempotencyKey,
+  }, "Analyzer service");
+}
+
+export async function getAnalyzerRuntimeMetrics(apiUrl: string) {
+  const response = await fetch(`${apiUrl}/metrics`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getAnalyzerWebhookOutbox(apiUrl: string) {
+  const response = await fetch(`${apiUrl}/webhooks/outbox`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  const body = await response.json();
+  return body.items ?? [];
+}
+
+export async function replayAnalyzerIdentity(apiUrl: string, input: { identityId: Hex; asOf?: string }) {
+  return postJson(apiUrl, "/replay", input, "Analyzer service");
+}
+
+export async function diffAnalyzerIdentityReplay(apiUrl: string, input: { identityId: Hex; from: string; to: string }) {
+  return postJson(apiUrl, "/diff", input, "Analyzer service");
 }
 
 export async function getAnalyzerPolicyDecisionHistory(apiUrl: string, identityId: Hex) {

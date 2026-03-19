@@ -1,11 +1,13 @@
 import type { Address, Hex } from "viem";
 import type {
   ConsequenceRecord,
+  CrossChainInboxItem,
   ExplanationBlock,
   IdentityState,
   RiskAssessment,
   RiskSignal as BaseRiskSignal,
   StateTransitionDecision,
+  VersionEnvelope,
 } from "../../state/src/index.js";
 
 export type BehaviorKind =
@@ -48,7 +50,20 @@ export type AuditAction =
   | "CONFIRMED_SIGNAL_CREATED"
   | "MANUAL_RELEASE_APPLIED"
   | "POLICY_DECISION_MADE"
-  | "WATCH_UPDATED";
+  | "WATCH_UPDATED"
+  | "RECOVERY_CASE_CREATED"
+  | "RECOVERY_EVIDENCE_ADDED"
+  | "RECOVERY_DECISION_RECORDED"
+  | "RECOVERY_EXECUTED"
+  | "RECOVERY_OUTCOME_RECORDED"
+  | "APPROVAL_TICKET_CREATED"
+  | "APPROVAL_TICKET_APPROVED"
+  | "APPROVAL_TICKET_REJECTED"
+  | "APPROVAL_TICKET_CANCELLED"
+  | "CROSS_CHAIN_MESSAGE_CREATED"
+  | "CROSS_CHAIN_MESSAGE_INGESTED"
+  | "CROSS_CHAIN_MESSAGE_CONSUMED"
+  | "WEBHOOK_EVENT_QUEUED";
 export type WarningDecisionLevel = "info" | "warn" | "high_warn";
 export type AccessDecisionLevel = "allow" | "restrict" | "deny";
 export type AiSuggestionKind = "risk_hint" | "pattern_flag" | "explanation";
@@ -177,6 +192,7 @@ export type AuditRecord = {
   aiSuggestionId?: string;
   reviewItemId?: string;
   metadata?: Record<string, unknown>;
+  versionEnvelope?: VersionEnvelope;
 };
 
 export type AiSuggestionAudit = {
@@ -229,6 +245,7 @@ export type ReviewQueueItem = {
   reason?: string;
   evidenceRefs: string[];
   explanation: ExplanationBlock;
+  versionEnvelope?: VersionEnvelope;
 };
 
 export type ReviewQueueCounts = {
@@ -356,6 +373,41 @@ export type PolicyDecisionRecord = {
   createdAt: string;
   auditRecordIds: string[];
   explanation: ExplanationBlock;
+  versionEnvelope?: VersionEnvelope;
+};
+
+export type OperatorRole =
+  | "viewer"
+  | "analyst"
+  | "operator"
+  | "recovery_operator"
+  | "governance_reviewer"
+  | "auditor"
+  | "admin";
+
+export type ApprovalAction =
+  | "recovery_execution"
+  | "break_glass"
+  | "positive_uplift"
+  | "policy_exception"
+  | "cross_chain_consume";
+
+export type ApprovalTicket = {
+  ticketId: string;
+  action: ApprovalAction;
+  rootIdentityId: Hex;
+  identityId?: Hex;
+  requiredRoles: OperatorRole[];
+  requiredApprovals: number;
+  approvedBy: string[];
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  beforeSnapshot?: Record<string, unknown>;
+  afterSnapshot?: Record<string, unknown>;
+  reasonCode: string;
+  explanation: string;
+  createdAt: string;
+  updatedAt: string;
+  versionEnvelope: VersionEnvelope;
 };
 
 export type BindingChallenge = {
@@ -468,12 +520,18 @@ export type OperatorDashboardSnapshot = {
     pendingReviewItems: number;
     pendingAiReviews: number;
     activeWatchers: number;
+    pendingRecoveryCases?: number;
+    pendingApprovalTickets?: number;
+    activePositiveUplifts?: number;
   };
   recentStateEscalations: AuditRecord[];
   recentHighRiskOrFrozen: AuditRecord[];
   recentManualReleases: AuditRecord[];
   recentWarningPolicies: PolicyDecisionRecord[];
   recentPolicyDecisions: PolicyDecisionRecord[];
+  recentApprovalTickets?: ApprovalTicket[];
+  positiveUpliftNotes?: string[];
+  versionEnvelope?: VersionEnvelope;
 };
 
 export type AuditExportBundle = {
@@ -503,10 +561,56 @@ export type AuditExportBundle = {
   reviewQueue: ReviewQueueItem[];
   policyDecisions: PolicyDecisionRecord[];
   anchors: AnchorQueueEntry[];
+  crossChainInbox?: CrossChainInboxItem[];
   auditRecords: AuditRecord[];
   records: AuditRecord[];
   explanationChain: ExplanationChainEntry[];
   consistency: AuditExportConsistency;
+  approvalTickets?: ApprovalTicket[];
+  versionEnvelope?: VersionEnvelope;
+};
+
+export type ReplayTrace = {
+  identityId: Hex;
+  rootIdentityId: Hex;
+  asOf: string;
+  storedState: IdentityState | null;
+  effectiveState: IdentityState | null;
+  reasonCodes: string[];
+  warnings: string[];
+  policyDecisions: PolicyDecisionRecord[];
+  recoveryCases: Array<{
+    caseId: string;
+    action: string;
+    status: string;
+    updatedAt: string;
+  }>;
+  crossChainInbox: Array<{
+    inboxId: string;
+    verified: boolean;
+    consumed: boolean;
+    reasonCode: string;
+    createdAt: string;
+  }>;
+  auditRecords: AuditRecord[];
+  explanation: string[];
+  versionEnvelope: VersionEnvelope;
+};
+
+export type DiffChange = {
+  field: string;
+  before: unknown;
+  after: unknown;
+  explanation: string;
+};
+
+export type DiffReport = {
+  identityId: Hex;
+  from: ReplayTrace;
+  to: ReplayTrace;
+  changes: DiffChange[];
+  summary: string;
+  versionEnvelope: VersionEnvelope;
 };
 
 export type PositiveSignalThresholds = {

@@ -1,6 +1,7 @@
 import { keccak256, stringToHex, type Hex } from "viem";
 import { getActiveConsequences, type ConsequenceRecord } from "./consequence.js";
 import { IdentityState, type IdentityStateContext } from "./state.js";
+import { createVersionEnvelope, type VersionEnvelope } from "./versioning.js";
 
 export type ReservedHookGuardrail = {
   defaultMode: "default_off";
@@ -36,6 +37,7 @@ export type StateSnapshot = {
   generatedAt: string;
   evidenceBundleHash?: string;
   guardrails: ReservedHookGuardrail;
+  versionEnvelope?: VersionEnvelope;
 };
 
 export type StateMerkleCommitment = {
@@ -59,6 +61,7 @@ export type CrossChainStateMessage = {
   payloadHash: string;
   createdAt: string;
   guardrails: ReservedHookGuardrail;
+  versionEnvelope?: VersionEnvelope;
 };
 
 export type StateSnapshotSource = {
@@ -67,8 +70,11 @@ export type StateSnapshotSource = {
   subIdentityId?: Hex;
   storedState: IdentityState;
   effectiveState: IdentityState;
+  effectiveMode?: string;
   stateContext?: Pick<IdentityStateContext, "currentState" | "decisions" | "assessments" | "consequences"> | null;
   policyDecisions?: PolicyDecisionSnapshotSource[];
+  propagationSummary?: string[];
+  explanationAnchor?: string;
 };
 
 export type BuildStateSnapshotOptions = {
@@ -86,6 +92,75 @@ export type BuildCrossChainStateMessageOptions = {
   commitment?: Pick<StateMerkleCommitment, "commitmentId"> | null;
   createdAt?: string;
   messageType?: CrossChainStateMessage["messageType"];
+};
+
+export type StateSnapshotAttestation = {
+  signer: string;
+  trustProfile: "local_demo" | "attested_sync";
+  attestationDigest: string;
+  metadata: Record<string, unknown>;
+  issuedAt: string;
+  expiresAt?: string;
+  versionEnvelope: VersionEnvelope;
+};
+
+export type StateSnapshotV2 = StateSnapshot & {
+  effectiveMode: string;
+  consequenceSummary: string[];
+  policySummary: string[];
+  propagationSummary: string[];
+  explanationAnchor?: string;
+  registryVersion: number;
+  policyVersion?: number;
+  issuedAt: string;
+  expiresAt?: string;
+  attestation: StateSnapshotAttestation;
+  versionEnvelope: VersionEnvelope;
+};
+
+export type CrossChainStateMessageV2 = CrossChainStateMessage & {
+  sourceDomain: string;
+  targetDomain: string;
+  snapshotDigest: string;
+  attestor: string;
+  trustProfile: StateSnapshotAttestation["trustProfile"];
+  attestationIssuedAt: string;
+  attestationExpiresAt?: string;
+  attestationProof: string;
+  ttlSeconds: number;
+  expiresAt?: string;
+  replayProtectionKey: string;
+  consumerPolicyHint: "warning_hint" | "review_trigger" | "risk_hint" | "eligibility_signal";
+  versionEnvelope: VersionEnvelope;
+};
+
+export type CrossChainVerificationResult = {
+  messageId: string;
+  verified: boolean;
+  reasonCode: "OK" | "TAMPERED" | "EXPIRED" | "REPLAYED" | "TRUST_PROFILE_REJECTED";
+  explanation: string;
+  verifiedAt: string;
+  messageDigest: string;
+  versionEnvelope: VersionEnvelope;
+};
+
+export type CrossChainConsumptionTrace = {
+  traceId: string;
+  messageId: string;
+  consumerPolicyHint: CrossChainStateMessageV2["consumerPolicyHint"];
+  effect: "hint_recorded" | "review_recommended" | "eligibility_noted";
+  createdAt: string;
+  explanation: string;
+  versionEnvelope: VersionEnvelope;
+};
+
+export type CrossChainInboxItem = {
+  inboxId: string;
+  message: CrossChainStateMessageV2;
+  verification: CrossChainVerificationResult;
+  consumed: boolean;
+  consumptionTrace?: CrossChainConsumptionTrace;
+  versionEnvelope: VersionEnvelope;
 };
 
 export function buildStateSnapshot(source: StateSnapshotSource, options: BuildStateSnapshotOptions = {}): StateSnapshot {
@@ -117,6 +192,9 @@ export function buildStateSnapshot(source: StateSnapshotSource, options: BuildSt
     generatedAt,
     evidenceBundleHash: snapshotBody.evidenceBundleHash,
     guardrails: crossChainHookGuardrails,
+    versionEnvelope: createVersionEnvelope({
+      policyVersion: parsePolicyVersion(snapshotBody.policyContextVersion),
+    }),
   };
 }
 
@@ -202,6 +280,227 @@ export function buildCrossChainStateMessage(
     payloadHash,
     createdAt,
     guardrails: crossChainHookGuardrails,
+    versionEnvelope: createVersionEnvelope(),
+  };
+}
+
+export function buildStateSnapshotV2(
+  source: StateSnapshotSource,
+  options: BuildStateSnapshotOptions & {
+    signer?: string;
+    trustProfile?: StateSnapshotAttestation["trustProfile"];
+    expiresAt?: string;
+  } = {},
+): StateSnapshotV2 {
+  const base = buildStateSnapshot(source, options);
+  const issuedAt = options.generatedAt ?? new Date().toISOString();
+  const attestation: StateSnapshotAttestation = {
+    signer: options.signer ?? "web3id:local-attestor",
+    trustProfile: options.trustProfile ?? "local_demo",
+    attestationDigest: hashCanonical({
+      snapshotId: base.snapshotId,
+      rootIdentityId: base.rootIdentityId,
+      subIdentityId: base.subIdentityId,
+      issuedAt,
+      expiresAt: options.expiresAt,
+    }),
+    metadata: {
+      rootIdentityId: base.rootIdentityId,
+      subIdentityId: base.subIdentityId,
+      storedState: base.storedState,
+      effectiveState: base.effectiveState,
+    },
+    issuedAt,
+    expiresAt: options.expiresAt,
+    versionEnvelope: createVersionEnvelope({
+      policyVersion: parsePolicyVersion(base.policyContextVersion),
+    }),
+  };
+  return {
+    ...base,
+    effectiveMode: source.effectiveMode ?? "UNRESOLVED",
+    consequenceSummary: [...base.consequenceTypes],
+    policySummary: (source.policyDecisions ?? []).map((item) => `${item.policyLabel}@${item.policyVersion}`),
+    propagationSummary: [...(source.propagationSummary ?? [])],
+    explanationAnchor: source.explanationAnchor,
+    registryVersion: 1,
+    policyVersion: parsePolicyVersion(base.policyContextVersion) ?? undefined,
+    issuedAt,
+    expiresAt: options.expiresAt,
+    attestation,
+    versionEnvelope: createVersionEnvelope({
+      policyVersion: parsePolicyVersion(base.policyContextVersion),
+    }),
+  };
+}
+
+export function buildCrossChainStateMessageV2(
+  snapshot: StateSnapshotV2,
+  input: {
+    sourceChainId?: number;
+    targetChainId: number;
+    sourceDomain?: string;
+    targetDomain?: string;
+    createdAt?: string;
+    ttlSeconds?: number;
+    consumerPolicyHint?: CrossChainStateMessageV2["consumerPolicyHint"];
+  },
+): CrossChainStateMessageV2 {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const ttlSeconds = input.ttlSeconds ?? 3600;
+  const expiresAt = snapshot.expiresAt ?? new Date(Date.parse(createdAt) + ttlSeconds * 1000).toISOString();
+  const base = buildCrossChainStateMessage(snapshot, input.targetChainId, {
+    sourceChainId: input.sourceChainId,
+    createdAt,
+  });
+  const sourceDomain = input.sourceDomain ?? `chain:${input.sourceChainId ?? 31337}`;
+  const targetDomain = input.targetDomain ?? `chain:${input.targetChainId}`;
+  const snapshotDigest = hashCanonical({
+    snapshotId: snapshot.snapshotId,
+    attestationDigest: snapshot.attestation.attestationDigest,
+    issuedAt: snapshot.attestation.issuedAt,
+    expiresAt: snapshot.attestation.expiresAt,
+  });
+  return {
+    ...base,
+    sourceDomain,
+    targetDomain,
+    snapshotDigest,
+    attestor: snapshot.attestation.signer,
+    trustProfile: snapshot.attestation.trustProfile,
+    attestationIssuedAt: snapshot.attestation.issuedAt,
+    attestationExpiresAt: snapshot.attestation.expiresAt,
+    attestationProof: hashCanonical({
+      snapshotDigest,
+      signer: snapshot.attestation.signer,
+      trustProfile: snapshot.attestation.trustProfile,
+    }),
+    ttlSeconds,
+    expiresAt,
+    replayProtectionKey: hashCanonical({
+      messageId: base.messageId,
+      sourceDomain,
+      targetDomain,
+      snapshotDigest,
+    }),
+    consumerPolicyHint: input.consumerPolicyHint ?? "warning_hint",
+    versionEnvelope: createVersionEnvelope({
+      policyVersion: snapshot.policyVersion,
+    }),
+  };
+}
+
+export function verifyCrossChainStateMessageV2(
+  message: CrossChainStateMessageV2,
+  options: {
+    expectedTargetDomain?: string;
+    seenReplayProtectionKeys?: Set<string>;
+    now?: string;
+    allowedTrustProfiles?: StateSnapshotAttestation["trustProfile"][];
+  } = {},
+): CrossChainVerificationResult {
+  const now = options.now ?? new Date().toISOString();
+  const expectedTargetDomain = options.expectedTargetDomain ?? message.targetDomain;
+  const seenKeys = options.seenReplayProtectionKeys;
+  const trustProfiles = options.allowedTrustProfiles ?? ["local_demo", "attested_sync"];
+  if (!trustProfiles.includes(message.trustProfile)) {
+    return buildVerificationResult(message, false, "TRUST_PROFILE_REJECTED", now, "Message trust profile is not allowed by the local verifier.");
+  }
+  if (message.targetDomain !== expectedTargetDomain) {
+    return buildVerificationResult(message, false, "TAMPERED", now, "Target domain mismatch.");
+  }
+  if (message.expiresAt && Date.parse(message.expiresAt) <= Date.parse(now)) {
+    return buildVerificationResult(message, false, "EXPIRED", now, "Cross-domain message has expired.");
+  }
+  const expectedAttestationDigest = hashCanonical({
+    snapshotId: message.snapshotRef,
+    rootIdentityId: message.rootIdentityId,
+    subIdentityId: message.subIdentityId,
+    issuedAt: message.attestationIssuedAt,
+    expiresAt: message.attestationExpiresAt,
+  });
+  const expectedSnapshotDigest = hashCanonical({
+    snapshotId: message.snapshotRef,
+    attestationDigest: expectedAttestationDigest,
+    issuedAt: message.attestationIssuedAt,
+    expiresAt: message.attestationExpiresAt,
+  });
+  if (message.snapshotDigest !== expectedSnapshotDigest) {
+    return buildVerificationResult(message, false, "TAMPERED", now, "Snapshot digest verification failed.");
+  }
+  const expectedAttestationProof = hashCanonical({
+    snapshotDigest: expectedSnapshotDigest,
+    signer: message.attestor,
+    trustProfile: message.trustProfile,
+  });
+  if (message.attestationProof !== expectedAttestationProof) {
+    return buildVerificationResult(message, false, "TAMPERED", now, "Attestation proof verification failed.");
+  }
+  const expectedMessageId = hashCanonical({
+    payloadHash: message.payloadHash,
+    sourceChainId: message.sourceChainId,
+    targetChainId: message.targetChainId,
+    snapshotRef: message.snapshotRef,
+    commitmentRef: message.commitmentRef,
+    messageType: message.messageType,
+  });
+  if (message.messageId !== expectedMessageId) {
+    return buildVerificationResult(message, false, "TAMPERED", now, "Message identity verification failed.");
+  }
+  const expectedReplayProtectionKey = hashCanonical({
+    messageId: expectedMessageId,
+    sourceDomain: message.sourceDomain,
+    targetDomain: message.targetDomain,
+    snapshotDigest: expectedSnapshotDigest,
+  });
+  if (message.replayProtectionKey !== expectedReplayProtectionKey) {
+    return buildVerificationResult(message, false, "TAMPERED", now, "Replay protection key verification failed.");
+  }
+  if (seenKeys?.has(message.replayProtectionKey)) {
+    return buildVerificationResult(message, false, "REPLAYED", now, "Replay protection rejected a duplicate message.");
+  }
+  return buildVerificationResult(message, true, "OK", now, "Cross-domain message verified and can be consumed as a local hint.");
+}
+
+export function createCrossChainInboxItem(
+  message: CrossChainStateMessageV2,
+  verification: CrossChainVerificationResult,
+  consumptionTrace?: CrossChainConsumptionTrace,
+): CrossChainInboxItem {
+  return {
+    inboxId: hashCanonical({
+      messageId: message.messageId,
+      verifiedAt: verification.verifiedAt,
+    }),
+    message,
+    verification,
+    consumed: Boolean(consumptionTrace),
+    consumptionTrace,
+    versionEnvelope: createVersionEnvelope({
+      policyVersion: message.versionEnvelope.policyVersion,
+    }),
+  };
+}
+
+export function createCrossChainConsumptionTrace(
+  message: CrossChainStateMessageV2,
+  effect: CrossChainConsumptionTrace["effect"],
+  createdAt = new Date().toISOString(),
+): CrossChainConsumptionTrace {
+  return {
+    traceId: hashCanonical({
+      messageId: message.messageId,
+      effect,
+      createdAt,
+    }),
+    messageId: message.messageId,
+    consumerPolicyHint: message.consumerPolicyHint,
+    effect,
+    createdAt,
+    explanation: `Cross-domain message ${message.messageId} was consumed as ${effect}. Local policy remains the final decision-maker.`,
+    versionEnvelope: createVersionEnvelope({
+      policyVersion: message.versionEnvelope.policyVersion,
+    }),
   };
 }
 
@@ -228,6 +527,11 @@ function resolvePolicyContextVersion(policyDecisions: PolicyDecisionSnapshotSour
   return latest ? `${latest.policyLabel}@${latest.policyVersion}` : "policy-context:unbound";
 }
 
+function parsePolicyVersion(policyContextVersion: string) {
+  const match = /@(\d+)$/.exec(policyContextVersion);
+  return match ? Number(match[1]) : undefined;
+}
+
 function selectMessageType(effectiveState: string) {
   if (effectiveState === IdentityState[IdentityState.FROZEN]) {
     return "freeze_notice";
@@ -240,6 +544,31 @@ function selectMessageType(effectiveState: string) {
 
 function hashCanonical(value: unknown) {
   return keccak256(stringToHex(stableStringify(value)));
+}
+
+function buildVerificationResult(
+  message: CrossChainStateMessageV2,
+  verified: boolean,
+  reasonCode: CrossChainVerificationResult["reasonCode"],
+  verifiedAt: string,
+  explanation: string,
+): CrossChainVerificationResult {
+  return {
+    messageId: message.messageId,
+    verified,
+    reasonCode,
+    explanation,
+    verifiedAt,
+    messageDigest: hashCanonical({
+      messageId: message.messageId,
+      snapshotDigest: message.snapshotDigest,
+      attestationProof: message.attestationProof,
+      replayProtectionKey: message.replayProtectionKey,
+    }),
+    versionEnvelope: createVersionEnvelope({
+      policyVersion: message.versionEnvelope.policyVersion,
+    }),
+  };
 }
 
 function stableStringify(value: unknown): string {

@@ -1,6 +1,7 @@
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
-import type { RootIdentity, SubIdentity } from "../../../packages/identity/src/index.js";
+import type { RecoveryCase, RootIdentity, SubIdentity } from "../../../packages/identity/src/index.js";
 import type {
+  ApprovalTicket,
   AiSuggestion,
   AnchorQueueEntry,
   AuditRecord,
@@ -25,7 +26,7 @@ import {
   buildRiskSummaryExplanation,
   normalizeAiSuggestion,
 } from "../../../packages/risk/src/index.js";
-import { IdentityState, type IdentityStateContext } from "../../../packages/state/src/index.js";
+import { IdentityState, type CrossChainInboxItem, type IdentityStateContext } from "../../../packages/state/src/index.js";
 import { analyzerConfig } from "./config.js";
 
 export type AnalyzerIdentityRecord = {
@@ -61,6 +62,34 @@ export type AnalyzerWatcherRecord = {
   lastError?: string;
 };
 
+export type OperationReceipt = {
+  idempotencyKey: string;
+  operation: string;
+  createdAt: string;
+  result: Record<string, unknown>;
+};
+
+export type WebhookOutboxItem = {
+  eventId: string;
+  topic: string;
+  status: "PENDING" | "DELIVERED" | "FAILED";
+  attemptCount: number;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  deliveredAt?: string;
+  lastError?: string;
+};
+
+export type AnalyzerRuntimeMetrics = {
+  startedAt: string;
+  storeReads: number;
+  storeWrites: number;
+  lastReadAt?: string;
+  lastWriteAt?: string;
+  lastWriteDurationMs?: number;
+  queuedWebhookEvents: number;
+};
+
 export type AnalyzerStore = {
   roots: Record<string, { rootIdentity: RootIdentity; subIdentityIds: string[] }>;
   identities: Record<string, AnalyzerIdentityRecord>;
@@ -73,6 +102,12 @@ export type AnalyzerStore = {
   anchorQueue: Record<string, AnchorQueueEntry>;
   watchers: Record<string, AnalyzerWatcherRecord>;
   policyDecisions: Record<string, PolicyDecisionRecord>;
+  recoveryCases: Record<string, RecoveryCase>;
+  crossChainInbox: Record<string, CrossChainInboxItem>;
+  approvalTickets: Record<string, ApprovalTicket>;
+  operationReceipts: Record<string, OperationReceipt>;
+  webhookOutbox: Record<string, WebhookOutboxItem>;
+  runtimeMetrics: AnalyzerRuntimeMetrics;
 };
 
 function createEmptyStore(): AnalyzerStore {
@@ -88,6 +123,17 @@ function createEmptyStore(): AnalyzerStore {
     anchorQueue: {},
     watchers: {},
     policyDecisions: {},
+    recoveryCases: {},
+    crossChainInbox: {},
+    approvalTickets: {},
+    operationReceipts: {},
+    webhookOutbox: {},
+    runtimeMetrics: {
+      startedAt: new Date().toISOString(),
+      storeReads: 0,
+      storeWrites: 0,
+      queuedWebhookEvents: 0,
+    },
   };
 }
 
@@ -226,6 +272,20 @@ function normalizeStore(parsed: Partial<AnalyzerStore>): AnalyzerStore {
     anchorQueue: parsed.anchorQueue ?? {},
     watchers: parsed.watchers ?? {},
     policyDecisions: normalizedPolicyDecisions,
+    recoveryCases: parsed.recoveryCases ?? {},
+    crossChainInbox: parsed.crossChainInbox ?? {},
+    approvalTickets: parsed.approvalTickets ?? {},
+    operationReceipts: parsed.operationReceipts ?? {},
+    webhookOutbox: parsed.webhookOutbox ?? {},
+    runtimeMetrics: {
+      startedAt: parsed.runtimeMetrics?.startedAt ?? new Date().toISOString(),
+      storeReads: parsed.runtimeMetrics?.storeReads ?? 0,
+      storeWrites: parsed.runtimeMetrics?.storeWrites ?? 0,
+      lastReadAt: parsed.runtimeMetrics?.lastReadAt,
+      lastWriteAt: parsed.runtimeMetrics?.lastWriteAt,
+      lastWriteDurationMs: parsed.runtimeMetrics?.lastWriteDurationMs,
+      queuedWebhookEvents: parsed.runtimeMetrics?.queuedWebhookEvents ?? Object.keys(parsed.webhookOutbox ?? {}).length,
+    },
   };
 }
 
@@ -248,7 +308,10 @@ export async function loadStore(): Promise<AnalyzerStore> {
     try {
       const raw = await readFile(analyzerConfig.dataFile, "utf8");
       const parsed = JSON.parse(raw, jsonReviver) as Partial<AnalyzerStore>;
-      return normalizeStore(parsed);
+      const store = normalizeStore(parsed);
+      store.runtimeMetrics.storeReads += 1;
+      store.runtimeMetrics.lastReadAt = new Date().toISOString();
+      return store;
     } catch (error) {
       const errorCode = typeof error === "object" && error && "code" in error ? (error as { code?: string }).code : undefined;
       if (errorCode === "ENOENT") {
@@ -269,6 +332,10 @@ export async function loadStore(): Promise<AnalyzerStore> {
 }
 
 export async function saveStore(store: AnalyzerStore) {
+  const writeStartedAt = Date.now();
+  store.runtimeMetrics.storeWrites += 1;
+  store.runtimeMetrics.lastWriteAt = new Date().toISOString();
+  store.runtimeMetrics.queuedWebhookEvents = Object.values(store.webhookOutbox).filter((item) => item.status === "PENDING").length;
   const payload = JSON.stringify(store, jsonReplacer, 2);
   const tempFile = `${analyzerConfig.dataFile}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
   const writeOperation = storeWriteQueue
@@ -292,5 +359,6 @@ export async function saveStore(store: AnalyzerStore) {
 
   storeWriteQueue = writeOperation;
   await writeOperation;
+  store.runtimeMetrics.lastWriteDurationMs = Date.now() - writeStartedAt;
 }
 

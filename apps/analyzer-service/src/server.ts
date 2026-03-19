@@ -7,8 +7,13 @@ import {
   applyManualListAction,
   applyManualRelease,
   backfillScan,
+  consumeCrossChainMessage,
   confirmReview,
+  createApprovalTicket,
   createBindingChallengeRecord,
+  createCrossChainMessageRecord,
+  createRecoveryCaseRecord,
+  decideApprovalTicket,
   dismissReview,
   exportIdentityAudit,
   exportStructuredAudit,
@@ -16,15 +21,26 @@ import {
   getIdentityEvents,
   getOperatorDashboard,
   getRiskContext,
+  getRuntimeMetrics,
   getWatchStatus,
+  ingestCrossChainMessage,
   initializeAnalyzerWatchers,
+  diffIdentityReplay,
+  listApprovalTickets,
+  listCrossChainInbox,
   listRiskHistory,
+  listRecoveryCases,
+  listWebhookOutbox,
   listReviewQueue,
   manageWatchScan,
   recomputeIdentity,
+  replayIdentity,
+  appendRecoveryCaseEvidence,
   recordPolicyDecisionSnapshot,
+  recordRecoveryCaseDecision,
   registerIdentityTree,
   submitBinding,
+  executeRecoveryCase,
 } from "./service.js";
 import { IdentityState } from "../../../packages/state/src/index.js";
 
@@ -182,6 +198,123 @@ const policyDecisionSnapshotSchema = z.object({
   auditRecordIds: z.array(z.string()).optional(),
   createdAt: z.string().optional(),
 });
+const versionEnvelopeSchema = z.object({
+  schemaVersion: z.string(),
+  systemModelVersion: z.string(),
+  explanationSchemaVersion: z.string(),
+  policyVersion: z.number().int().positive().optional(),
+  registryVersion: z.number().int().positive().optional(),
+  auditBundleVersion: z.string().optional(),
+});
+const recoveryCaseSchema = z.object({
+  rootIdentityId: hex32Schema,
+  targetIdentityId: hex32Schema.optional(),
+  targetSubIdentityId: hex32Schema.optional(),
+  action: z.enum(["rebind", "capability_restore", "consequence_release", "access_path_unlock"]),
+  requestedBy: z.string().min(1),
+  scope: z.enum(["selected_sub_identity", "capability", "consequence", "access_path"]),
+  breakGlassAction: z.enum(["queue_unblock", "temporary_release", "consequence_rollback"]).optional(),
+  idempotencyKey: z.string().min(1).optional(),
+});
+const recoveryEvidenceSchema = z.object({
+  actor: z.string().min(1),
+  actorRole: z.enum(["requester", "guardian", "operator", "governance_reviewer", "auditor"]),
+  kind: z.enum(["binding_proof", "guardian_attestation", "policy_basis", "audit_ref", "manual_note"]),
+  summary: z.string().min(1),
+  evidenceRefs: z.array(z.string()).min(1),
+  idempotencyKey: z.string().min(1).optional(),
+});
+const recoveryDecisionSchema = z.object({
+  actor: z.string().min(1),
+  actorRole: z.enum(["guardian", "operator", "governance_reviewer", "auditor"]),
+  outcome: z.enum(["approved", "rejected", "revoked"]),
+  reasonCode: z.string().min(1),
+  explanation: z.string().min(1),
+  evidenceRefs: z.array(z.string()).min(1),
+  idempotencyKey: z.string().min(1).optional(),
+});
+const recoveryExecutionSchema = z.object({
+  actor: z.string().min(1),
+  action: z.enum(["rebind", "capability_restore", "consequence_release", "access_path_unlock"]),
+  breakGlassAction: z.enum(["queue_unblock", "temporary_release", "consequence_rollback"]).optional(),
+  idempotencyKey: z.string().min(1).optional(),
+});
+const approvalTicketSchema = z.object({
+  action: z.enum(["recovery_execution", "break_glass", "positive_uplift", "policy_exception", "cross_chain_consume"]),
+  rootIdentityId: hex32Schema,
+  identityId: hex32Schema.optional(),
+  requiredRoles: z.array(z.enum(["viewer", "analyst", "operator", "recovery_operator", "governance_reviewer", "auditor", "admin"])).min(1),
+  requiredApprovals: z.number().int().positive(),
+  reasonCode: z.string().min(1),
+  explanation: z.string().min(1),
+  beforeSnapshot: z.record(z.unknown()).optional(),
+  afterSnapshot: z.record(z.unknown()).optional(),
+  idempotencyKey: z.string().min(1).optional(),
+});
+const approvalDecisionSchema = z.object({
+  actor: z.string().min(1),
+  decision: z.enum(["approve", "reject", "cancel"]),
+  idempotencyKey: z.string().min(1).optional(),
+});
+const crossChainMessageSchema = z.object({
+  messageId: z.string().min(1),
+  sourceChainId: z.number().int().positive(),
+  targetChainId: z.number().int().positive(),
+  rootIdentityId: hex32Schema,
+  subIdentityId: hex32Schema.optional(),
+  snapshotRef: z.string().min(1),
+  commitmentRef: z.string().min(1).optional(),
+  messageType: z.enum(["state_sync", "freeze_notice", "restriction_notice"]),
+  payloadHash: z.string().min(1),
+  createdAt: z.string(),
+  guardrails: z.object({
+    defaultMode: z.literal("default_off"),
+    lifecycle: z.literal("hook_only"),
+    safety: z.literal("mock_safe"),
+    writesState: z.literal(false),
+    policyFactSource: z.literal(false),
+  }),
+  versionEnvelope: versionEnvelopeSchema,
+  sourceDomain: z.string().min(1),
+  targetDomain: z.string().min(1),
+  snapshotDigest: z.string().min(1),
+  attestor: z.string().min(1),
+  trustProfile: z.enum(["local_demo", "attested_sync"]),
+  attestationIssuedAt: z.string(),
+  attestationExpiresAt: z.string().optional(),
+  attestationProof: z.string().min(1),
+  ttlSeconds: z.number().int().positive(),
+  expiresAt: z.string().optional(),
+  replayProtectionKey: z.string().min(1),
+  consumerPolicyHint: z.enum(["warning_hint", "review_trigger", "risk_hint", "eligibility_signal"]),
+});
+const crossChainCreateSchema = z.object({
+  identityId: hex32Schema,
+  targetChainId: z.number().int().positive(),
+  sourceDomain: z.string().min(1).optional(),
+  targetDomain: z.string().min(1).optional(),
+  ttlSeconds: z.number().int().positive().optional(),
+  consumerPolicyHint: z.enum(["warning_hint", "review_trigger", "risk_hint", "eligibility_signal"]).optional(),
+  idempotencyKey: z.string().min(1).optional(),
+});
+const crossChainIngestSchema = z.object({
+  message: crossChainMessageSchema,
+  idempotencyKey: z.string().min(1).optional(),
+});
+const crossChainConsumeSchema = z.object({
+  actor: z.string().min(1),
+  effect: z.enum(["hint_recorded", "review_recommended", "eligibility_noted"]).optional(),
+  idempotencyKey: z.string().min(1).optional(),
+});
+const replaySchema = z.object({
+  identityId: hex32Schema,
+  asOf: z.string().optional(),
+});
+const diffSchema = z.object({
+  identityId: hex32Schema,
+  from: z.string(),
+  to: z.string(),
+});
 
 const app = express();
 app.set("json replacer", (_key: string, value: unknown) => (typeof value === "bigint" ? value.toString() : value));
@@ -287,6 +420,88 @@ app.post("/anchors/flush", async (req, res) => {
 });
 app.get("/operator/dashboard", async (_req, res) => {
   try { res.json(await getOperatorDashboard()); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/recovery/cases", async (req, res) => {
+  try {
+    res.json({
+      items: await listRecoveryCases({
+        rootIdentityId: typeof req.query.rootIdentityId === "string" ? (req.query.rootIdentityId as Hex) : undefined,
+        identityId: typeof req.query.identityId === "string" ? (req.query.identityId as Hex) : undefined,
+      }),
+    });
+  } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/recovery/cases", async (req, res) => {
+  try { res.json(await createRecoveryCaseRecord(recoveryCaseSchema.parse(req.body) as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/recovery/cases/:id/evidence", async (req, res) => {
+  try { res.json(await appendRecoveryCaseEvidence({ caseId: req.params.id, ...recoveryEvidenceSchema.parse(req.body) } as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/recovery/cases/:id/decision", async (req, res) => {
+  try { res.json(await recordRecoveryCaseDecision({ caseId: req.params.id, ...recoveryDecisionSchema.parse(req.body) } as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/recovery/cases/:id/execute", async (req, res) => {
+  try { res.json(await executeRecoveryCase({ caseId: req.params.id, ...recoveryExecutionSchema.parse(req.body) } as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/approvals", async (req, res) => {
+  try {
+    res.json({
+      items: await listApprovalTickets({
+        rootIdentityId: typeof req.query.rootIdentityId === "string" ? (req.query.rootIdentityId as Hex) : undefined,
+        identityId: typeof req.query.identityId === "string" ? (req.query.identityId as Hex) : undefined,
+      }),
+    });
+  } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/approvals", async (req, res) => {
+  try { res.json(await createApprovalTicket(approvalTicketSchema.parse(req.body) as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/approvals/:id/decision", async (req, res) => {
+  try { res.json(await decideApprovalTicket({ ticketId: req.params.id, ...approvalDecisionSchema.parse(req.body) } as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/cross-chain/messages/create", async (req, res) => {
+  try { res.json(await createCrossChainMessageRecord(crossChainCreateSchema.parse(req.body) as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/cross-chain/inbox/ingest", async (req, res) => {
+  try { res.json(await ingestCrossChainMessage(crossChainIngestSchema.parse(req.body) as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/cross-chain/inbox", async (req, res) => {
+  try {
+    res.json({
+      items: await listCrossChainInbox({
+        rootIdentityId: typeof req.query.rootIdentityId === "string" ? (req.query.rootIdentityId as Hex) : undefined,
+        identityId: typeof req.query.identityId === "string" ? (req.query.identityId as Hex) : undefined,
+      }),
+    });
+  } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/cross-chain/inbox/:id/consume", async (req, res) => {
+  try { res.json(await consumeCrossChainMessage({ inboxId: req.params.id, ...crossChainConsumeSchema.parse(req.body) } as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/metrics", async (_req, res) => {
+  try { res.json(await getRuntimeMetrics()); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/webhooks/outbox", async (_req, res) => {
+  try { res.json({ items: await listWebhookOutbox() }); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/replay", async (req, res) => {
+  try { res.json(await replayIdentity(replaySchema.parse(req.body) as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/diff", async (req, res) => {
+  try { res.json(await diffIdentityReplay(diffSchema.parse(req.body) as any)); }
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
 });
 app.post("/policy-decisions", async (req, res) => {

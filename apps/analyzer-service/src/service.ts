@@ -1,5 +1,6 @@
 
 import {
+  type ApprovalTicket,
   assertAuditExportConsistency,
   assertRiskContextExplainability,
   buildConfiguredPositiveSignals,
@@ -40,17 +41,45 @@ import {
   type PolicyDecisionKind,
   type PolicyDecisionRecord,
   type PolicyModePath,
+  type ReplayTrace,
   type RiskListHistoryItem,
   type RiskSignal,
   type RiskSummary,
   type ReviewQueueCounts,
+  type DiffReport,
   type WatchStatusSummary,
 } from "../../../packages/risk/src/index.js";
-import { SubIdentityType, type RootIdentity, type SameRootProof, type SubIdentity, type SubIdentityLinkProof } from "../../../packages/identity/src/index.js";
-import { IdentityState, createRiskSignal, getActiveConsequences, type IdentityStateContext, type RiskSignalInput } from "../../../packages/state/src/index.js";
+import {
+  SubIdentityType,
+  createVersionEnvelope,
+  type BreakGlassAction,
+  type RecoveryAction,
+  type RecoveryApprovalTicket,
+  type RecoveryCase,
+  type RootIdentity,
+  type SameRootProof,
+  type SubIdentity,
+  type SubIdentityLinkProof,
+} from "../../../packages/identity/src/index.js";
+import {
+  IdentityState,
+  buildCrossChainStateMessageV2,
+  buildStateSnapshotV2,
+  createCrossChainConsumptionTrace,
+  createCrossChainInboxItem,
+  createRiskSignal,
+  getActiveConsequences,
+  verifyCrossChainStateMessageV2,
+  withAuditBundleVersion,
+  type CrossChainConsumptionTrace,
+  type CrossChainInboxItem,
+  type CrossChainStateMessageV2,
+  type IdentityStateContext,
+  type RiskSignalInput,
+} from "../../../packages/state/src/index.js";
 import { createPublicClient, createWalletClient, getAddress, http, keccak256, stringToHex, type Address, type Hex } from "viem";
 import { analyzerConfig } from "./config.js";
-import { loadStore, saveStore, type AnalyzerIdentityRecord, type AnalyzerStore, type AnalyzerWatcherRecord } from "./store.js";
+import { loadStore, saveStore, type AnalyzerIdentityRecord, type AnalyzerStore, type AnalyzerWatcherRecord, type OperationReceipt, type WebhookOutboxItem } from "./store.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 const anchorRegistryAbi = [
@@ -160,6 +189,79 @@ export type PolicyDecisionSnapshotInput = {
   createdAt?: string;
   explanation?: PolicyDecisionRecord["explanation"];
 };
+export type RecoveryCaseInput = {
+  rootIdentityId: Hex;
+  targetIdentityId?: Hex;
+  targetSubIdentityId?: Hex;
+  action: RecoveryAction;
+  requestedBy: string;
+  scope: "selected_sub_identity" | "capability" | "consequence" | "access_path";
+  breakGlassAction?: BreakGlassAction;
+  idempotencyKey?: string;
+};
+export type RecoveryEvidenceInput = {
+  caseId: string;
+  actor: string;
+  actorRole: "requester" | "guardian" | "operator" | "governance_reviewer" | "auditor";
+  kind: "binding_proof" | "guardian_attestation" | "policy_basis" | "audit_ref" | "manual_note";
+  summary: string;
+  evidenceRefs: string[];
+  idempotencyKey?: string;
+};
+export type RecoveryDecisionInput = {
+  caseId: string;
+  actor: string;
+  actorRole: "guardian" | "operator" | "governance_reviewer" | "auditor";
+  outcome: "approved" | "rejected" | "revoked";
+  reasonCode: string;
+  explanation: string;
+  evidenceRefs: string[];
+  idempotencyKey?: string;
+};
+export type RecoveryExecutionInput = {
+  caseId: string;
+  actor: string;
+  action: RecoveryAction;
+  breakGlassAction?: BreakGlassAction;
+  idempotencyKey?: string;
+};
+export type CrossChainMessageCreateInput = {
+  identityId: Hex;
+  targetChainId: number;
+  sourceDomain?: string;
+  targetDomain?: string;
+  ttlSeconds?: number;
+  consumerPolicyHint?: CrossChainStateMessageV2["consumerPolicyHint"];
+  idempotencyKey?: string;
+};
+export type CrossChainMessageIngestInput = {
+  message: CrossChainStateMessageV2;
+  idempotencyKey?: string;
+};
+export type CrossChainMessageConsumeInput = {
+  inboxId: string;
+  actor: string;
+  effect?: CrossChainConsumptionTrace["effect"];
+  idempotencyKey?: string;
+};
+export type ApprovalTicketInput = {
+  action: ApprovalTicket["action"];
+  rootIdentityId: Hex;
+  identityId?: Hex;
+  requiredRoles: ApprovalTicket["requiredRoles"];
+  requiredApprovals: number;
+  reasonCode: string;
+  explanation: string;
+  beforeSnapshot?: Record<string, unknown>;
+  afterSnapshot?: Record<string, unknown>;
+  idempotencyKey?: string;
+};
+export type ApprovalDecisionInput = {
+  ticketId: string;
+  actor: string;
+  decision: "approve" | "reject" | "cancel";
+  idempotencyKey?: string;
+};
 
 function nowIso() { return new Date().toISOString(); }
 function uniqueStrings(values: string[]) { return [...new Set(values.filter(Boolean))]; }
@@ -230,6 +332,65 @@ function mergeSignals(...groups: RiskSignal[][]) {
   return sortedSignals([...merged.values()]);
 }
 function persistAudit(store: AnalyzerStore, audit: ReturnType<typeof createAuditRecord>) { store.audits[audit.auditId] = audit; }
+function getStoredReceipt(store: AnalyzerStore, idempotencyKey?: string) {
+  if (!idempotencyKey) return undefined;
+  return store.operationReceipts[idempotencyKey];
+}
+function storeReceipt(store: AnalyzerStore, receipt: OperationReceipt) {
+  store.operationReceipts[receipt.idempotencyKey] = receipt;
+}
+function queueWebhookEvent(store: AnalyzerStore, topic: string, payload: Record<string, unknown>, createdAt = nowIso()) {
+  const event: WebhookOutboxItem = {
+    eventId: keccak256(stringToHex([topic, createdAt, JSON.stringify(payload)].join(":"))),
+    topic,
+    status: "PENDING",
+    attemptCount: 0,
+    payload,
+    createdAt,
+  };
+  store.webhookOutbox[event.eventId] = event;
+  return event;
+}
+function createApprovalTicketRecord(input: ApprovalTicketInput): ApprovalTicket {
+  const createdAt = nowIso();
+  return {
+    ticketId: keccak256(stringToHex([input.action, input.rootIdentityId, input.identityId ?? input.rootIdentityId, createdAt].join(":"))),
+    action: input.action,
+    rootIdentityId: input.rootIdentityId,
+    identityId: input.identityId,
+    requiredRoles: input.requiredRoles,
+    requiredApprovals: input.requiredApprovals,
+    approvedBy: [],
+    status: "pending",
+    beforeSnapshot: input.beforeSnapshot,
+    afterSnapshot: input.afterSnapshot,
+    reasonCode: input.reasonCode,
+    explanation: input.explanation,
+    createdAt,
+    updatedAt: createdAt,
+    versionEnvelope: createVersionEnvelope(),
+  };
+}
+function createRecoveryApprovalTickets(caseId: string, ticket: ApprovalTicket): RecoveryApprovalTicket[] {
+  return ticket.requiredRoles.map((requiredRole, index) => ({
+    ticketId: `${ticket.ticketId}:${index + 1}`,
+    caseId,
+    rootIdentityId: ticket.rootIdentityId,
+    requiredRole: requiredRole === "governance_reviewer" ? "governance_reviewer" : "operator",
+    requiredApprovals: 1,
+    approvedBy: [],
+    status: ticket.status === "cancelled" ? "rejected" : ticket.status,
+    createdAt: ticket.createdAt,
+    updatedAt: ticket.updatedAt,
+    versionEnvelope: ticket.versionEnvelope,
+  }));
+}
+function ensureAllowedBreakGlassAction(action?: BreakGlassAction) {
+  if (!action) return;
+  if (action !== "queue_unblock" && action !== "temporary_release" && action !== "consequence_rollback") {
+    throw new Error("Phase4 break-glass is limited to queue_unblock, temporary_release, and consequence_rollback.");
+  }
+}
 function watchIdFor(input: { rootIdentityId: Hex; identityId?: Hex }) {
   return input.identityId ? `identity:${input.identityId}` : `root:${input.rootIdentityId}`;
 }
@@ -1659,6 +1820,9 @@ export async function getRiskContext(identityId: Hex) {
     audit: getAuditForIdentity(store, identityId),
     listHistory: buildRiskListHistory(record),
     policyDecisions: getPolicyDecisionsForIdentity(store, identityId),
+    recoveryCases: getRecoveryCasesForIdentity(store, identityId),
+    crossChainInbox: getCrossChainInboxForIdentity(store, identityId),
+    approvalTickets: getApprovalTicketsForIdentity(store, identityId),
     subtree: record.kind === "root" ? rootContainer.subIdentityIds.map((subIdentityId) => {
       const subRecord = store.identities[subIdentityId];
       return { identityId: subIdentityId, scope: subRecord?.subIdentity?.scope, type: subRecord?.subIdentity?.type, storedState: subRecord?.summary?.storedState, effectiveState: subRecord?.summary?.effectiveState, warnings: subRecord?.summary?.warnings ?? [], reasonCodes: subRecord?.summary?.reasonCodes ?? [] };
@@ -1733,6 +1897,666 @@ export async function recordPolicyDecisionSnapshot(input: PolicyDecisionSnapshot
   await saveStore(store);
   return snapshot;
 }
+function getRecoveryCasesForIdentity(store: AnalyzerStore, identityId: Hex) {
+  return Object.values(store.recoveryCases)
+    .filter((item) => item.rootIdentityId === identityId || item.targetIdentityId === identityId || item.targetSubIdentityId === identityId)
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+}
+function getCrossChainInboxForIdentity(store: AnalyzerStore, identityId: Hex) {
+  return Object.values(store.crossChainInbox)
+    .filter((item) => item.message.rootIdentityId === identityId || item.message.subIdentityId === identityId)
+    .sort((left, right) => Date.parse(right.message.createdAt) - Date.parse(left.message.createdAt));
+}
+function getApprovalTicketsForIdentity(store: AnalyzerStore, identityId: Hex) {
+  return Object.values(store.approvalTickets)
+    .filter((item) => item.rootIdentityId === identityId || item.identityId === identityId)
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+}
+
+export async function createRecoveryCaseRecord(input: RecoveryCaseInput) {
+  const store = await loadStore();
+  const receipt = getStoredReceipt(store, input.idempotencyKey);
+  if (receipt) {
+    return receipt.result as unknown as RecoveryCase;
+  }
+  ensureAllowedBreakGlassAction(input.breakGlassAction);
+  const root = getRootContainerOrThrow(store, input.rootIdentityId);
+  if (input.targetSubIdentityId && !root.subIdentityIds.includes(input.targetSubIdentityId)) {
+    throw new Error("Recovery target sub identity does not belong to the selected root.");
+  }
+  const createdAt = nowIso();
+  const caseId = keccak256(stringToHex([input.rootIdentityId, input.targetIdentityId ?? input.targetSubIdentityId ?? input.rootIdentityId, input.action, createdAt].join(":")));
+  const ticket = createApprovalTicketRecord({
+    action: "recovery_execution",
+    rootIdentityId: input.rootIdentityId,
+    identityId: input.targetIdentityId ?? input.targetSubIdentityId,
+    requiredRoles: input.breakGlassAction ? ["operator", "governance_reviewer"] : ["operator", "governance_reviewer"],
+    requiredApprovals: input.breakGlassAction ? 2 : 2,
+    reasonCode: `RECOVERY_${input.action.toUpperCase()}`,
+    explanation: input.breakGlassAction
+      ? `Recovery case ${caseId} requires governed break-glass approval before execution.`
+      : `Recovery case ${caseId} requires governed approval before execution.`,
+  });
+  const recoveryApprovalTickets = createRecoveryApprovalTickets(caseId, ticket);
+  const recoveryCase: RecoveryCase = {
+    caseId,
+    rootIdentityId: input.rootIdentityId,
+    targetIdentityId: input.targetIdentityId,
+    targetSubIdentityId: input.targetSubIdentityId,
+    action: input.action,
+    status: "initiated",
+    requestedBy: input.requestedBy,
+    breakGlassAction: input.breakGlassAction,
+    scope: input.scope,
+    evidence: [],
+    decisions: [],
+    executions: [],
+    outcomes: [],
+    approvalTickets: recoveryApprovalTickets,
+    createdAt,
+    updatedAt: createdAt,
+    versionEnvelope: createVersionEnvelope(),
+  };
+  store.recoveryCases[caseId] = recoveryCase;
+  store.approvalTickets[ticket.ticketId] = ticket;
+  persistAudit(store, createAuditRecord({
+    identityId: (input.targetIdentityId ?? input.targetSubIdentityId ?? input.rootIdentityId) as Hex,
+    rootIdentityId: input.rootIdentityId,
+    subIdentityId: input.targetSubIdentityId,
+    action: "RECOVERY_CASE_CREATED",
+    actor: input.requestedBy,
+    metadata: { caseId, action: input.action, breakGlassAction: input.breakGlassAction, scope: input.scope },
+  }));
+  persistAudit(store, createAuditRecord({
+    identityId: (input.targetIdentityId ?? input.targetSubIdentityId ?? input.rootIdentityId) as Hex,
+    rootIdentityId: input.rootIdentityId,
+    subIdentityId: input.targetSubIdentityId,
+    action: "APPROVAL_TICKET_CREATED",
+    actor: input.requestedBy,
+    metadata: { ticketId: ticket.ticketId, caseId, action: ticket.action },
+  }));
+  queueWebhookEvent(store, "recovery.case.created", { caseId, rootIdentityId: input.rootIdentityId, targetIdentityId: input.targetIdentityId, targetSubIdentityId: input.targetSubIdentityId });
+  if (input.idempotencyKey) {
+    storeReceipt(store, {
+      idempotencyKey: input.idempotencyKey,
+      operation: "createRecoveryCaseRecord",
+      createdAt,
+      result: recoveryCase as unknown as Record<string, unknown>,
+    });
+  }
+  await saveStore(store);
+  return recoveryCase;
+}
+
+export async function listRecoveryCases(input: { rootIdentityId?: Hex; identityId?: Hex } = {}) {
+  const store = await loadStore();
+  const items = Object.values(store.recoveryCases).filter((item) =>
+    (!input.rootIdentityId || item.rootIdentityId === input.rootIdentityId) &&
+    (!input.identityId || item.targetIdentityId === input.identityId || item.targetSubIdentityId === input.identityId || item.rootIdentityId === input.identityId)
+  );
+  return items.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+}
+
+export async function listApprovalTickets(input: { rootIdentityId?: Hex; identityId?: Hex } = {}) {
+  const store = await loadStore();
+  return Object.values(store.approvalTickets)
+    .filter((item) =>
+      (!input.rootIdentityId || item.rootIdentityId === input.rootIdentityId) &&
+      (!input.identityId || item.identityId === input.identityId || item.rootIdentityId === input.identityId)
+    )
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+}
+
+export async function appendRecoveryCaseEvidence(input: RecoveryEvidenceInput) {
+  const store = await loadStore();
+  const receipt = getStoredReceipt(store, input.idempotencyKey);
+  if (receipt) {
+    return receipt.result as unknown as RecoveryCase;
+  }
+  const recoveryCase = store.recoveryCases[input.caseId];
+  if (!recoveryCase) {
+    throw new Error(`Unknown recovery case: ${input.caseId}`);
+  }
+  const createdAt = nowIso();
+  recoveryCase.evidence.push({
+    evidenceId: keccak256(stringToHex([input.caseId, input.kind, input.actor, createdAt].join(":"))),
+    caseId: input.caseId,
+    rootIdentityId: recoveryCase.rootIdentityId,
+    targetIdentityId: recoveryCase.targetIdentityId ?? recoveryCase.targetSubIdentityId,
+    kind: input.kind,
+    summary: input.summary,
+    evidenceRefs: uniqueStrings(input.evidenceRefs),
+    submittedBy: input.actor,
+    submittedRole: input.actorRole,
+    createdAt,
+    versionEnvelope: createVersionEnvelope(),
+  });
+  recoveryCase.status = "evidence_collecting";
+  recoveryCase.updatedAt = createdAt;
+  persistAudit(store, createAuditRecord({
+    identityId: (recoveryCase.targetIdentityId ?? recoveryCase.targetSubIdentityId ?? recoveryCase.rootIdentityId) as Hex,
+    rootIdentityId: recoveryCase.rootIdentityId as Hex,
+    subIdentityId: recoveryCase.targetSubIdentityId as Hex | undefined,
+    action: "RECOVERY_EVIDENCE_ADDED",
+    actor: input.actor,
+    evidenceRefs: input.evidenceRefs,
+    metadata: { caseId: input.caseId, kind: input.kind },
+  }));
+  queueWebhookEvent(store, "recovery.evidence.added", { caseId: input.caseId, actor: input.actor, kind: input.kind });
+  if (input.idempotencyKey) {
+    storeReceipt(store, {
+      idempotencyKey: input.idempotencyKey,
+      operation: "appendRecoveryCaseEvidence",
+      createdAt,
+      result: recoveryCase as unknown as Record<string, unknown>,
+    });
+  }
+  await saveStore(store);
+  return recoveryCase;
+}
+
+export async function recordRecoveryCaseDecision(input: RecoveryDecisionInput) {
+  const store = await loadStore();
+  const receipt = getStoredReceipt(store, input.idempotencyKey);
+  if (receipt) {
+    return receipt.result as unknown as RecoveryCase;
+  }
+  const recoveryCase = store.recoveryCases[input.caseId];
+  if (!recoveryCase) {
+    throw new Error(`Unknown recovery case: ${input.caseId}`);
+  }
+  const createdAt = nowIso();
+  recoveryCase.decisions.push({
+    decisionId: keccak256(stringToHex([input.caseId, input.outcome, input.actor, createdAt].join(":"))),
+    caseId: input.caseId,
+    rootIdentityId: recoveryCase.rootIdentityId,
+    actorId: input.actor,
+    actorRole: input.actorRole,
+    outcome: input.outcome,
+    reasonCode: input.reasonCode,
+    explanation: input.explanation,
+    evidenceRefs: uniqueStrings(input.evidenceRefs),
+    createdAt,
+    versionEnvelope: createVersionEnvelope(),
+  });
+  recoveryCase.status = input.outcome === "approved" ? "approved" : input.outcome;
+  recoveryCase.updatedAt = createdAt;
+  persistAudit(store, createAuditRecord({
+    identityId: (recoveryCase.targetIdentityId ?? recoveryCase.targetSubIdentityId ?? recoveryCase.rootIdentityId) as Hex,
+    rootIdentityId: recoveryCase.rootIdentityId as Hex,
+    subIdentityId: recoveryCase.targetSubIdentityId as Hex | undefined,
+    action: "RECOVERY_DECISION_RECORDED",
+    actor: input.actor,
+    evidenceRefs: input.evidenceRefs,
+    metadata: { caseId: input.caseId, outcome: input.outcome, reasonCode: input.reasonCode },
+  }));
+  queueWebhookEvent(store, "recovery.decision.recorded", { caseId: input.caseId, outcome: input.outcome, actor: input.actor });
+  if (input.idempotencyKey) {
+    storeReceipt(store, {
+      idempotencyKey: input.idempotencyKey,
+      operation: "recordRecoveryCaseDecision",
+      createdAt,
+      result: recoveryCase as unknown as Record<string, unknown>,
+    });
+  }
+  await saveStore(store);
+  return recoveryCase;
+}
+
+export async function executeRecoveryCase(input: RecoveryExecutionInput) {
+  const store = await loadStore();
+  const receipt = getStoredReceipt(store, input.idempotencyKey);
+  if (receipt) {
+    return receipt.result as unknown as RecoveryCase;
+  }
+  const recoveryCase = store.recoveryCases[input.caseId];
+  if (!recoveryCase) {
+    throw new Error(`Unknown recovery case: ${input.caseId}`);
+  }
+  ensureAllowedBreakGlassAction(input.breakGlassAction ?? recoveryCase.breakGlassAction);
+  if (recoveryCase.approvalTickets.some((ticket) => ticket.status !== "approved")) {
+    throw new Error("Recovery case cannot execute until all approval tickets are approved.");
+  }
+  if (recoveryCase.decisions.every((decision) => decision.outcome !== "approved")) {
+    throw new Error("Recovery case requires an approved decision before execution.");
+  }
+  const targetIdentityId = (recoveryCase.targetIdentityId ?? recoveryCase.targetSubIdentityId ?? recoveryCase.rootIdentityId) as Hex;
+  const record = getIdentityRecordOrThrow(store, targetIdentityId);
+  const createdAt = nowIso();
+  let effect: ReturnType<typeof determineRecoveryEffect>;
+  if (input.action === "rebind") {
+    effect = { effect: "binding_update", notes: ["Recovery execution recorded a governed rebind intent."] };
+  } else {
+    const currentState = record.summary?.effectiveState ?? record.riskRecord?.effectiveState ?? IdentityState.NORMAL;
+    if (currentState > IdentityState.NORMAL) {
+      const manualReleaseWindow = buildManualReleaseWindow({ releasedAt: createdAt, currentState });
+      record.manualReleaseWindow = manualReleaseWindow;
+      record.manualSignals.push(createManualSignal({
+        identityId: targetIdentityId,
+        rootIdentityId: record.rootIdentity.identityId,
+        subIdentityId: record.subIdentity?.identityId,
+        requestedState: manualReleaseWindow.floorState,
+        reasonCode: input.breakGlassAction ? `BREAK_GLASS_${input.breakGlassAction.toUpperCase()}` : `RECOVERY_${input.action.toUpperCase()}`,
+        actor: input.actor,
+        evidenceRefs: [`phase4://recovery/${recoveryCase.caseId}`],
+        note: `Governed recovery execution applied ${input.action}.`,
+        category: "positive",
+        severity: "positive",
+      }));
+    }
+    effect = determineRecoveryEffect(input.action, input.breakGlassAction ?? recoveryCase.breakGlassAction);
+  }
+  recoveryCase.executions.push({
+    executionId: keccak256(stringToHex([input.caseId, input.action, input.actor, createdAt].join(":"))),
+    caseId: input.caseId,
+    rootIdentityId: recoveryCase.rootIdentityId,
+    actorId: input.actor,
+    action: input.action,
+    breakGlassAction: input.breakGlassAction ?? recoveryCase.breakGlassAction,
+    effect: effect.effect,
+    status: "completed",
+    createdAt,
+    versionEnvelope: createVersionEnvelope(),
+  });
+  recoveryCase.outcomes.push({
+    outcomeId: keccak256(stringToHex([input.caseId, effect.effect, createdAt].join(":"))),
+    caseId: input.caseId,
+    rootIdentityId: recoveryCase.rootIdentityId,
+    targetIdentityId,
+    action: input.action,
+    status: "applied",
+    notes: effect.notes,
+    createdAt,
+    versionEnvelope: createVersionEnvelope(),
+  });
+  recoveryCase.status = "executed";
+  recoveryCase.updatedAt = createdAt;
+  persistAudit(store, createAuditRecord({
+    identityId: targetIdentityId,
+    rootIdentityId: recoveryCase.rootIdentityId as Hex,
+    subIdentityId: recoveryCase.targetSubIdentityId as Hex | undefined,
+    action: "RECOVERY_EXECUTED",
+    actor: input.actor,
+    evidenceRefs: [`phase4://recovery/${recoveryCase.caseId}`],
+    metadata: { caseId: input.caseId, action: input.action, breakGlassAction: input.breakGlassAction ?? recoveryCase.breakGlassAction, effect: effect.effect },
+  }));
+  persistAudit(store, createAuditRecord({
+    identityId: targetIdentityId,
+    rootIdentityId: recoveryCase.rootIdentityId as Hex,
+    subIdentityId: recoveryCase.targetSubIdentityId as Hex | undefined,
+    action: "RECOVERY_OUTCOME_RECORDED",
+    actor: input.actor,
+    evidenceRefs: [`phase4://recovery/${recoveryCase.caseId}`],
+    metadata: { caseId: input.caseId, notes: effect.notes },
+  }));
+  queueWebhookEvent(store, "recovery.executed", { caseId: input.caseId, action: input.action, effect: effect.effect });
+  await recomputeRootState(store, recoveryCase.rootIdentityId as Hex);
+  if (input.idempotencyKey) {
+    storeReceipt(store, {
+      idempotencyKey: input.idempotencyKey,
+      operation: "executeRecoveryCase",
+      createdAt,
+      result: recoveryCase as unknown as Record<string, unknown>,
+    });
+  }
+  await saveStore(store);
+  return recoveryCase;
+}
+
+export async function createApprovalTicket(input: ApprovalTicketInput) {
+  const store = await loadStore();
+  const receipt = getStoredReceipt(store, input.idempotencyKey);
+  if (receipt) {
+    return receipt.result as unknown as ApprovalTicket;
+  }
+  const ticket = createApprovalTicketRecord(input);
+  store.approvalTickets[ticket.ticketId] = ticket;
+  persistAudit(store, createAuditRecord({
+    identityId: (input.identityId ?? input.rootIdentityId) as Hex,
+    rootIdentityId: input.rootIdentityId,
+    action: "APPROVAL_TICKET_CREATED",
+    actor: "analyzer-service",
+    metadata: { ticketId: ticket.ticketId, action: ticket.action, requiredRoles: ticket.requiredRoles },
+  }));
+  queueWebhookEvent(store, "approval.ticket.created", { ticketId: ticket.ticketId, action: ticket.action, rootIdentityId: input.rootIdentityId, identityId: input.identityId });
+  if (input.idempotencyKey) {
+    storeReceipt(store, {
+      idempotencyKey: input.idempotencyKey,
+      operation: "createApprovalTicket",
+      createdAt: ticket.createdAt,
+      result: ticket as unknown as Record<string, unknown>,
+    });
+  }
+  await saveStore(store);
+  return ticket;
+}
+
+export async function decideApprovalTicket(input: ApprovalDecisionInput) {
+  const store = await loadStore();
+  const receipt = getStoredReceipt(store, input.idempotencyKey);
+  if (receipt) {
+    return receipt.result as unknown as ApprovalTicket;
+  }
+  const ticket = store.approvalTickets[input.ticketId];
+  if (!ticket) {
+    throw new Error(`Unknown approval ticket: ${input.ticketId}`);
+  }
+  if (input.decision === "approve") {
+    if (!ticket.approvedBy.includes(input.actor)) {
+      ticket.approvedBy.push(input.actor);
+    }
+    if (ticket.approvedBy.length >= ticket.requiredApprovals) {
+      ticket.status = "approved";
+    }
+  } else if (input.decision === "reject") {
+    ticket.status = "rejected";
+  } else {
+    ticket.status = "cancelled";
+  }
+  ticket.updatedAt = nowIso();
+  for (const recoveryCase of Object.values(store.recoveryCases)) {
+    const linkedTickets = recoveryCase.approvalTickets.filter((item) => item.ticketId.startsWith(`${ticket.ticketId}:`));
+    if (!linkedTickets.length) continue;
+    for (const linkedTicket of linkedTickets) {
+      linkedTicket.approvedBy = [...ticket.approvedBy];
+      linkedTicket.status = ticket.status === "cancelled" ? "rejected" : ticket.status === "approved" ? "approved" : "pending";
+      linkedTicket.updatedAt = ticket.updatedAt;
+    }
+    recoveryCase.updatedAt = ticket.updatedAt;
+  }
+  const action = input.decision === "approve" ? "APPROVAL_TICKET_APPROVED" : input.decision === "reject" ? "APPROVAL_TICKET_REJECTED" : "APPROVAL_TICKET_CANCELLED";
+  persistAudit(store, createAuditRecord({
+    identityId: (ticket.identityId ?? ticket.rootIdentityId) as Hex,
+    rootIdentityId: ticket.rootIdentityId,
+    action,
+    actor: input.actor,
+    metadata: { ticketId: input.ticketId, decision: input.decision },
+  }));
+  queueWebhookEvent(store, "approval.ticket.updated", { ticketId: input.ticketId, decision: input.decision, actor: input.actor });
+  if (input.idempotencyKey) {
+    storeReceipt(store, {
+      idempotencyKey: input.idempotencyKey,
+      operation: "decideApprovalTicket",
+      createdAt: ticket.updatedAt,
+      result: ticket as unknown as Record<string, unknown>,
+    });
+  }
+  await saveStore(store);
+  return ticket;
+}
+
+export async function createCrossChainMessageRecord(input: CrossChainMessageCreateInput) {
+  const store = await loadStore();
+  const receipt = getStoredReceipt(store, input.idempotencyKey);
+  if (receipt) {
+    return receipt.result as unknown as { snapshot: ReturnType<typeof buildStateSnapshotV2>; message: CrossChainStateMessageV2 };
+  }
+  const context = await getRiskContext(input.identityId);
+  const source = {
+    identityId: input.identityId,
+    rootIdentityId: context.rootIdentity.identityId,
+    subIdentityId: context.subIdentity?.identityId,
+    storedState: context.summary?.storedState ?? IdentityState.NORMAL,
+    effectiveState: context.summary?.effectiveState ?? IdentityState.NORMAL,
+    effectiveMode: context.subIdentity?.capabilities.preferredMode ?? context.rootIdentity.capabilities.preferredMode,
+    stateContext: context.stateContext,
+    policyDecisions: (context.policyDecisions ?? []).map((item) => ({
+      policyLabel: item.policyLabel,
+      policyVersion: item.policyVersion,
+      createdAt: item.createdAt,
+    })),
+    propagationSummary: context.summary?.propagation?.reasonCodes ?? [],
+    explanationAnchor: context.summary?.explanation.sourceDecisionId ?? undefined,
+  };
+  const snapshot = buildStateSnapshotV2(source, {
+    signer: "web3id:analyzer-service",
+    trustProfile: "attested_sync",
+  });
+  const message = buildCrossChainStateMessageV2(snapshot, {
+    targetChainId: input.targetChainId,
+    sourceChainId: context.rootIdentity.chainId,
+    sourceDomain: input.sourceDomain,
+    targetDomain: input.targetDomain,
+    ttlSeconds: input.ttlSeconds,
+    consumerPolicyHint: input.consumerPolicyHint,
+  });
+  persistAudit(store, createAuditRecord({
+    identityId: input.identityId,
+    rootIdentityId: context.rootIdentity.identityId,
+    subIdentityId: context.subIdentity?.identityId,
+    action: "CROSS_CHAIN_MESSAGE_CREATED",
+    actor: "analyzer-service",
+    metadata: { messageId: message.messageId, targetChainId: input.targetChainId, consumerPolicyHint: message.consumerPolicyHint },
+  }));
+  queueWebhookEvent(store, "crosschain.message.created", { identityId: input.identityId, messageId: message.messageId, targetChainId: input.targetChainId });
+  const result = { snapshot, message };
+  if (input.idempotencyKey) {
+    storeReceipt(store, {
+      idempotencyKey: input.idempotencyKey,
+      operation: "createCrossChainMessageRecord",
+      createdAt: message.createdAt,
+      result: result as unknown as Record<string, unknown>,
+    });
+  }
+  await saveStore(store);
+  return result;
+}
+
+export async function ingestCrossChainMessage(input: CrossChainMessageIngestInput) {
+  const store = await loadStore();
+  const receipt = getStoredReceipt(store, input.idempotencyKey);
+  if (receipt) {
+    return receipt.result as unknown as CrossChainInboxItem;
+  }
+  const verification = verifyCrossChainStateMessageV2(input.message, {
+    expectedTargetDomain: input.message.targetDomain,
+    seenReplayProtectionKeys: new Set(Object.values(store.crossChainInbox).map((item) => item.message.replayProtectionKey)),
+  });
+  const inboxItem = createCrossChainInboxItem(input.message, verification);
+  store.crossChainInbox[inboxItem.inboxId] = inboxItem;
+  persistAudit(store, createAuditRecord({
+    identityId: (input.message.subIdentityId ?? input.message.rootIdentityId) as Hex,
+    rootIdentityId: input.message.rootIdentityId as Hex,
+    subIdentityId: input.message.subIdentityId as Hex | undefined,
+    action: "CROSS_CHAIN_MESSAGE_INGESTED",
+    actor: "analyzer-service",
+    metadata: { inboxId: inboxItem.inboxId, messageId: input.message.messageId, verified: verification.verified, reasonCode: verification.reasonCode },
+  }));
+  queueWebhookEvent(store, "crosschain.message.ingested", { inboxId: inboxItem.inboxId, messageId: input.message.messageId, verified: verification.verified });
+  if (input.idempotencyKey) {
+    storeReceipt(store, {
+      idempotencyKey: input.idempotencyKey,
+      operation: "ingestCrossChainMessage",
+      createdAt: verification.verifiedAt,
+      result: inboxItem as unknown as Record<string, unknown>,
+    });
+  }
+  await saveStore(store);
+  return inboxItem;
+}
+
+export async function listCrossChainInbox(input: { identityId?: Hex; rootIdentityId?: Hex } = {}) {
+  const store = await loadStore();
+  return Object.values(store.crossChainInbox)
+    .filter((item) =>
+      (!input.identityId || item.message.rootIdentityId === input.identityId || item.message.subIdentityId === input.identityId) &&
+      (!input.rootIdentityId || item.message.rootIdentityId === input.rootIdentityId)
+    )
+    .sort((left, right) => Date.parse(right.message.createdAt) - Date.parse(left.message.createdAt));
+}
+
+export async function consumeCrossChainMessage(input: CrossChainMessageConsumeInput) {
+  const store = await loadStore();
+  const receipt = getStoredReceipt(store, input.idempotencyKey);
+  if (receipt) {
+    return receipt.result as unknown as CrossChainInboxItem;
+  }
+  const inboxItem = store.crossChainInbox[input.inboxId];
+  if (!inboxItem) {
+    throw new Error(`Unknown cross-chain inbox item: ${input.inboxId}`);
+  }
+  if (!inboxItem.verification.verified) {
+    throw new Error("Cross-chain inbox item must verify before it can be consumed.");
+  }
+  const effect = input.effect ?? (inboxItem.message.consumerPolicyHint === "review_trigger" ? "review_recommended" : inboxItem.message.consumerPolicyHint === "eligibility_signal" ? "eligibility_noted" : "hint_recorded");
+  inboxItem.consumptionTrace = createCrossChainConsumptionTrace(inboxItem.message, effect);
+  inboxItem.consumed = true;
+  persistAudit(store, createAuditRecord({
+    identityId: (inboxItem.message.subIdentityId ?? inboxItem.message.rootIdentityId) as Hex,
+    rootIdentityId: inboxItem.message.rootIdentityId as Hex,
+    subIdentityId: inboxItem.message.subIdentityId as Hex | undefined,
+    action: "CROSS_CHAIN_MESSAGE_CONSUMED",
+    actor: input.actor,
+    metadata: { inboxId: input.inboxId, effect, consumerPolicyHint: inboxItem.message.consumerPolicyHint },
+  }));
+  queueWebhookEvent(store, "crosschain.message.consumed", { inboxId: input.inboxId, effect, actor: input.actor });
+  if (input.idempotencyKey) {
+    storeReceipt(store, {
+      idempotencyKey: input.idempotencyKey,
+      operation: "consumeCrossChainMessage",
+      createdAt: inboxItem.consumptionTrace.createdAt,
+      result: inboxItem as unknown as Record<string, unknown>,
+    });
+  }
+  await saveStore(store);
+  return inboxItem;
+}
+
+export async function getRuntimeMetrics() {
+  const store = await loadStore();
+  return {
+    ...store.runtimeMetrics,
+    pendingWebhookEvents: Object.values(store.webhookOutbox).filter((item) => item.status === "PENDING").length,
+    deliveredWebhookEvents: Object.values(store.webhookOutbox).filter((item) => item.status === "DELIVERED").length,
+    failedWebhookEvents: Object.values(store.webhookOutbox).filter((item) => item.status === "FAILED").length,
+    recoveryCases: Object.keys(store.recoveryCases).length,
+    crossChainInboxItems: Object.keys(store.crossChainInbox).length,
+    approvalTickets: Object.keys(store.approvalTickets).length,
+  };
+}
+
+export async function listWebhookOutbox() {
+  const store = await loadStore();
+  return Object.values(store.webhookOutbox).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+}
+
+function buildReplayTraceFromStore(store: AnalyzerStore, identityId: Hex, asOf: string): ReplayTrace {
+  const record = getIdentityRecordOrThrow(store, identityId);
+  const initialState = record.kind === "sub" ? defaultInitialStateForSub(record.subIdentity) : IdentityState.NORMAL;
+  const replayedSignals = sortedSignals(record.signals.filter((signal) => Date.parse(signal.observedAt) <= Date.parse(asOf)));
+  const replayedContext = replaySignalTimeline(identityId, initialState, replayedSignals);
+  const policyDecisions = getPolicyDecisionsForIdentity(store, identityId).filter((item) => Date.parse(item.createdAt) <= Date.parse(asOf));
+  const recoveryCases = getRecoveryCasesForIdentity(store, identityId)
+    .filter((item) => Date.parse(item.createdAt) <= Date.parse(asOf))
+    .map((item) => ({
+      caseId: item.caseId,
+      action: item.action,
+      status: item.status,
+      updatedAt: item.updatedAt,
+    }));
+  const crossChainInbox = getCrossChainInboxForIdentity(store, identityId)
+    .filter((item) => Date.parse(item.message.createdAt) <= Date.parse(asOf))
+    .map((item) => ({
+      inboxId: item.inboxId,
+      verified: item.verification.verified,
+      consumed: item.consumed,
+      reasonCode: item.verification.reasonCode,
+      createdAt: item.message.createdAt,
+    }));
+  const auditRecords = getAuditForIdentity(store, identityId).filter((item) => Date.parse(item.timestamp) <= Date.parse(asOf));
+  const reasonCodes = uniqueStrings(replayedSignals.map((signal) => signal.reasonCode));
+  const warnings = uniqueStrings([
+    ...policyDecisions.flatMap((item) => item.warnings),
+    ...crossChainInbox.filter((item) => !item.verified).map((item) => item.reasonCode),
+  ]);
+  const stateLabel = IdentityState[replayedContext.currentState];
+
+  return {
+    identityId,
+    rootIdentityId: record.rootIdentity.identityId,
+    asOf,
+    storedState: replayedContext.currentState ?? null,
+    effectiveState: replayedContext.currentState ?? null,
+    reasonCodes,
+    warnings,
+    policyDecisions,
+    recoveryCases,
+    crossChainInbox,
+    auditRecords,
+    explanation: [
+      `Replay rebuilt ${replayedSignals.length} signals up to ${asOf}.`,
+      `The reconstructed stored/effective state at this timepoint is ${stateLabel}.`,
+      `Observed ${policyDecisions.length} policy snapshots, ${recoveryCases.length} recovery cases, and ${crossChainInbox.length} cross-chain inbox items in the read-only replay window.`,
+    ],
+    versionEnvelope: createVersionEnvelope(),
+  };
+}
+
+export async function replayIdentity(input: { identityId: Hex; asOf?: string }): Promise<ReplayTrace> {
+  const store = await loadStore();
+  return buildReplayTraceFromStore(store, input.identityId, input.asOf ?? nowIso());
+}
+
+export async function diffIdentityReplay(input: { identityId: Hex; from: string; to: string }): Promise<DiffReport> {
+  const store = await loadStore();
+  const fromTrace = buildReplayTraceFromStore(store, input.identityId, input.from);
+  const toTrace = buildReplayTraceFromStore(store, input.identityId, input.to);
+  const changes: DiffReport["changes"] = [];
+
+  const pushChange = (field: string, before: unknown, after: unknown, explanation: string) => {
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    changes.push({ field, before, after, explanation });
+  };
+
+  pushChange(
+    "storedState",
+    fromTrace.storedState === null ? null : IdentityState[fromTrace.storedState],
+    toTrace.storedState === null ? null : IdentityState[toTrace.storedState],
+    "Replay compares reconstructed stored state across the selected timepoints.",
+  );
+  pushChange(
+    "effectiveState",
+    fromTrace.effectiveState === null ? null : IdentityState[fromTrace.effectiveState],
+    toTrace.effectiveState === null ? null : IdentityState[toTrace.effectiveState],
+    "Replay keeps effective state read-only and explanation-first.",
+  );
+  pushChange(
+    "reasonCodes",
+    fromTrace.reasonCodes,
+    toTrace.reasonCodes,
+    "Reason-code diff highlights which policy, risk, or recovery facts entered or left the explanation chain.",
+  );
+  pushChange(
+    "policyDecisionCount",
+    fromTrace.policyDecisions.length,
+    toTrace.policyDecisions.length,
+    "Policy snapshot count changed between the replay windows.",
+  );
+  pushChange(
+    "recoveryStatuses",
+    fromTrace.recoveryCases.map((item) => `${item.caseId}:${item.status}`),
+    toTrace.recoveryCases.map((item) => `${item.caseId}:${item.status}`),
+    "Recovery diff is read-only and tracks governed status progression only.",
+  );
+  pushChange(
+    "crossChainConsumption",
+    fromTrace.crossChainInbox.map((item) => `${item.inboxId}:${item.consumed}`),
+    toTrace.crossChainInbox.map((item) => `${item.inboxId}:${item.consumed}`),
+    "Cross-chain diff shows hint ingestion/consumption changes without treating them as state rewrites.",
+  );
+
+  return {
+    identityId: input.identityId,
+    from: fromTrace,
+    to: toTrace,
+    changes,
+    summary: changes.length
+      ? `Detected ${changes.length} replay-visible changes between ${input.from} and ${input.to}.`
+      : `No replay-visible changes were detected between ${input.from} and ${input.to}.`,
+    versionEnvelope: createVersionEnvelope(),
+  };
+}
+
 export async function exportIdentityAudit(identityId: Hex) {
   return exportStructuredAudit({ identityId });
 }
@@ -1795,9 +2619,12 @@ export async function exportStructuredAudit(input: AuditExportInput): Promise<Au
     reviewQueue: includedRecords.flatMap((record) => getReviewsForIdentity(store, (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex)),
     policyDecisions,
     anchors: includedRecords.flatMap((record) => getAnchorsForIdentity(store, (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex)),
+    crossChainInbox: includedRecords.flatMap((record) => getCrossChainInboxForIdentity(store, (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex)),
     auditRecords: records,
     records,
+    approvalTickets: identityIds.flatMap((identityId) => getApprovalTicketsForIdentity(store, identityId as Hex)),
   });
+  bundle.versionEnvelope = withAuditBundleVersion(createVersionEnvelope());
   assertAuditExportConsistency(bundle);
   return bundle;
 }
@@ -1835,6 +2662,9 @@ export async function getOperatorDashboard(): Promise<OperatorDashboardSnapshot>
       pendingReviewItems,
       pendingAiReviews: pendingReviewItems,
       activeWatchers: Object.values(store.watchers).filter((watcher) => watcher.status === "ACTIVE").length,
+      pendingRecoveryCases: Object.values(store.recoveryCases).filter((item) => item.status !== "executed" && item.status !== "rejected" && item.status !== "expired").length,
+      pendingApprovalTickets: Object.values(store.approvalTickets).filter((item) => item.status === "pending").length,
+      activePositiveUplifts: identities.flatMap((record) => record.summary?.positiveSummary?.activeUnlocks ?? []).length,
     },
     recentStateEscalations: audits.filter((audit) => audit.action === "STATE_COMPUTED").slice(0, 8),
     recentHighRiskOrFrozen: audits.filter((audit) => {
@@ -1845,10 +2675,35 @@ export async function getOperatorDashboard(): Promise<OperatorDashboardSnapshot>
     recentManualReleases: audits.filter((audit) => audit.action === "MANUAL_RELEASE_APPLIED").slice(0, 8),
     recentWarningPolicies: policyDecisions.filter((decision) => decision.kind === "warning").slice(0, 8),
     recentPolicyDecisions: policyDecisions.slice(0, 8),
+    recentApprovalTickets: Object.values(store.approvalTickets).sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)).slice(0, 8),
+    positiveUpliftNotes: identities
+      .flatMap((record) => record.summary?.positiveSummary?.activeUnlocks ?? [])
+      .slice(0, 8)
+      .map((item) => `${item.identityId}: ${item.consequenceType}`),
+    versionEnvelope: createVersionEnvelope(),
   };
 }
 export async function listReviewQueue(identityId?: Hex) {
   const store = await loadStore();
   return Object.values(store.reviewQueue).filter((item) => !identityId || item.identityId === identityId).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
+function determineRecoveryEffect(action: RecoveryAction, breakGlassAction?: BreakGlassAction) {
+  if (breakGlassAction === "queue_unblock") {
+    return { effect: "queued" as const, notes: ["Queued unblock recorded without raw state rewrite."] };
+  }
+  if (breakGlassAction === "temporary_release") {
+    return { effect: "temporary_release" as const, notes: ["Temporary release applied through manual release floor and audit-linked recovery flow."] };
+  }
+  if (breakGlassAction === "consequence_rollback") {
+    return { effect: "consequence_rollback" as const, notes: ["Consequence rollback recorded through governed recovery execution."] };
+  }
+  if (action === "rebind") {
+    return { effect: "binding_update" as const, notes: ["Governed sub-identity rebind intent recorded."] };
+  }
+  if (action === "capability_restore") {
+    return { effect: "capability_restore" as const, notes: ["Capability restore recorded as a governed positive uplift."] };
+  }
+  return { effect: "access_unlock" as const, notes: ["Access path unlock recorded as a governed positive uplift."] };
 }
 

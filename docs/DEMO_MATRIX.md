@@ -1,25 +1,30 @@
-# DEMO MATRIX
+# Demo Matrix
 
-demo 仍然保留 `stage1 / stage2 / stage3 / platform`，但推荐入口已经改成 scenario-first + system-first。
+The repo still keeps `stage1 / stage2 / stage3 / platform`, but the recommended reading order is now scenario-first and system-first.
 
-## 场景映射
+## Scenario Mapping
 
-| Scenario | 推荐命令 | 重点 |
+| Scenario | Recommended Demo | Focus |
 | --- | --- | --- |
-| `RWA Access` | `pnpm demo:stage1` 或 `pnpm demo:platform` | compliance credential + proof + access policy |
-| `Enterprise / Audit` | `pnpm demo:stage2` 或 `pnpm demo:platform` | policy snapshot + audit export + operator traceability |
-| `Social Governance` | `pnpm demo:stage2`、`pnpm demo:stage3` 或 `pnpm demo:platform` | default path + warning policy + AI boundary |
+| `RWA Access` | `pnpm demo:stage1` or `pnpm demo:platform` | compliance credential + proof + access policy |
+| `Enterprise / Audit` | `pnpm demo:stage2` or `pnpm demo:platform` | policy snapshot + audit export + operator traceability |
+| `Social Governance` | `pnpm demo:stage2`, `pnpm demo:stage3`, or `pnpm demo:platform` | default path + warning policy + AI boundary |
 
-## 系统验收映射
+## Phase4 Additions
 
-- `RWA Access`
-  - `tests/system/scenario-acceptance.test.ts`
-- `Enterprise / Audit`
-  - `tests/system/scenario-acceptance.test.ts`
-- `Social Governance`
-  - `tests/system/scenario-acceptance.test.ts`
-- 系统主链
-  - `tests/system/core-acceptance.test.ts`
-- 边界与 reserved safety
-  - `tests/system/boundary-acceptance.test.ts`
-  - `tests/system/reserved-safety-acceptance.test.ts`
+| Capability | Primary Demo Surface | Acceptance |
+| --- | --- | --- |
+| Recovery closed loop | `pnpm demo:platform` | `tests/system/recovery-acceptance.test.ts` |
+| Attested cross-domain inbox | `pnpm demo:platform` | `tests/system/cross-domain-acceptance.test.ts` |
+| Privacy-capable proof descriptors | `pnpm demo:platform` | `tests/system/privacy-mode-acceptance.test.ts` |
+| Replay and diff | `pnpm demo:platform` | `tests/system/version-replay-acceptance.test.ts` |
+| Governance + positive uplift | `pnpm demo:platform` | `tests/system/governance-control-acceptance.test.ts` |
+| Runtime reliability + outbox | `pnpm demo:platform` | `tests/system/reliability-acceptance.test.ts` |
+
+## Baseline Acceptance Mapping
+
+- System core: `tests/system/core-acceptance.test.ts`
+- Boundary invariants: `tests/system/boundary-acceptance.test.ts`
+- Scenario baseline: `tests/system/scenario-acceptance.test.ts`
+- Reserved safety: `tests/system/reserved-safety-acceptance.test.ts`
+- Phase4 smoke: `pnpm test:phase4:smoke`

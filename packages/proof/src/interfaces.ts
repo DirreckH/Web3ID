@@ -1,4 +1,5 @@
 import { keccak256, stringToHex } from "viem";
+import { createVersionEnvelope, type VersionEnvelope } from "../../identity/src/versioning.js";
 import {
   credentialBoundProofKind,
   legacyHolderBoundProofKind,
@@ -30,6 +31,35 @@ export type ProofDescriptor = {
   supportsIssuerAnonymity: boolean;
   supportsMultiIssuerAggregation: boolean;
   createdAt: string;
+  disclosureProfile?: DisclosureProfile;
+  generationRoute?: ProofGenerationRoute;
+  verificationRule?: string;
+  disclosedClaims?: string[];
+  minimumDisclosureSet?: string[];
+  auditVisibleFacts?: string[];
+  versionEnvelope?: VersionEnvelope;
+};
+
+export type DisclosureProfile = "public" | "selective_disclosure" | "policy_minimal_disclosure";
+export type ProofGenerationRoute = "legacy_holder_bound" | "legacy_credential_bound" | "descriptor_selective" | "descriptor_minimal";
+
+export type ProofDescriptorV2 = ProofDescriptor & {
+  disclosureProfile: DisclosureProfile;
+  generationRoute: ProofGenerationRoute;
+  verificationRule: "legacy_verify" | "descriptor_verify";
+  disclosedClaims: string[];
+  minimumDisclosureSet: string[];
+  auditVisibleFacts: string[];
+  versionEnvelope: VersionEnvelope;
+};
+
+export type DisclosureDecision = {
+  profile: DisclosureProfile;
+  disclosedClaims: string[];
+  minimumDisclosureSet: string[];
+  hiddenClaims: string[];
+  auditVisibleFacts: string[];
+  versionEnvelope: VersionEnvelope;
 };
 
 export type ProofCapability = {
@@ -69,10 +99,21 @@ export function buildProofDescriptor(input: {
   proofType: string;
   subjectBindingType?: "root" | "sub";
   createdAt?: string;
-}): ProofDescriptor {
+  disclosureProfile?: DisclosureProfile;
+  disclosedClaims?: string[];
+  minimumDisclosureSet?: string[];
+  auditVisibleFacts?: string[];
+}): ProofDescriptorV2 {
   const createdAt = input.createdAt ?? new Date().toISOString();
   const normalizedType = normalizeProofBindingKind(input.proofType);
   const proofId = input.proofId ?? keccak256(stringToHex([normalizedType, createdAt].join(":")));
+  const disclosureProfile = input.disclosureProfile ?? defaultDisclosureProfileForProofType(normalizedType);
+  const disclosureDecision = buildDisclosureDecision({
+    profile: disclosureProfile,
+    disclosedClaims: input.disclosedClaims ?? [],
+    minimumDisclosureSet: input.minimumDisclosureSet ?? [],
+    auditVisibleFacts: input.auditVisibleFacts ?? [],
+  });
 
   if (normalizedType === "holder_binding") {
     return {
@@ -81,10 +122,17 @@ export function buildProofDescriptor(input: {
       privacyMode: "holder_binding",
       subjectBindingType: input.subjectBindingType ?? "sub",
       issuerDisclosure: "hash_only",
-      supportsSelectiveDisclosure: false,
+      supportsSelectiveDisclosure: disclosureProfile !== "public",
       supportsIssuerAnonymity: false,
       supportsMultiIssuerAggregation: false,
       createdAt,
+      disclosureProfile,
+      generationRoute: disclosureProfile === "public" ? "legacy_holder_bound" : "descriptor_minimal",
+      verificationRule: disclosureProfile === "public" ? "legacy_verify" : "descriptor_verify",
+      disclosedClaims: disclosureDecision.disclosedClaims,
+      minimumDisclosureSet: disclosureDecision.minimumDisclosureSet,
+      auditVisibleFacts: disclosureDecision.auditVisibleFacts,
+      versionEnvelope: disclosureDecision.versionEnvelope,
     };
   }
 
@@ -95,10 +143,17 @@ export function buildProofDescriptor(input: {
       privacyMode: "credential_bound",
       subjectBindingType: input.subjectBindingType ?? "sub",
       issuerDisclosure: "full",
-      supportsSelectiveDisclosure: false,
+      supportsSelectiveDisclosure: disclosureProfile !== "public",
       supportsIssuerAnonymity: false,
       supportsMultiIssuerAggregation: false,
       createdAt,
+      disclosureProfile,
+      generationRoute: disclosureProfile === "public" ? "legacy_credential_bound" : disclosureProfile === "selective_disclosure" ? "descriptor_selective" : "descriptor_minimal",
+      verificationRule: disclosureProfile === "public" ? "legacy_verify" : "descriptor_verify",
+      disclosedClaims: disclosureDecision.disclosedClaims,
+      minimumDisclosureSet: disclosureDecision.minimumDisclosureSet,
+      auditVisibleFacts: disclosureDecision.auditVisibleFacts,
+      versionEnvelope: disclosureDecision.versionEnvelope,
     };
   }
 
@@ -112,6 +167,13 @@ export function buildProofDescriptor(input: {
     supportsIssuerAnonymity: false,
     supportsMultiIssuerAggregation: false,
     createdAt,
+    disclosureProfile,
+    generationRoute: "descriptor_minimal",
+    verificationRule: "descriptor_verify",
+    disclosedClaims: disclosureDecision.disclosedClaims,
+    minimumDisclosureSet: disclosureDecision.minimumDisclosureSet,
+    auditVisibleFacts: disclosureDecision.auditVisibleFacts,
+    versionEnvelope: disclosureDecision.versionEnvelope,
   };
 }
 
@@ -148,4 +210,30 @@ export function assertProofPrivacyGuardrails(metadata: ProofPrivacyGuardrails = 
     throw new Error("Proof privacy abstraction must not change the current proof verification semantics.");
   }
   return metadata;
+}
+
+export function buildDisclosureDecision(input: {
+  profile: DisclosureProfile;
+  disclosedClaims?: string[];
+  minimumDisclosureSet?: string[];
+  auditVisibleFacts?: string[];
+}): DisclosureDecision {
+  const disclosedClaims = [...new Set(input.disclosedClaims ?? [])];
+  const minimumDisclosureSet = [...new Set(input.minimumDisclosureSet ?? [])];
+  const auditVisibleFacts = [...new Set(input.auditVisibleFacts ?? [])];
+  return {
+    profile: input.profile,
+    disclosedClaims,
+    minimumDisclosureSet,
+    hiddenClaims: disclosedClaims.filter((claim) => !minimumDisclosureSet.includes(claim)),
+    auditVisibleFacts,
+    versionEnvelope: createVersionEnvelope(),
+  };
+}
+
+function defaultDisclosureProfileForProofType(normalizedType: string): DisclosureProfile {
+  if (normalizedType === "credential_bound") {
+    return "public";
+  }
+  return "policy_minimal_disclosure";
 }

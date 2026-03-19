@@ -1,0 +1,34 @@
+name: Phase4 Change
+description: Track a Phase4 milestone change without bypassing system gates.
+title: "[Phase4] "
+labels:
+  - phase4
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is changing?
+    validations:
+      required: true
+  - type: textarea
+    id: domains
+    attributes:
+      label: Affected Domains
+      description: identity / state / consequence / policy / audit / recovery / cross-chain / proof / frontend / operator / reliability / integration
+    validations:
+      required: true
+  - type: textarea
+    id: semantics
+    attributes:
+      label: Frozen Semantics Review
+      description: State whether capability-first, effective mode, dual path, state/consequence split, AI boundary, and reserved guardrails remain intact.
+    validations:
+      required: true
+  - type: textarea
+    id: gates
+    attributes:
+      label: Exit Gate
+      description: List required commands, demo non-regression, and docs/tests to update.
+    validations:
+      required: true

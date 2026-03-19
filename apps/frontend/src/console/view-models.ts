@@ -153,13 +153,14 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
         "consequence can constrain access but cannot rewrite state facts.",
         "policy decision is an action-level audit snapshot, not a state source.",
         "AI suggestion is not final decision and cannot write frozen state directly.",
+        "break-glass is queue_unblock / temporary_release / consequence_rollback only; raw state rewrite is forbidden.",
       ],
       systemMap: [
         "Identity: RootIdentity anchors the tree; SubIdentity isolates scenario scope.",
         "State: RiskSignal -> RiskAssessment -> StateTransitionDecision -> ConsequenceRecord.",
         "Policy: policy reads effective state, credentials, proof, and consequence, then writes an audit snapshot only.",
-        "Audit: AuditExportBundle and explanationChain keep the why-path visible end to end.",
-        "Operator: bindings, watch scans, manual release, and list overrides remain explicit actions after the system map.",
+        "Audit: AuditExportBundle and explanationChain keep the why-path visible end to end, including approvals and cross-domain hints.",
+        "Operator: bindings, watch scans, governed recovery, positive uplift, and list overrides remain explicit actions after the system map.",
       ],
       scenarioCards: selected.scenarioOptions,
       scenarioSummary: selected.scenarioMeta.detail,
@@ -304,12 +305,15 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
         },
       ],
       notes: [
-        "Recovery hooks are reserved metadata only. They do not execute unlock, rebind, or controller rotation in P2.",
-        "Recovery hooks cannot override governance emergency freeze or GLOBAL_LOCKDOWN.",
-        "An empty panel is expected until a local recovery slot and guardian set are configured.",
+        "Phase4 recovery remains governance-first: evidence, approval, decision, execution, and outcome are all audit-linked.",
+        "Recovery and break-glass can release consequence pressure or unblock queues, but they cannot raw-rewrite stored state.",
+        "Positive uplift stays in scope here too: capability restore, trust boost, and eligibility unlocks remain explanation-first.",
       ],
       jsonSections: [
         jsonSection("Recovery Hooks Snapshot", selection.recoveryHooks, "Recovery hooks are not configured for the selected root identity."),
+        jsonSection("Recovery Cases", selection.riskContext?.recoveryCases, "Recovery cases appear after a governed case is opened."),
+        jsonSection("Approval Tickets", selection.riskContext?.approvalTickets, "Approval tickets appear when governed actions require operator review."),
+        jsonSection("Cross-chain Inbox", selection.riskContext?.crossChainInbox, "Cross-chain hints appear here after attested inbox ingestion."),
       ],
     },
     auditEvidence: {
@@ -329,7 +333,7 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
         { label: "Export generated", value: formatIso(selection.auditBundle?.generatedAt) },
       ],
       notes: [
-        "Audit export is a structured JSON bundle: signals, assessments, decisions, consequences, propagation, recovery, AI, policy snapshots, anchors, and raw audit records.",
+        "Audit export is a structured JSON bundle: signals, assessments, decisions, consequences, propagation, recovery, AI, policy snapshots, approvals, cross-chain inbox, anchors, and raw audit records.",
         "List history explains watchlist / restricted_list / blacklist_or_frozen_list transitions without becoming a new state source.",
         `Explanation chain completeness: ${selection.auditBundle?.consistency?.complete ? "complete" : "check missing segments before Phase4 freeze."}`,
       ],
@@ -359,6 +363,7 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
         "Policy decisions are action-level snapshots for display, export, and traceability only.",
         "Policy can read state, consequence, credentials, proof, and mode path, but it cannot rewrite identity state.",
         "Compliance requirements cannot be bypassed by default path or positive consequence explanations.",
+        "Proof disclosure profiles and verified cross-chain hints now enter the explanation chain without becoming direct state writers.",
         `Latest access why: ${selection.accessDecision?.explanation?.explanationSummary ?? "Run an access evaluation to populate the decision explanation."}`,
       ],
       jsonSections: [
@@ -413,19 +418,27 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
         { label: "Frozen identities", value: `${operatorDashboard?.counts.frozenIdentities ?? 0}` },
         { label: "Pending AI reviews", value: `${operatorDashboard?.counts.pendingAiReviews ?? 0}` },
         { label: "Active watchers", value: `${operatorDashboard?.counts.activeWatchers ?? 0}` },
+        { label: "Pending recovery", value: `${operatorDashboard?.counts.pendingRecoveryCases ?? 0}` },
+        { label: "Pending approvals", value: `${operatorDashboard?.counts.pendingApprovalTickets ?? 0}` },
+        { label: "Active uplifts", value: `${operatorDashboard?.counts.activePositiveUplifts ?? 0}` },
         { label: "Bindings", value: `${selection.riskContext?.bindings.length ?? 0}` },
         { label: "Runtime status", value: selection.status },
       ],
       notes: [
         "Operator controls are intentionally separated from the scenario summary to keep the console narrative summary-first.",
-        "Bindings, watch scans, manual release, and list overrides live here as explicit operator actions.",
-        "Recent operator events combine state-computation audit records with policy snapshot history.",
+        "Bindings, watch scans, governed recovery, manual release, positive uplift review, and list overrides live here as explicit operator actions.",
+        "Recent operator events combine state-computation audit records, approval flow, and policy snapshot history.",
       ],
       recentEvents: [
         ...(operatorDashboard?.recentHighRiskOrFrozen ?? []).map((item: any) => ({
           title: item.action,
           meta: formatIso(item.timestamp),
           body: `${compactHex(item.identityId)} / ${listText(item.evidenceRefs ?? [])}`,
+        })),
+        ...(operatorDashboard?.recentApprovalTickets ?? []).map((item: any) => ({
+          title: `${item.action} / ${item.status}`,
+          meta: formatIso(item.updatedAt),
+          body: `${compactHex(item.identityId ?? item.rootIdentityId)} / approvals ${item.approvedBy?.length ?? 0}/${item.requiredApprovals}`,
         })),
         ...(operatorDashboard?.recentWarningPolicies ?? []).map((item: any) => ({
           title: `${item.kind.toUpperCase()} ${item.policyId}`,
@@ -436,6 +449,7 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
       jsonSections: [
         jsonSection("Operator Dashboard", operatorDashboard, "Refresh operator metrics after the analyzer and policy APIs are running."),
         jsonSection("Bindings", selection.riskContext?.bindings, "Bindings appear here after root, sub, or same-root authorization succeeds."),
+        jsonSection("Positive Uplift Notes", operatorDashboard?.positiveUpliftNotes, "Positive uplift notes appear when trust boost or unlock effects are active."),
         jsonSection(
           "Watch Status",
           selection.watchStatus ?? selection.riskContext?.summary?.watchStatus,

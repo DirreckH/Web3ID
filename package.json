@@ -9,10 +9,12 @@
     "dev": "concurrently -n issuer,frontend \"pnpm --filter @web3id/issuer-service dev\" \"pnpm --filter @web3id/frontend dev\"",
     "dev:stage3": "concurrently -n issuer,analyzer,policy,frontend \"pnpm --filter @web3id/issuer-service dev\" \"pnpm --filter @web3id/analyzer-service dev\" \"pnpm --filter @web3id/policy-api dev\" \"pnpm --filter @web3id/frontend dev\"",
     "test": "pnpm -r test",
-    "test:integration": "vitest run --config vitest.integration.config.ts tests/integration/basic-service-integration.test.ts tests/integration/extended-service-integration.test.ts",
+    "test:integration": "pnpm exec vitest run --config vitest.integration.config.ts tests/integration/basic-service-integration.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/integration/extended-service-integration.test.ts",
     "test:integration:smoke": "vitest run --config vitest.integration.config.ts tests/integration/platform-acceptance.test.ts",
     "test:system": "pnpm exec vitest run --config vitest.integration.config.ts tests/system/core-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/boundary-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/scenario-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/reserved-safety-acceptance.test.ts",
     "test:system:smoke": "pnpm exec vitest run --config vitest.integration.config.ts tests/system/core-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/reserved-safety-acceptance.test.ts",
+    "test:phase4:smoke": "pnpm exec vitest run --config vitest.integration.config.ts tests/system/recovery-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/cross-domain-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/privacy-mode-acceptance.test.ts",
+    "test:phase4": "pnpm exec vitest run --config vitest.integration.config.ts tests/system/recovery-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/cross-domain-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/privacy-mode-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/version-replay-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/governance-control-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/reliability-acceptance.test.ts",
     "lint": "pnpm -r lint",
     "contracts:test": "pnpm --dir contracts test",
     "proof:clean": "pnpm --filter @web3id/proof run clean",
@@ -25,7 +27,8 @@
     "demo:stage1": "tsx scripts/demo-stage1.ts",
     "demo:stage2": "tsx scripts/demo-stage2.ts",
     "demo:stage3": "tsx scripts/demo-stage3.ts",
-    "demo:platform": "tsx scripts/demo-platform.ts"
+    "demo:platform": "tsx scripts/demo-platform.ts",
+    "verify:baseline:phase4": "tsx scripts/verify-phase4-baseline.ts"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
