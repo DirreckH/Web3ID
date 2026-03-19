@@ -2,6 +2,22 @@ import { keccak256, stringToHex, type Hex } from "viem";
 import { getActiveConsequences, type ConsequenceRecord } from "./consequence.js";
 import { IdentityState, type IdentityStateContext } from "./state.js";
 
+export type ReservedHookGuardrail = {
+  defaultMode: "default_off";
+  lifecycle: "hook_only";
+  safety: "mock_safe";
+  writesState: false;
+  policyFactSource: false;
+};
+
+export const crossChainHookGuardrails: ReservedHookGuardrail = {
+  defaultMode: "default_off",
+  lifecycle: "hook_only",
+  safety: "mock_safe",
+  writesState: false,
+  policyFactSource: false,
+};
+
 export type PolicyDecisionSnapshotSource = {
   policyLabel: string;
   policyVersion: number;
@@ -19,6 +35,7 @@ export type StateSnapshot = {
   stateVersion: string;
   generatedAt: string;
   evidenceBundleHash?: string;
+  guardrails: ReservedHookGuardrail;
 };
 
 export type StateMerkleCommitment = {
@@ -41,6 +58,7 @@ export type CrossChainStateMessage = {
   messageType: "state_sync" | "freeze_notice" | "restriction_notice";
   payloadHash: string;
   createdAt: string;
+  guardrails: ReservedHookGuardrail;
 };
 
 export type StateSnapshotSource = {
@@ -98,6 +116,7 @@ export function buildStateSnapshot(source: StateSnapshotSource, options: BuildSt
     stateVersion: snapshotBody.stateVersion,
     generatedAt,
     evidenceBundleHash: snapshotBody.evidenceBundleHash,
+    guardrails: crossChainHookGuardrails,
   };
 }
 
@@ -182,7 +201,18 @@ export function buildCrossChainStateMessage(
     messageType,
     payloadHash,
     createdAt,
+    guardrails: crossChainHookGuardrails,
   };
+}
+
+export function assertCrossChainHookGuardrails(metadata: ReservedHookGuardrail = crossChainHookGuardrails) {
+  if (metadata.writesState) {
+    throw new Error("Cross-chain hooks must remain read-only and must not write state.");
+  }
+  if (metadata.policyFactSource) {
+    throw new Error("Cross-chain hooks must not become a required policy fact source.");
+  }
+  return metadata;
 }
 
 function resolveStoredState(source: StateSnapshotSource) {

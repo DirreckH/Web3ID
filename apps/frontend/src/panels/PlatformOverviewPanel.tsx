@@ -1,6 +1,6 @@
 import type { EnterpriseAction, Scenario, SocialAction } from "../console/types";
 import type { PlatformOverviewViewModel } from "../console/view-models";
-import { BulletList, MetricGrid } from "./PanelPrimitives";
+import { BulletList, JsonSectionStack, MetricGrid } from "./PanelPrimitives";
 
 type Props = {
   model: PlatformOverviewViewModel;
@@ -23,7 +23,7 @@ export function PlatformOverviewPanel({
 }: Props) {
   return (
     <article className="panel">
-      <h2>Platform Overview</h2>
+      <h2>System Entry</h2>
       <p className="panel-copy">{model.scenarioSummary}</p>
       <div className="pill-grid">
         {model.badges.map((badge) => (
@@ -71,7 +71,12 @@ export function PlatformOverviewPanel({
         </div>
       ) : null}
       <MetricGrid items={model.metrics} />
+      <div className="info-card">
+        <h3>System Map</h3>
+        <BulletList items={model.systemMap} empty="System map will appear after the baseline loads." />
+      </div>
       <BulletList items={model.guardrails} empty="No platform guardrails loaded." />
+      <JsonSectionStack sections={model.jsonSections} />
     </article>
   );
 }

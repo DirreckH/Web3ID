@@ -1,8 +1,15 @@
 
 import {
+  assertAuditExportConsistency,
+  assertRiskContextExplainability,
   buildConfiguredPositiveSignals,
   buildAutomaticRecoverySignals,
+  buildPolicyDecisionExplanation,
+  buildPropagationExplanation,
   buildRecoveryProgressSummary,
+  buildReviewQueueExplanation,
+  buildRiskListHistoryExplanation,
+  buildRiskSummaryExplanation,
   buildDeterministicSignals,
   buildManualReleaseWindow,
   buildScoreBreakdown,
@@ -13,12 +20,12 @@ import {
   createBindingChallenge,
   deriveListEntries,
   evaluateSubToRootPropagation,
-  exportAuditBundle,
   filterAuditByWindow,
   generateAiSuggestions,
   getOpenReviewItems,
   getRegistryVersion,
   getRuleDefinition,
+  normalizeAuditExportBundle,
   queueSuggestionForReview,
   replaySignalTimeline,
   shouldAnchorState,
@@ -151,6 +158,7 @@ export type PolicyDecisionSnapshotInput = {
   evidenceRefs: string[];
   auditRecordIds?: string[];
   createdAt?: string;
+  explanation?: PolicyDecisionRecord["explanation"];
 };
 
 function nowIso() { return new Date().toISOString(); }
@@ -278,6 +286,12 @@ function expirePendingReviews(store: AnalyzerStore, now = nowIso()) {
     if (item.status === "PENDING_REVIEW" && item.expiresAt && Date.parse(item.expiresAt) <= Date.parse(now)) {
       item.status = "EXPIRED";
       item.expiredAt = now;
+      item.explanation = buildReviewQueueExplanation({
+        reviewItemId: item.reviewItemId,
+        status: item.status,
+        evidenceRefs: item.evidenceRefs,
+        sourceSuggestionId: item.sourceSuggestionId,
+      });
       persistAudit(
         store,
         createAuditRecord({
@@ -442,6 +456,15 @@ function buildRiskListHistory(record: AnalyzerIdentityRecord, now = nowIso()) {
       actor: entry.addedBy,
       evidenceRefs: entry.evidenceRefs,
       expiresAt: entry.expiresAt,
+      sourceDecisionId: entry.sourceDecisionId,
+      explanation: buildRiskListHistoryExplanation({
+        reasonCode: entry.reasonCode,
+        action: entry.addedBy === "risk-engine" || entry.addedBy === "ai-assistant" ? "auto_added" : "manually_added",
+        listName: entry.listName,
+        evidenceRefs: entry.evidenceRefs,
+        sourceDecisionId: entry.sourceDecisionId,
+        actor: entry.addedBy,
+      }),
     });
     if (entry.removedAt) {
       items.push({
@@ -458,6 +481,15 @@ function buildRiskListHistory(record: AnalyzerIdentityRecord, now = nowIso()) {
         actor: entry.addedBy,
         evidenceRefs: entry.evidenceRefs,
         removalReason: entry.removalReason,
+        sourceDecisionId: entry.sourceDecisionId,
+        explanation: buildRiskListHistoryExplanation({
+          reasonCode: entry.removalReason ?? entry.reasonCode,
+          action: "removed",
+          listName: entry.listName,
+          evidenceRefs: entry.evidenceRefs,
+          sourceDecisionId: entry.sourceDecisionId,
+          actor: entry.addedBy,
+        }),
       });
     } else if (entry.expiresAt && Date.parse(entry.expiresAt) <= Date.parse(now)) {
       items.push({
@@ -474,6 +506,15 @@ function buildRiskListHistory(record: AnalyzerIdentityRecord, now = nowIso()) {
         actor: entry.addedBy,
         evidenceRefs: entry.evidenceRefs,
         expiresAt: entry.expiresAt,
+        sourceDecisionId: entry.sourceDecisionId,
+        explanation: buildRiskListHistoryExplanation({
+          reasonCode: entry.reasonCode,
+          action: "expired",
+          listName: entry.listName,
+          evidenceRefs: entry.evidenceRefs,
+          sourceDecisionId: entry.sourceDecisionId,
+          actor: entry.addedBy,
+        }),
       });
     }
   }
@@ -613,6 +654,11 @@ function syncIdentityArtifacts(input: {
   const previousScore = input.record.score;
   const previousListSignature = (input.record.listEntries ?? []).map((entry) => `${entry.entryId}:${entry.removedAt ?? "active"}`).join("|");
   const nextListSignature = input.listEntries.map((entry) => `${entry.entryId}:${entry.removedAt ?? "active"}`).join("|");
+  const summaryReasonCodes = uniqueStrings(input.reasonCodes);
+  const summaryWarnings = uniqueStrings([...input.warnings, ...input.aiSuggestions.map((suggestion) => suggestion.summary)]);
+  const summaryEvidenceRefs = uniqueStrings(input.evidenceRefs);
+  const latestAssessmentId = input.stateContext.assessments.at(-1)?.assessmentId ?? null;
+  const latestDecisionId = input.stateContext.decisions.at(-1)?.decisionId ?? input.stateContext.lastDecisionRef ?? null;
   const positiveSummary = {
     ...buildRecoveryProgressSummary({
       signals: input.stateContext.signals as RiskSignal[],
@@ -638,9 +684,9 @@ function syncIdentityArtifacts(input: {
     reputationScore: input.score.reputationScore,
     confidenceScore: input.score.confidenceScore,
     finalInternalScore: input.score.finalInternalScore,
-    reasonCodes: uniqueStrings(input.reasonCodes),
-    warnings: uniqueStrings([...input.warnings, ...input.aiSuggestions.map((suggestion) => suggestion.summary)]),
-    evidenceRefs: uniqueStrings(input.evidenceRefs),
+    reasonCodes: summaryReasonCodes,
+    warnings: summaryWarnings,
+    evidenceRefs: summaryEvidenceRefs,
     ...summarizeLists(input.listEntries),
     manualReleaseWindow: input.record.manualReleaseWindow ?? null,
     activeManualOverrides: summarizeActiveManualOverrides(input.record, input.now),
@@ -657,7 +703,33 @@ function syncIdentityArtifacts(input: {
       demoDefaults: true,
     },
     recoveryProgress: positiveSummary,
-    propagation: input.propagation,
+    propagation: input.propagation
+      ? {
+          ...input.propagation,
+          explanation: input.propagation.explanation ?? buildPropagationExplanation({
+            reasonCodes: input.propagation.reasonCodes,
+            warnings: input.propagation.warnings,
+            evidenceRefs: summaryEvidenceRefs,
+            sourceDecisionId: latestDecisionId,
+            sourceRegistryVersion: getRegistryVersion(),
+          }),
+        }
+      : undefined,
+    explanation: buildRiskSummaryExplanation({
+      summary: {
+        storedState: input.storedState,
+        effectiveState: input.effectiveState,
+        reasonCodes: summaryReasonCodes,
+        evidenceRefs: summaryEvidenceRefs,
+      },
+      sourceAssessmentId: latestAssessmentId,
+      sourceDecisionId: latestDecisionId,
+      sourceRegistryVersion: getRegistryVersion(),
+      actorType: "system",
+      actorId: "analyzer-service",
+      aiContribution: input.aiSuggestions.length > 0,
+      manualOverride: input.record.manualSignals.some((signal) => signal.signalType === "MANUAL_REVIEW_RESULT" || signal.sourceType === "governance"),
+    }),
   } satisfies RiskSummary;
   input.record.riskRecord = {
     identityId: input.identityId,
@@ -847,6 +919,8 @@ async function recomputeRootState(store: AnalyzerStore, rootIdentityId: Hex, now
     }
   }
   const rootWarnings = uniqueStrings(rootReasonCodes.map((reasonCode) => `Root propagation applied: ${reasonCode}`));
+  const rootSummaryReasonCodes = uniqueStrings(rootReasonCodes);
+  const rootSummaryEvidenceRefs = uniqueStrings(rootEvidenceRefs);
   const rootAiSuggestions = await generateAiSuggestions({
     identityId: rootContainer.rootIdentity.identityId,
     rootIdentityId: rootContainer.rootIdentity.identityId,
@@ -859,12 +933,25 @@ async function recomputeRootState(store: AnalyzerStore, rootIdentityId: Hex, now
       reputationScore: rootLocal.score.reputationScore,
       confidenceScore: rootLocal.score.confidenceScore,
       finalInternalScore: rootLocal.score.finalInternalScore,
-      reasonCodes: uniqueStrings(rootReasonCodes),
+      reasonCodes: rootSummaryReasonCodes,
       warnings: rootWarnings,
-      evidenceRefs: uniqueStrings(rootEvidenceRefs),
+      evidenceRefs: rootSummaryEvidenceRefs,
       watchlist: [],
       restrictedList: [],
       blacklistOrFrozenList: [],
+      explanation: buildRiskSummaryExplanation({
+        summary: {
+          storedState: rootStoredState,
+          effectiveState: rootStoredState,
+          reasonCodes: rootSummaryReasonCodes,
+          evidenceRefs: rootSummaryEvidenceRefs,
+        },
+        sourceAssessmentId: rootLocal.stateContext.assessments.at(-1)?.assessmentId ?? null,
+        sourceDecisionId: rootLocal.stateContext.decisions.at(-1)?.decisionId ?? rootLocal.stateContext.lastDecisionRef ?? null,
+        sourceRegistryVersion: getRegistryVersion(),
+        actorType: "system",
+        actorId: "analyzer-service",
+      }),
     },
     signals: rootLocal.signals,
     apiKey: analyzerConfig.openAiApiKey,
@@ -893,14 +980,21 @@ async function recomputeRootState(store: AnalyzerStore, rootIdentityId: Hex, now
     stateContext: { ...rootLocal.stateContext, currentState: rootStoredState },
     storedState: rootStoredState,
     effectiveState: rootStoredState,
-    reasonCodes: uniqueStrings(rootReasonCodes),
+    reasonCodes: rootSummaryReasonCodes,
     warnings: rootWarnings,
-    evidenceRefs: uniqueStrings(rootEvidenceRefs),
+    evidenceRefs: rootSummaryEvidenceRefs,
     aiSuggestions: rootAiSuggestions,
     listEntries: rootListEntries,
     propagation: {
-      reasonCodes: uniqueStrings(rootReasonCodes),
+      reasonCodes: rootSummaryReasonCodes,
       warnings: rootWarnings,
+      explanation: buildPropagationExplanation({
+        reasonCodes: rootSummaryReasonCodes,
+        warnings: rootWarnings,
+        evidenceRefs: rootSummaryEvidenceRefs,
+        sourceDecisionId: rootLocal.stateContext.decisions.at(-1)?.decisionId ?? rootLocal.stateContext.lastDecisionRef ?? null,
+        sourceRegistryVersion: getRegistryVersion(),
+      }),
     },
     now,
   });
@@ -956,6 +1050,19 @@ async function recomputeRootState(store: AnalyzerStore, rootIdentityId: Hex, now
         watchlist: [],
         restrictedList: [],
         blacklistOrFrozenList: [],
+        explanation: buildRiskSummaryExplanation({
+          summary: {
+            storedState: local.storedState,
+            effectiveState,
+            reasonCodes,
+            evidenceRefs: local.evidenceRefs,
+          },
+          sourceAssessmentId: local.stateContext.assessments.at(-1)?.assessmentId ?? null,
+          sourceDecisionId: local.stateContext.decisions.at(-1)?.decisionId ?? local.stateContext.lastDecisionRef ?? null,
+          sourceRegistryVersion: getRegistryVersion(),
+          actorType: "system",
+          actorId: "analyzer-service",
+        }),
       },
       signals: local.signals,
       apiKey: analyzerConfig.openAiApiKey,
@@ -996,6 +1103,13 @@ async function recomputeRootState(store: AnalyzerStore, rootIdentityId: Hex, now
         warnings,
         siblingOverlayState,
         rootEffectiveFloorState: effectiveState > overlayedLocalState ? effectiveState : undefined,
+        explanation: buildPropagationExplanation({
+          reasonCodes: subPropagationReasons.get(local.identityId) ?? [],
+          warnings,
+          evidenceRefs: local.evidenceRefs,
+          sourceDecisionId: local.stateContext.decisions.at(-1)?.decisionId ?? local.stateContext.lastDecisionRef ?? null,
+          sourceRegistryVersion: getRegistryVersion(),
+        }),
       },
       now,
     });
@@ -1385,6 +1499,14 @@ export async function confirmReview(reviewItemId: string, input: ReviewConfirmat
   reviewItem.confirmedAt = nowIso();
   reviewItem.confirmedBy = input.actor;
   reviewItem.reason = input.note;
+  reviewItem.explanation = buildReviewQueueExplanation({
+    reviewItemId: reviewItem.reviewItemId,
+    status: reviewItem.status,
+    evidenceRefs: reviewItem.evidenceRefs,
+    sourceSuggestionId: reviewItem.sourceSuggestionId,
+    reason: input.note,
+    actor: input.actor,
+  });
 
   const requestedState = input.requestedState ?? (suggestion.severity === "high" ? IdentityState.RESTRICTED : IdentityState.OBSERVED);
   record.manualSignals.push(
@@ -1417,6 +1539,14 @@ export async function dismissReview(reviewItemId: string, actor: string, reason?
   reviewItem.dismissedAt = nowIso();
   reviewItem.dismissedBy = actor;
   reviewItem.reason = reason;
+  reviewItem.explanation = buildReviewQueueExplanation({
+    reviewItemId: reviewItem.reviewItemId,
+    status: reviewItem.status,
+    evidenceRefs: reviewItem.evidenceRefs,
+    sourceSuggestionId: reviewItem.sourceSuggestionId,
+    reason,
+    actor,
+  });
   persistAudit(store, createAuditRecord({ identityId: reviewItem.identityId, rootIdentityId: reviewItem.rootIdentityId, subIdentityId: reviewItem.subIdentityId, action: "AI_REVIEW_ITEM_DISMISSED", actor, evidenceRefs: reviewItem.evidenceRefs, aiSuggestionId: reviewItem.sourceSuggestionId, reviewItemId, metadata: { reason } }));
   await saveStore(store);
   return getRiskContext(reviewItem.identityId);
@@ -1510,7 +1640,7 @@ export async function getRiskContext(identityId: Hex) {
         reviewQueueCounts: summarizeReviewQueueCounts(reviewQueue),
       }
     : null;
-  return {
+  const context = {
     identityId,
     kind: record.kind,
     rootIdentity: record.rootIdentity,
@@ -1534,6 +1664,7 @@ export async function getRiskContext(identityId: Hex) {
       return { identityId: subIdentityId, scope: subRecord?.subIdentity?.scope, type: subRecord?.subIdentity?.type, storedState: subRecord?.summary?.storedState, effectiveState: subRecord?.summary?.effectiveState, warnings: subRecord?.summary?.warnings ?? [], reasonCodes: subRecord?.summary?.reasonCodes ?? [] };
     }) : undefined,
   };
+  return assertRiskContextExplainability(context);
 }
 
 export async function getIdentityEvents(identityId: Hex) {
@@ -1561,6 +1692,20 @@ export async function recordPolicyDecisionSnapshot(input: PolicyDecisionSnapshot
     evidenceRefs: [...new Set(input.evidenceRefs)],
     createdAt,
     auditRecordIds: input.auditRecordIds ?? [],
+    explanation: input.explanation ?? buildPolicyDecisionExplanation({
+      decision: input.decision,
+      state: record.summary?.effectiveState ?? record.riskRecord?.effectiveState ?? IdentityState.NORMAL,
+      reasons: [...new Set(input.reasons)],
+      warnings: [...new Set(input.warnings)],
+      evidenceRefs: [...new Set(input.evidenceRefs)],
+      policyVersion: input.policyVersion,
+      policyLabel: input.policyLabel,
+      sourceDecisionId: record.riskRecord?.lastDecisionId ?? null,
+      sourceRegistryVersion: getRegistryVersion(),
+      modePath: input.modePath,
+      actorType: "policy_engine",
+      actorId: "policy-api",
+    }),
   };
   store.policyDecisions[snapshot.decisionId] = snapshot;
   const audit = createAuditRecord({
@@ -1628,7 +1773,7 @@ export async function exportStructuredAudit(input: AuditExportInput): Promise<Au
     .map((identityId) => store.identities[identityId])
     .filter((record): record is AnalyzerIdentityRecord => Boolean(record));
 
-  return {
+  const bundle = normalizeAuditExportBundle({
     generatedAt: nowIso(),
     filters: input,
     identities: identityIds,
@@ -1652,7 +1797,9 @@ export async function exportStructuredAudit(input: AuditExportInput): Promise<Au
     anchors: includedRecords.flatMap((record) => getAnchorsForIdentity(store, (record.subIdentity?.identityId ?? record.rootIdentity.identityId) as Hex)),
     auditRecords: records,
     records,
-  };
+  });
+  assertAuditExportConsistency(bundle);
+  return bundle;
 }
 export async function listRiskHistory(input: RiskListHistoryInput = {}) {
   const store = await loadStore();

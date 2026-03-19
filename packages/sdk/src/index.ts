@@ -48,6 +48,7 @@ import {
   type StateSnapshotSource,
 } from "@web3id/state";
 import { createWalletClient, custom, encodePacked, keccak256, type Address, type Hex, type PublicClient } from "viem";
+export * from "./system-model.js";
 
 export type ZkProofInput = {
   proofPoints: [

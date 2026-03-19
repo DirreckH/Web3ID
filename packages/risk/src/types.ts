@@ -1,6 +1,7 @@
 import type { Address, Hex } from "viem";
 import type {
   ConsequenceRecord,
+  ExplanationBlock,
   IdentityState,
   RiskAssessment,
   RiskSignal as BaseRiskSignal,
@@ -158,6 +159,7 @@ export type RiskListEntry = {
   removedAt?: string;
   removalReason?: string;
   evidenceRefs: string[];
+  explanation?: ExplanationBlock;
 };
 
 export type AuditRecord = {
@@ -205,6 +207,7 @@ export type AiSuggestion = {
     model: string;
     promptVersion: string;
   };
+  explanation: ExplanationBlock;
   createdAt: string;
   metadata?: Record<string, unknown>;
 };
@@ -225,6 +228,7 @@ export type ReviewQueueItem = {
   expiredAt?: string;
   reason?: string;
   evidenceRefs: string[];
+  explanation: ExplanationBlock;
 };
 
 export type ReviewQueueCounts = {
@@ -278,6 +282,7 @@ export type RecoveryProgressSummary = {
   activeRestrictions: string[];
   activeUnlocks: string[];
   helpfulPositiveSignals: string[];
+  explanation: ExplanationBlock;
 };
 
 export type PropagationSummary = {
@@ -285,6 +290,7 @@ export type PropagationSummary = {
   warnings: string[];
   siblingOverlayState?: IdentityState;
   rootEffectiveFloorState?: IdentityState;
+  explanation: ExplanationBlock;
 };
 
 export type RiskSummary = {
@@ -311,6 +317,7 @@ export type RiskSummary = {
   positiveSummary?: PositiveSummary;
   recoveryProgress?: RecoveryProgressSummary;
   propagation?: PropagationSummary;
+  explanation: ExplanationBlock;
 };
 
 export type CredentialDecisionReason = {
@@ -329,6 +336,7 @@ export type PolicyDecision = {
   riskReasons?: CredentialDecisionReason[];
   policyReasons?: CredentialDecisionReason[];
   auditRecordIds?: string[];
+  explanation: ExplanationBlock;
 };
 
 export type PolicyDecisionRecord = {
@@ -347,6 +355,7 @@ export type PolicyDecisionRecord = {
   evidenceRefs: string[];
   createdAt: string;
   auditRecordIds: string[];
+  explanation: ExplanationBlock;
 };
 
 export type BindingChallenge = {
@@ -423,8 +432,32 @@ export type RiskListHistoryItem = {
   reasonCode: string;
   actor: string;
   evidenceRefs: string[];
+  sourceDecisionId?: string;
   removalReason?: string;
   expiresAt?: string;
+  explanation: ExplanationBlock;
+};
+
+export type ExplanationChainEntry = {
+  objectKind:
+    | "signal"
+    | "assessment"
+    | "decision"
+    | "consequence"
+    | "policy_decision"
+    | "ai_review"
+    | "propagation"
+    | "recovery";
+  objectId: string;
+  identityId: Hex;
+  explanation: ExplanationBlock;
+  linkedTo: string[];
+};
+
+export type AuditExportConsistency = {
+  complete: boolean;
+  missingSegments: string[];
+  unavailableSegments: string[];
 };
 
 export type OperatorDashboardSnapshot = {
@@ -472,6 +505,8 @@ export type AuditExportBundle = {
   anchors: AnchorQueueEntry[];
   auditRecords: AuditRecord[];
   records: AuditRecord[];
+  explanationChain: ExplanationChainEntry[];
+  consistency: AuditExportConsistency;
 };
 
 export type PositiveSignalThresholds = {

@@ -1,4 +1,5 @@
 import { type Hex } from "viem";
+import { assertExplanationBlock, createExplanationBlock, type ExplanationBlock } from "./explanation.js";
 import { IdentityState } from "./state.js";
 import { DEFAULT_RECOVERY_RULES, type RecoveryRule } from "./recovery.js";
 import { type RiskAssessment } from "./assessment.js";
@@ -29,6 +30,7 @@ export type ConsequenceRecord = {
   expiresAt?: string;
   recoverable: boolean;
   recoveryRuleId?: string;
+  explanation: ExplanationBlock;
   createdAt: string;
   resolvedAt?: string;
   resolvedBySignalId?: string;
@@ -59,6 +61,25 @@ export function applyConsequences(input: {
       expiresAt: recoveryRule && recoveryRule.requiredCooldown > 0 ? futureIso(recoveryRule.requiredCooldown) : undefined,
       recoverable: consequenceType !== "trust_decrease",
       recoveryRuleId: recoveryRule?.ruleId,
+      explanation: assertExplanationBlock(
+        createExplanationBlock({
+          reasonCode: input.assessment.reasonCode,
+          explanationSummary: `Consequence ${consequenceType} was applied after ${IdentityState[input.decision.toState]} decision ${input.decision.decisionId}.`,
+          evidenceRefs: [input.signal.evidenceRef],
+          sourceAssessmentId: input.assessment.assessmentId,
+          sourceDecisionId: input.decision.decisionId,
+          sourcePolicyVersion: input.decision.policyVersion,
+          sourceRegistryVersion:
+            "registryVersion" in input.signal && typeof input.signal.registryVersion === "number"
+              ? input.signal.registryVersion
+              : null,
+          actorType: input.decision.actorType,
+          actorId: input.decision.actorId,
+          aiContribution: false,
+          manualOverride: input.decision.actorType !== "rule_engine",
+        }),
+        { requireEvidenceRefs: true, requireSourceDecisionId: true, requireSourcePolicyVersion: true },
+      ),
       createdAt,
     },
   ];

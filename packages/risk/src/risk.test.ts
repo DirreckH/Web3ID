@@ -11,6 +11,7 @@ import { evaluateSubToRootPropagation, computeEffectiveSubState } from "./propag
 import { buildAutomaticRecoverySignals, buildManualReleaseWindow } from "./reentry.js";
 import { buildScoreBreakdown } from "./scoring.js";
 import { buildDeterministicSignals } from "./state-machine.js";
+import { buildRiskSummaryExplanation } from "./explanation.js";
 import type { BehaviorEvent, RiskSummary } from "./types.js";
 
 const rootIdentityId = "0x00000000000000000000000000000000000000000000000000000000000000aa" as const;
@@ -199,6 +200,14 @@ describe("risk package", () => {
       watchlist: [],
       restrictedList: [],
       blacklistOrFrozenList: [],
+      explanation: buildRiskSummaryExplanation({
+        summary: {
+          storedState: IdentityState.HIGH_RISK,
+          effectiveState: IdentityState.HIGH_RISK,
+          reasonCodes: ["MIXER_INTERACTION"],
+          evidenceRefs: ["tx:0x123"],
+        },
+      }),
     };
     const ai = await generateAiSuggestions({
       identityId: subIdentityId,
@@ -247,6 +256,14 @@ describe("risk package", () => {
       watchlist: [],
       restrictedList: [],
       blacklistOrFrozenList: [],
+      explanation: buildRiskSummaryExplanation({
+        summary: {
+          storedState: IdentityState.RESTRICTED,
+          effectiveState: IdentityState.RESTRICTED,
+          reasonCodes: ["HIGH_RISK_COUNTERPARTY"],
+          evidenceRefs: ["tx:0x123"],
+        },
+      }),
     };
     expect(evaluateAccessRisk({ policyLabel: "RWA_BUY_V2", summary, policyVersion: 1 }).decision).toBe("restrict");
     expect(evaluateWarningRisk({ policyId: "COUNTERPARTY_WARNING_V1", summary, policyVersion: 1 }).decision).toBe("warn");

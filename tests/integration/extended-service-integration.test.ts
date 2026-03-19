@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServiceHarness, DEMO_TARGETS, type ServiceHarness } from "./service-harness.js";
 
 async function waitFor<T>(callback: () => Promise<T | null>, timeoutMs = 60_000, intervalMs = 1_000) {
@@ -16,13 +16,13 @@ async function waitFor<T>(callback: () => Promise<T | null>, timeoutMs = 60_000,
 describe.sequential("extended service integration", () => {
   let harness: ServiceHarness;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     harness = await createServiceHarness(13555 + (process.pid % 100));
     await harness.registerTree();
     await harness.createBindings();
   }, 900_000);
 
-  afterEach(async () => {
+  afterAll(async () => {
     await harness.stop();
   });
 

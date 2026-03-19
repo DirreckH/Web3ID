@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createPublicClient, createWalletClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
+import { waitForAcceptance as waitFor } from "../../scripts/acceptance-shared.js";
 import {
   createSameRootProof,
   createSubIdentityLinkProof,
@@ -229,23 +230,6 @@ async function isRpcReady(rpcUrl: string) {
   } catch {
     return false;
   }
-}
-
-async function waitFor<T>(label: string, callback: () => Promise<T | null>, timeoutMs = 60_000, intervalMs = 1_000) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError: unknown;
-  while (Date.now() < deadline) {
-    try {
-      const value = await callback();
-      if (value !== null) {
-        return value;
-      }
-    } catch (error) {
-      lastError = error;
-    }
-    await delay(intervalMs);
-  }
-  throw new Error(`Timed out waiting for ${label}${lastError instanceof Error ? `: ${lastError.message}` : ""}`);
 }
 
 async function waitForHealth(url: string, label: string, timeoutMs = 120_000) {

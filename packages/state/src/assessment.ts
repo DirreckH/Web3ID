@@ -1,4 +1,5 @@
 import { keccak256, stringToHex, type Hex } from "viem";
+import { assertExplanationBlock, createExplanationBlock, type ExplanationBlock } from "./explanation.js";
 import { IdentityState } from "./state.js";
 import { type RiskSignal } from "./signal.js";
 
@@ -30,6 +31,7 @@ export type RiskAssessment = {
   recommendedActions: string[];
   reasonCode: string;
   explanationRef: string;
+  explanation: ExplanationBlock;
   createdAt: string;
   aiMetadata?: AiAssessmentMetadata;
 };
@@ -50,9 +52,28 @@ export function buildRiskAssessment(input: {
   const createdAt = new Date().toISOString();
   const assessmentResult = selectAssessmentResult(primarySignal.category, input.recommendedState);
   const scoreDelta = primarySignal.category === "positive" ? 10 : scoreDeltaForSeverity(primarySignal.severity);
+  const assessmentId = keccak256(stringToHex([input.identityId, primarySignal.signalId, createdAt].join(":")));
+  const explanation = assertExplanationBlock(
+    createExplanationBlock({
+      reasonCode: primarySignal.reasonCode,
+      explanationSummary: primarySignal.explanation,
+      evidenceRefs: [primarySignal.evidenceRef],
+      sourceAssessmentId: assessmentId,
+      sourcePolicyVersion: primarySignal.policyVersion,
+      sourceRegistryVersion:
+        "registryVersion" in primarySignal && typeof primarySignal.registryVersion === "number"
+          ? primarySignal.registryVersion
+          : null,
+      actorType: input.engineType === "ai" ? "ai" : input.engineType === "manual" ? "manual" : "rule_engine",
+      actorId: input.engineType === "ai" ? input.aiMetadata?.provider ?? primarySignal.actor : primarySignal.actor,
+      aiContribution: input.engineType === "ai",
+      manualOverride: input.engineType === "manual" || primarySignal.sourceType === "manual",
+    }),
+    { requireEvidenceRefs: true, requireSourcePolicyVersion: true },
+  );
 
   return {
-    assessmentId: keccak256(stringToHex([input.identityId, primarySignal.signalId, createdAt].join(":"))),
+    assessmentId,
     signalIds: input.signals.map((signal) => signal.signalId),
     identityId: input.identityId,
     engineType: input.engineType ?? "rule",
@@ -63,6 +84,7 @@ export function buildRiskAssessment(input: {
     recommendedActions: recommendedActionsFor(primarySignal.category, input.recommendedState),
     reasonCode: primarySignal.reasonCode,
     explanationRef: input.explanationRef ?? primarySignal.evidenceRef,
+    explanation,
     createdAt,
     aiMetadata: input.aiMetadata,
   };

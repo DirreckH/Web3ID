@@ -18,6 +18,7 @@
     "@web3id/identity": "workspace:*",
     "@web3id/policy": "workspace:*",
     "@web3id/proof": "workspace:*",
+    "@web3id/risk": "workspace:*",
     "@web3id/state": "workspace:*",
     "viem": "^2.23.5"
   }

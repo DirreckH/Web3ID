@@ -1,4 +1,5 @@
 import { keccak256, stringToHex, type Hex } from "viem";
+import { assertExplanationBlock, createExplanationBlock, type ExplanationBlock } from "./explanation.js";
 import { IdentityState, canTransition } from "./state.js";
 import { type RiskAssessment } from "./assessment.js";
 import { defaultPropagationLevel, type PropagationLevel } from "./propagation.js";
@@ -19,6 +20,7 @@ export type StateTransitionDecision = {
   actorId: string;
   reasonCode: string;
   evidenceBundleHash: Hex;
+  explanation: ExplanationBlock;
   createdAt: string;
   recommendedPropagationLevel: PropagationLevel;
 };
@@ -48,9 +50,29 @@ export function createStateTransitionDecision(input: {
     signalSeverity: input.signal.severity,
     actorType,
   });
+  const decisionId = keccak256(stringToHex([input.identityId, input.assessment.assessmentId, createdAt].join(":")));
+  const explanation = assertExplanationBlock(
+    createExplanationBlock({
+      reasonCode: input.assessment.reasonCode,
+      explanationSummary: `State transitioned from ${IdentityState[input.fromState]} to ${IdentityState[toState]} because ${input.assessment.reasonCode}.`,
+      evidenceRefs: [input.signal.evidenceRef],
+      sourceAssessmentId: input.assessment.assessmentId,
+      sourceDecisionId: decisionId,
+      sourcePolicyVersion: input.signal.policyVersion,
+      sourceRegistryVersion:
+        "registryVersion" in input.signal && typeof input.signal.registryVersion === "number"
+          ? input.signal.registryVersion
+          : null,
+      actorType,
+      actorId: input.actorId ?? input.signal.actor,
+      aiContribution: false,
+      manualOverride: actorType !== "rule_engine",
+    }),
+    { requireEvidenceRefs: true, requireSourceDecisionId: true, requireSourcePolicyVersion: true },
+  );
 
   return {
-    decisionId: keccak256(stringToHex([input.identityId, input.assessment.assessmentId, createdAt].join(":"))),
+    decisionId,
     identityId: input.identityId,
     fromState: input.fromState,
     toState,
@@ -62,6 +84,7 @@ export function createStateTransitionDecision(input: {
     actorId: input.actorId ?? input.signal.actor,
     reasonCode: input.assessment.reasonCode,
     evidenceBundleHash,
+    explanation,
     createdAt,
     recommendedPropagationLevel,
   };

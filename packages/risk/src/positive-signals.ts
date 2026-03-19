@@ -1,6 +1,7 @@
 import positiveSignalsConfig from "../config/positive-signals.json";
 import { createRiskSignal, type RiskSignalInput } from "../../state/src/index.js";
 import { getRegistryVersion, getRuleSnapshot } from "./registry.js";
+import { buildRecoveryExplanation } from "./explanation.js";
 import type {
   ManualReleaseWindow,
   PositiveSignalThresholds,
@@ -228,5 +229,16 @@ export function buildRecoveryProgressSummary(input: {
       `trusted_protocol_usage (${config.trusted_protocol_usage.minEvents} events / ${config.trusted_protocol_usage.lookbackDays} days)`,
       `no_risk_incident_days (${config.no_risk_incident_days.daysWithoutIncident} clean days)`,
     ],
+    explanation: buildRecoveryExplanation({
+      releaseFloorActive: Boolean(floorUntil && Date.parse(floorUntil) > Date.parse(now)),
+      floorUntil,
+      helpfulPositiveSignals: [
+        `long_term_good_standing (${config.long_term_good_standing.daysWithoutIncident} clean days)`,
+        `repeated_governance_participation (${config.repeated_governance_participation.minEvents} events / ${config.repeated_governance_participation.lookbackDays} days)`,
+        `trusted_protocol_usage (${config.trusted_protocol_usage.minEvents} events / ${config.trusted_protocol_usage.lookbackDays} days)`,
+        `no_risk_incident_days (${config.no_risk_incident_days.daysWithoutIncident} clean days)`,
+      ],
+      evidenceRefs: positiveSummary.activePositiveSignals.flatMap((signal) => signal.evidenceRefs),
+    }),
   };
 }

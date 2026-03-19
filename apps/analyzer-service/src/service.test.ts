@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import { privateKeyToAccount } from "viem/accounts";
 import { createSameRootProof, createSubIdentityLinkProof, deriveRootIdentity, listDefaultSubIdentities, SubIdentityType } from "../../../packages/identity/src/index.js";
 import { buildSameRootAuthorizationMessage } from "../../../packages/risk/src/index.js";
-import { IdentityState } from "../../../packages/state/src/index.js";
+import { IdentityState, createExplanationBlock } from "../../../packages/state/src/index.js";
 import { analyzerConfig } from "./config.js";
 import { exportIdentityAudit, createBindingChallengeRecord, getRiskContext, recomputeIdentity, registerIdentityTree, submitBinding, applyManualRelease, shutdownAnalyzerWatchers } from "./service.js";
 import { loadStore, saveStore } from "./store.js";
@@ -160,6 +160,14 @@ describe("analyzer service", () => {
       createdAt: new Date("2026-03-01T00:00:00Z").toISOString(),
       expiresAt: new Date("2026-03-02T00:00:00Z").toISOString(),
       evidenceRefs: ["tx:0x999"],
+      explanation: createExplanationBlock({
+        reasonCode: "PENDING_REVIEW",
+        explanationSummary: "Pending human review is required before any state write.",
+        evidenceRefs: ["tx:0x999"],
+        actorType: "ai",
+        actorId: "stale-suggestion",
+        aiContribution: true,
+      }),
     };
     await saveStore(store);
 

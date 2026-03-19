@@ -6,6 +6,20 @@ import {
   type ProofPrivacyMode,
 } from "./privacy-modes.js";
 
+export type ProofPrivacyGuardrails = {
+  defaultMode: "default_off";
+  lifecycle: "hook_only";
+  safety: "mock_safe";
+  changesVerifySemantics: false;
+};
+
+export const proofPrivacyGuardrails: ProofPrivacyGuardrails = {
+  defaultMode: "default_off",
+  lifecycle: "hook_only",
+  safety: "mock_safe",
+  changesVerifySemantics: false,
+};
+
 export type ProofDescriptor = {
   proofId: string;
   proofType: string;
@@ -104,17 +118,34 @@ export function buildProofDescriptor(input: {
 export function getProofDescriptor(
   input: string | { descriptor?: ProofDescriptor | null; proofDescriptor?: ProofDescriptor | null; proofType?: string | null },
 ) {
-  if (typeof input === "string") {
-    return buildProofDescriptor({ proofType: input });
+  return getProofDescriptorSafe(input);
+}
+
+export function getProofDescriptorSafe(
+  input: string | { descriptor?: ProofDescriptor | null; proofDescriptor?: ProofDescriptor | null; proofType?: string | null },
+) {
+  try {
+    if (typeof input === "string") {
+      return buildProofDescriptor({ proofType: input });
+    }
+    if (input.descriptor) {
+      return input.descriptor;
+    }
+    if (input.proofDescriptor) {
+      return input.proofDescriptor;
+    }
+    if (!input.proofType) {
+      throw new Error("Proof descriptor input requires either a descriptor or proofType.");
+    }
+    return buildProofDescriptor({ proofType: input.proofType });
+  } catch {
+    return buildProofDescriptor({ proofType: legacyHolderBoundProofKind });
   }
-  if (input.descriptor) {
-    return input.descriptor;
+}
+
+export function assertProofPrivacyGuardrails(metadata: ProofPrivacyGuardrails = proofPrivacyGuardrails) {
+  if (metadata.changesVerifySemantics) {
+    throw new Error("Proof privacy abstraction must not change the current proof verification semantics.");
   }
-  if (input.proofDescriptor) {
-    return input.proofDescriptor;
-  }
-  if (!input.proofType) {
-    throw new Error("Proof descriptor input requires either a descriptor or proofType.");
-  }
-  return buildProofDescriptor({ proofType: input.proofType });
+  return metadata;
 }

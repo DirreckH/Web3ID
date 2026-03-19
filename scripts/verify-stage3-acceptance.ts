@@ -7,6 +7,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createPublicClient, createWalletClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
+import {
+  ACCEPTANCE_DOCS,
+  createAcceptanceJsonReplacer,
+  pendingAnchorCount,
+  waitForAcceptance as waitFor,
+} from "./acceptance-shared.js";
 import { createSameRootProof, createSubIdentityLinkProof, deriveRootIdentity, listDefaultSubIdentities, SubIdentityType } from "../packages/identity/src/index.js";
 import { POLICY_DEFINITIONS, POLICY_IDS } from "../packages/policy/src/index.js";
 import { generateSmokeProof, runtimePaths } from "../packages/proof/scripts/runtime.js";
@@ -124,10 +130,6 @@ function createUrls(ports: ReturnType<typeof createPorts>) {
   };
 }
 
-function createJsonReplacer() {
-  return (_key: string, value: unknown) => (typeof value === "bigint" ? value.toString() : value);
-}
-
 function startTrackedProcess(name: string, cwd: string, command: string, args: string[], env: NodeJS.ProcessEnv) {
   const child = spawn(command, args, {
     cwd,
@@ -213,24 +215,6 @@ async function isRpcReady(rpcUrl: string) {
   } catch {
     return false;
   }
-}
-
-async function waitFor(label: string, callback: () => Promise<unknown | null>, timeoutMs = 60_000, intervalMs = 1_000) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError: unknown;
-  while (Date.now() < deadline) {
-    try {
-      const value = await callback();
-      if (value !== null) {
-        return value;
-      }
-    } catch (error) {
-      lastError = error;
-    }
-    await delay(intervalMs);
-  }
-
-  throw new Error(`Timed out waiting for ${label}${lastError instanceof Error ? `: ${lastError.message}` : ""}`);
 }
 
 async function waitForHealth(url: string, label: string, timeoutMs = 120_000) {
@@ -574,10 +558,6 @@ async function readOnchainSnapshot(rpcUrl: string, stateRegistryAddress: `0x${st
     lastStateHash: snapshot[4],
     lastEvidenceBundleHash: snapshot[5],
   };
-}
-
-function pendingAnchorCount(context: any) {
-  return (context.anchors ?? []).filter((entry: any) => entry.status === "PENDING").length;
 }
 
 async function injectExpiredReview(input: {
@@ -975,15 +955,9 @@ async function main() {
     console.log(JSON.stringify({
       stage,
       urls,
-      docs: [
-        "docs/PLATFORM_BASELINE.md",
-        "docs/IDENTITY_INVARIANTS.md",
-        "docs/STATE_SYSTEM_INVARIANTS.md",
-        "docs/BOUNDARIES.md",
-        "docs/DEMO_MATRIX.md",
-      ],
+      docs: ACCEPTANCE_DOCS,
       result,
-    }, createJsonReplacer(), 2));
+    }, createAcceptanceJsonReplacer(), 2));
   } catch (error) {
     const logDump = services.map((service) => buildServiceError(service)).join("\n\n");
     if (logDump) {

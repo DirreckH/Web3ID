@@ -75,3 +75,6 @@ jobs:
 
       - name: Integration suite
         run: pnpm test:integration
+
+      - name: System acceptance suite
+        run: pnpm test:system

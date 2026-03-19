@@ -17,8 +17,15 @@ import type {
   RiskSummary,
   ScoreBreakdown,
 } from "../../../packages/risk/src/index.js";
-import { normalizeAiSuggestion } from "../../../packages/risk/src/index.js";
-import type { IdentityStateContext } from "../../../packages/state/src/index.js";
+import {
+  buildPolicyDecisionExplanation,
+  buildPropagationExplanation,
+  buildRecoveryExplanation,
+  buildReviewQueueExplanation,
+  buildRiskSummaryExplanation,
+  normalizeAiSuggestion,
+} from "../../../packages/risk/src/index.js";
+import { IdentityState, type IdentityStateContext } from "../../../packages/state/src/index.js";
 import { analyzerConfig } from "./config.js";
 
 export type AnalyzerIdentityRecord = {
@@ -92,7 +99,99 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizeIdentityRecord(record: AnalyzerIdentityRecord): AnalyzerIdentityRecord {
+  if (!record.summary) {
+    return record;
+  }
+
+  const latestAssessmentId = record.stateContext?.assessments.at(-1)?.assessmentId ?? null;
+  const latestDecisionId = record.stateContext?.decisions.at(-1)?.decisionId ?? record.stateContext?.lastDecisionRef ?? record.riskRecord?.lastDecisionId ?? null;
+  const summaryEvidenceRefs = record.summary.evidenceRefs ?? [];
+  const summaryReasonCodes = record.summary.reasonCodes ?? [];
+
+  return {
+    ...record,
+    summary: {
+      ...record.summary,
+      recoveryProgress: record.summary.recoveryProgress
+        ? {
+            ...record.summary.recoveryProgress,
+            explanation: record.summary.recoveryProgress.explanation ?? buildRecoveryExplanation({
+              releaseFloorActive: record.summary.recoveryProgress.releaseFloorActive,
+              floorUntil: record.summary.recoveryProgress.floorUntil,
+              helpfulPositiveSignals: record.summary.recoveryProgress.helpfulPositiveSignals,
+              evidenceRefs: summaryEvidenceRefs,
+              sourceDecisionId: latestDecisionId,
+            }),
+          }
+        : undefined,
+      propagation: record.summary.propagation
+        ? {
+            ...record.summary.propagation,
+            explanation: record.summary.propagation.explanation ?? buildPropagationExplanation({
+              reasonCodes: record.summary.propagation.reasonCodes,
+              warnings: record.summary.propagation.warnings,
+              evidenceRefs: summaryEvidenceRefs,
+              sourceDecisionId: latestDecisionId,
+            }),
+          }
+        : undefined,
+      explanation: record.summary.explanation ?? buildRiskSummaryExplanation({
+        summary: {
+          storedState: record.summary.storedState,
+          effectiveState: record.summary.effectiveState,
+          reasonCodes: summaryReasonCodes,
+          evidenceRefs: summaryEvidenceRefs,
+        },
+        sourceAssessmentId: latestAssessmentId,
+        sourceDecisionId: latestDecisionId,
+        actorType: "system",
+        actorId: "analyzer-store",
+      }),
+    },
+  };
+}
+
+function normalizeReviewQueueItem(item: ReviewQueueItem): ReviewQueueItem {
+  return {
+    ...item,
+    explanation: item.explanation ?? buildReviewQueueExplanation({
+      reviewItemId: item.reviewItemId,
+      status: item.status,
+      evidenceRefs: item.evidenceRefs ?? [],
+      sourceSuggestionId: item.sourceSuggestionId,
+      reason: item.reason,
+      actor: item.confirmedBy ?? item.dismissedBy ?? null,
+    }),
+  };
+}
+
+function normalizePolicyDecisionRecord(record: PolicyDecisionRecord, identityRecord?: AnalyzerIdentityRecord): PolicyDecisionRecord {
+  return {
+    ...record,
+    explanation: record.explanation ?? buildPolicyDecisionExplanation({
+      decision: record.decision,
+      state: identityRecord?.summary?.effectiveState ?? identityRecord?.riskRecord?.effectiveState ?? IdentityState.NORMAL,
+      reasons: record.reasons ?? [],
+      warnings: record.warnings ?? [],
+      evidenceRefs: record.evidenceRefs ?? [],
+      policyVersion: record.policyVersion,
+      policyLabel: record.policyLabel,
+      sourceDecisionId: identityRecord?.riskRecord?.lastDecisionId ?? null,
+      modePath: record.modePath,
+      actorType: "policy_engine",
+      actorId: "analyzer-store",
+    }),
+  };
+}
+
 function normalizeStore(parsed: Partial<AnalyzerStore>): AnalyzerStore {
+  const normalizedIdentities = Object.fromEntries(
+    Object.entries(parsed.identities ?? {}).map(([id, record]) => [
+      id,
+      normalizeIdentityRecord(record as AnalyzerIdentityRecord),
+    ]),
+  );
   const normalizedAiSuggestions = Object.fromEntries(
     Object.entries(parsed.aiSuggestions ?? {}).map(([id, suggestion]) => [
       id,
@@ -102,19 +201,31 @@ function normalizeStore(parsed: Partial<AnalyzerStore>): AnalyzerStore {
       }),
     ]),
   );
+  const normalizedReviewQueue = Object.fromEntries(
+    Object.entries(parsed.reviewQueue ?? {}).map(([id, item]) => [
+      id,
+      normalizeReviewQueueItem(item as ReviewQueueItem),
+    ]),
+  );
+  const normalizedPolicyDecisions = Object.fromEntries(
+    Object.entries(parsed.policyDecisions ?? {}).map(([id, item]) => [
+      id,
+      normalizePolicyDecisionRecord(item as PolicyDecisionRecord, normalizedIdentities[(item as PolicyDecisionRecord).identityId]),
+    ]),
+  );
 
   return {
     roots: parsed.roots ?? {},
-    identities: parsed.identities ?? {},
+    identities: normalizedIdentities,
     bindings: parsed.bindings ?? {},
     bindingChallenges: parsed.bindingChallenges ?? {},
     events: parsed.events ?? {},
     aiSuggestions: normalizedAiSuggestions,
-    reviewQueue: parsed.reviewQueue ?? {},
+    reviewQueue: normalizedReviewQueue,
     audits: parsed.audits ?? {},
     anchorQueue: parsed.anchorQueue ?? {},
     watchers: parsed.watchers ?? {},
-    policyDecisions: parsed.policyDecisions ?? {},
+    policyDecisions: normalizedPolicyDecisions,
   };
 }
 

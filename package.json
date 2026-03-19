@@ -11,6 +11,8 @@
     "test": "pnpm -r test",
     "test:integration": "vitest run --config vitest.integration.config.ts tests/integration/basic-service-integration.test.ts tests/integration/extended-service-integration.test.ts",
     "test:integration:smoke": "vitest run --config vitest.integration.config.ts tests/integration/platform-acceptance.test.ts",
+    "test:system": "pnpm exec vitest run --config vitest.integration.config.ts tests/system/core-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/boundary-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/scenario-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/reserved-safety-acceptance.test.ts",
+    "test:system:smoke": "pnpm exec vitest run --config vitest.integration.config.ts tests/system/core-acceptance.test.ts && pnpm exec vitest run --config vitest.integration.config.ts tests/system/reserved-safety-acceptance.test.ts",
     "lint": "pnpm -r lint",
     "contracts:test": "pnpm --dir contracts test",
     "proof:clean": "pnpm --filter @web3id/proof run clean",

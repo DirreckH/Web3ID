@@ -1,5 +1,6 @@
 import type { AiRecommendedAction, AiSuggestion, RiskSignal, RiskSummary } from "./types.js";
 import { keccak256, stringToHex, type Hex } from "viem";
+import { buildAiSuggestionExplanation } from "./explanation.js";
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 const DEFAULT_MODEL_VERSION = process.env.OPENAI_MODEL_VERSION ?? "baseline";
@@ -92,6 +93,13 @@ export function normalizeAiSuggestion(input: {
       recommendedAction,
     },
     modelInfo: input.modelInfo,
+    explanation: buildAiSuggestionExplanation({
+      summary: input.summary,
+      evidenceRefs: input.evidenceRefs,
+      suggestionId: input.id,
+      provider: input.audit?.provider ?? input.modelInfo?.provider ?? "unknown",
+      recommendedAction,
+    }),
     createdAt: input.createdAt,
     metadata: input.metadata,
   };

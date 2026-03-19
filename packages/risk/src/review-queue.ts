@@ -1,4 +1,5 @@
 import { keccak256, stringToHex, type Hex } from "viem";
+import { buildReviewQueueExplanation } from "./explanation.js";
 import type { AiSuggestion, ReviewQueueItem } from "./types.js";
 
 export function queueSuggestionForReview(suggestion: AiSuggestion, expiresInDays = 7): ReviewQueueItem | null {
@@ -16,13 +17,30 @@ export function queueSuggestionForReview(suggestion: AiSuggestion, expiresInDays
     createdAt,
     expiresAt: new Date(Date.parse(createdAt) + expiresInDays * 24 * 60 * 60 * 1000).toISOString(),
     evidenceRefs: suggestion.evidenceRefs,
+    explanation: buildReviewQueueExplanation({
+      reviewItemId: keccak256(stringToHex([suggestion.id, createdAt].join(":"))),
+      status: "PENDING_REVIEW",
+      evidenceRefs: suggestion.evidenceRefs,
+      sourceSuggestionId: suggestion.id,
+    }),
   };
 }
 
 export function expireReviewQueue(queue: ReviewQueueItem[], now = new Date().toISOString()) {
   return queue.map((item) =>
     item.status === "PENDING_REVIEW" && item.expiresAt && Date.parse(item.expiresAt) <= Date.parse(now)
-      ? { ...item, status: "EXPIRED" as const, expiredAt: now }
+      ? {
+          ...item,
+          status: "EXPIRED" as const,
+          expiredAt: now,
+          explanation: buildReviewQueueExplanation({
+            reviewItemId: item.reviewItemId,
+            status: "EXPIRED",
+            evidenceRefs: item.evidenceRefs,
+            sourceSuggestionId: item.sourceSuggestionId,
+            reason: item.reason,
+          }),
+        }
       : item,
   );
 }
@@ -36,6 +54,14 @@ export function confirmReviewItem(queue: ReviewQueueItem[], reviewItemId: string
           confirmedAt: new Date().toISOString(),
           confirmedBy: actor,
           reason,
+          explanation: buildReviewQueueExplanation({
+            reviewItemId: item.reviewItemId,
+            status: "CONFIRMED_SIGNAL",
+            evidenceRefs: item.evidenceRefs,
+            sourceSuggestionId: item.sourceSuggestionId,
+            reason,
+            actor,
+          }),
         }
       : item,
   );
@@ -50,6 +76,14 @@ export function dismissReviewItem(queue: ReviewQueueItem[], reviewItemId: string
           dismissedAt: new Date().toISOString(),
           dismissedBy: actor,
           reason,
+          explanation: buildReviewQueueExplanation({
+            reviewItemId: item.reviewItemId,
+            status: "DISMISSED",
+            evidenceRefs: item.evidenceRefs,
+            sourceSuggestionId: item.sourceSuggestionId,
+            reason,
+            actor,
+          }),
         }
       : item,
   );

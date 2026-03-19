@@ -10,7 +10,7 @@ import {
   registerRecoveryPolicySlot,
   SubIdentityType,
 } from "@web3id/identity";
-import { IdentityState } from "@web3id/state";
+import { IdentityState, createExplanationBlock } from "@web3id/state";
 import {
   buildCrossChainStateMessage,
   buildStateSnapshot,
@@ -123,6 +123,12 @@ describe("sdk helpers", () => {
             effectiveFrom: new Date(1_000).toISOString(),
             recoverable: true,
             createdAt: new Date(1_000).toISOString(),
+            explanation: createExplanationBlock({
+              reasonCode: "NEGATIVE_RISK_FLAG",
+              explanationSummary: "A high-risk consequence is active.",
+              evidenceRefs: ["tx:0xlimit"],
+              sourceDecisionId: "decision-1",
+            }),
           },
         ],
       },

@@ -1,5 +1,21 @@
 import type { Hex } from "viem";
 
+export type RecoveryHookGuardrails = {
+  defaultMode: "default_off";
+  lifecycle: "hook_only";
+  safety: "mock_safe";
+  participatesInAccessPolicy: false;
+  executesRecoveryAction: false;
+};
+
+export const recoveryHookGuardrails: RecoveryHookGuardrails = {
+  defaultMode: "default_off",
+  lifecycle: "hook_only",
+  safety: "mock_safe",
+  participatesInAccessPolicy: false,
+  executesRecoveryAction: false,
+};
+
 export type GuardianMetadata = {
   guardianId: string;
   guardianType: "address" | "subIdentity" | "entity";
@@ -74,6 +90,16 @@ export function createRecoveryIntent(
   const current = recoveryIntents.get(input.rootIdentityId) ?? [];
   recoveryIntents.set(input.rootIdentityId, [...current, intent]);
   return intent;
+}
+
+export function assertRecoveryHooksRemainPassive(metadata: RecoveryHookGuardrails = recoveryHookGuardrails) {
+  if (metadata.participatesInAccessPolicy) {
+    throw new Error("Recovery hooks must remain outside the access policy decision path.");
+  }
+  if (metadata.executesRecoveryAction) {
+    throw new Error("Recovery hooks must remain passive metadata and must not execute recovery actions.");
+  }
+  return metadata;
 }
 
 export function listRecoveryIntents(rootIdentityId: Hex | string) {

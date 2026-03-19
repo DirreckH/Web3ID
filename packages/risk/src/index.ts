@@ -7,6 +7,7 @@ export * from "./propagation.js";
 export * from "./reentry.js";
 export * from "./lists.js";
 export * from "./audit.js";
+export * from "./audit-normalizer.js";
 export * from "./bindings.js";
 export * from "./anchoring.js";
 export * from "./review-queue.js";

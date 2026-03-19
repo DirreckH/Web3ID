@@ -1,5 +1,6 @@
 export * from "./state.js";
 export * from "./signal.js";
+export * from "./explanation.js";
 export * from "./assessment.js";
 export * from "./decision.js";
 export * from "./consequence.js";

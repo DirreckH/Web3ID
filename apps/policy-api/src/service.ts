@@ -74,6 +74,7 @@ function normalizePolicyDecision(decision: PolicyDecision) {
     riskReasons: decision.riskReasons ?? [],
     policyReasons: decision.policyReasons ?? [],
     auditRecordIds: decision.auditRecordIds ?? [],
+    explanation: decision.explanation,
   };
 }
 
@@ -123,6 +124,7 @@ async function persistPolicyDecisionSnapshot(input: {
         warnings: input.decision.warnings,
         evidenceRefs: input.decision.evidenceRefs,
         auditRecordIds: input.decision.auditRecordIds,
+        explanation: input.decision.explanation,
       }),
     });
     return { snapshotPersisted: true as const, snapshotWarning: null };

@@ -33,6 +33,7 @@ export type PlatformOverviewViewModel = {
   badges: string[];
   metrics: MetricItem[];
   guardrails: string[];
+  systemMap: string[];
   scenarioCards: Array<{
     id: "rwa" | "enterprise" | "social";
     label: string;
@@ -42,6 +43,7 @@ export type PlatformOverviewViewModel = {
     active: boolean;
   }>;
   scenarioSummary: string;
+  jsonSections: JsonSection[];
 };
 
 export type IdentityDetailViewModel = {
@@ -130,7 +132,7 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
   return {
     overview: {
       badges: [
-        selection.platformEntry.label,
+        `System Entry: ${selection.platformEntry.label}`,
         `Scenario: ${scenarioLabel(selection.scenario)}`,
         `Path: ${scenarioPolicyPath(selection.scenario)}`,
         `Acceptance: ${selection.platformEntry.acceptance}`,
@@ -152,8 +154,45 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
         "policy decision is an action-level audit snapshot, not a state source.",
         "AI suggestion is not final decision and cannot write frozen state directly.",
       ],
+      systemMap: [
+        "Identity: RootIdentity anchors the tree; SubIdentity isolates scenario scope.",
+        "State: RiskSignal -> RiskAssessment -> StateTransitionDecision -> ConsequenceRecord.",
+        "Policy: policy reads effective state, credentials, proof, and consequence, then writes an audit snapshot only.",
+        "Audit: AuditExportBundle and explanationChain keep the why-path visible end to end.",
+        "Operator: bindings, watch scans, manual release, and list overrides remain explicit actions after the system map.",
+      ],
       scenarioCards: selected.scenarioOptions,
       scenarioSummary: selected.scenarioMeta.detail,
+      jsonSections: [
+        jsonSection(
+          "System Architecture Summary",
+          {
+            identity: {
+              rootIdentityId: selection.rootIdentity?.identityId ?? null,
+              selectedSubIdentityId: selection.selectedSubIdentity?.identityId ?? null,
+            },
+            state: selected.summary
+              ? {
+                  storedState: selected.summary.storedState,
+                  effectiveState: selected.summary.effectiveState,
+                  why: selected.summary.explanation,
+                }
+              : null,
+            policy: {
+              accessDecision: selection.accessDecision?.decision ?? null,
+              warningDecision: selection.warningDecision?.decision ?? null,
+            },
+            audit: selection.auditBundle
+              ? {
+                  generatedAt: selection.auditBundle.generatedAt,
+                  explanationChainEntries: selection.auditBundle.explanationChain?.length ?? 0,
+                  consistency: selection.auditBundle.consistency ?? null,
+                }
+              : null,
+          },
+          "Run the analyzer and policy flows to populate the system map.",
+        ),
+      ],
     },
     identity: {
       metrics: [
@@ -202,6 +241,7 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
         { label: "Floor until", value: formatIso(recoveryProgress?.floorUntil) },
       ],
       recoveryNotes: [
+        `Why: ${recoveryProgress?.explanation?.explanationSummary ?? "Recovery explanation will appear after analyzer computation."}`,
         `Active restrictions: ${listText(recoveryProgress?.activeRestrictions ?? [])}`,
         `Active unlocks: ${listText(recoveryProgress?.activeUnlocks ?? [])}`,
         `Recovery helpers: ${listText(recoveryProgress?.helpfulPositiveSignals ?? [])}`,
@@ -210,6 +250,7 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
           : "Positive thresholds loaded from runtime config.",
       ],
       propagationNotes: [
+        `Why: ${propagation?.explanation?.explanationSummary ?? "No propagation explanation yet."}`,
         `Propagation reasons: ${listText(propagation?.reasonCodes ?? [])}`,
         `Propagation warnings: ${listText(propagation?.warnings ?? [])}`,
         `Root floor overlay: ${stateLabel(propagation?.rootEffectiveFloorState)}`,
@@ -225,6 +266,21 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
           "Risk Summary",
           selected.summary,
           "Run analyzer scans to populate stored/effective state and propagation overlays.",
+        ),
+        jsonSection(
+          "Why: State Summary",
+          selected.summary?.explanation,
+          "State explanation appears after the analyzer produces a summary.",
+        ),
+        jsonSection(
+          "Why: Recovery",
+          selected.summary?.recoveryProgress?.explanation,
+          "Recovery explanation appears when positive-signal or manual-release data is available.",
+        ),
+        jsonSection(
+          "Why: Propagation",
+          selected.summary?.propagation?.explanation,
+          "Propagation explanation appears when overlays or root floors are evaluated.",
         ),
       ],
     },
@@ -275,10 +331,13 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
       notes: [
         "Audit export is a structured JSON bundle: signals, assessments, decisions, consequences, propagation, recovery, AI, policy snapshots, anchors, and raw audit records.",
         "List history explains watchlist / restricted_list / blacklist_or_frozen_list transitions without becoming a new state source.",
+        `Explanation chain completeness: ${selection.auditBundle?.consistency?.complete ? "complete" : "check missing segments before Phase4 freeze."}`,
       ],
       jsonSections: [
         jsonSection("Structured Audit Export", selection.auditBundle, "Run an audit export to inspect the full evidence bundle."),
         jsonSection("Risk List History", selected.listHistory, "Refresh list history to inspect list additions, removals, expiry, and manual overrides."),
+        jsonSection("Explanation Chain", selection.auditBundle?.explanationChain, "Run a structured audit export to inspect the explanation chain."),
+        jsonSection("Export Consistency", selection.auditBundle?.consistency, "Consistency checks appear after a structured audit export."),
       ],
     },
     policy: {
@@ -300,12 +359,15 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
         "Policy decisions are action-level snapshots for display, export, and traceability only.",
         "Policy can read state, consequence, credentials, proof, and mode path, but it cannot rewrite identity state.",
         "Compliance requirements cannot be bypassed by default path or positive consequence explanations.",
+        `Latest access why: ${selection.accessDecision?.explanation?.explanationSummary ?? "Run an access evaluation to populate the decision explanation."}`,
       ],
       jsonSections: [
         jsonSection("Access Payload", selection.payload, "Build an access payload to evaluate credential, proof, and policy checks."),
         jsonSection("Access Decision", selection.accessDecision, "Evaluate the active policy to inspect access reasons and warnings."),
         jsonSection("Warning Decision", selection.warningDecision, "Warning policy results appear here after analyzer refresh."),
         jsonSection("Policy Snapshot History", selected.policyHistory, "Policy decisions accumulate here as action-level audit snapshots."),
+        jsonSection("Why: Access Decision", selection.accessDecision?.explanation, "Access explanation appears after the policy API evaluates the current action."),
+        jsonSection("Why: Warning Decision", selection.warningDecision?.explanation, "Warning explanation appears after the warning policy runs."),
       ],
     },
     aiReview: {
@@ -328,11 +390,21 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
       reviewItems: selected.reviewQueue.map((item: any) => ({
         title: `${item.status} - ${compactHex(item.reviewItemId, 12, 6)}`,
         meta: `${formatIso(item.createdAt)} -> expires ${formatIso(item.expiresAt)}`,
-        body: listText(item.evidenceRefs ?? []),
+        body: `${item.explanation?.explanationSummary ?? "Human review is required."} | evidence: ${listText(item.evidenceRefs ?? [])}`,
       })),
       jsonSections: [
         jsonSection("AI Suggestions", selected.aiSuggestions, "Analyzer AI suggestions appear here when reviewable signals are created."),
         jsonSection("Review Queue", selected.reviewQueue, "AI review items remain off-chain until a human confirms or dismisses them."),
+        jsonSection(
+          "Why: AI Suggestions",
+          selected.aiSuggestions.map((item: any) => ({ id: item.id, explanation: item.explanation })),
+          "AI explanations appear when suggestions are generated.",
+        ),
+        jsonSection(
+          "Why: Review Queue",
+          selected.reviewQueue.map((item: any) => ({ reviewItemId: item.reviewItemId, explanation: item.explanation })),
+          "Review explanations appear when AI suggestions enter the queue.",
+        ),
       ],
     },
     operator: {
