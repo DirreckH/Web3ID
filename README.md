@@ -1,42 +1,39 @@
 # Web3ID
 
-Web3ID is a system baseline for programmable identity, proof-aware access, auditability, and governed risk. It is designed as a coherent technical system rather than a collection of wallet-login demos, credential experiments, or isolated operator tools.
+Web3ID 是一套面向真实系统运行的 Web3 身份基线，用来把 programmable identity、proof-aware access、auditability 和 governed risk 放进同一条可以解释、可以验证、可以治理的系统主链路里。
 
-Web3ID 不是一组松散的 stage demo，也不是把钱包签名、凭证验证、风控和审计临时拼在一起的样例工程。它是一套统一的系统基线，试图把 `identity / proof / state / policy / audit / operator` 放进同一条可以解释、可以验证、可以治理的主链路里。
+它不是一组彼此松散的 wallet-login demo，也不是把签名、凭证、风控、审计和运营面板临时拼接起来的样例工程。这个仓库关注的是系统边界如何成立：身份如何锚定、状态如何演化、策略如何约束、审计如何闭环、AI 如何被限制在 advisory 边界内。
 
-## Why This Repo Exists / 为什么这个仓库存在
+## 🚩 为什么这个仓库存在
 
-Most Web3 identity stacks stop too early. They can prove wallet control, issue credentials, or gate access, but they often fail to explain how controller identity, formal state, policy decisions, consequence handling, auditability, and human review fit together once the system becomes operational.
+很多 Web3 identity 方案停在“能登录”或“能出凭证”的层面，但系统一旦进入正式运行，问题就会立刻升级：
 
-很多 Web3 identity 方案停在了“能登录”或“能出凭证”的层面。真正进入系统化运行后，问题会变成：controller identity 如何成为正式身份锚点，formal state 应该落在哪里，policy 决策和 consequence 如何分层，审计链如何闭环，AI review 如何被约束在 advisory 边界内，而不是悄悄变成事实写入者。
+- controller identity 如何成为稳定的身份锚点
+- formal state 应该运行在哪一层，而不是被 policy 或 audit 偷偷替代
+- consequence、policy、review、audit 如何分层而不互相污染
+- cross-chain 输入、AI 建议、外部 attestation 如何被消费，而不是直接写入本地正式状态
 
-Web3ID exists to make those boundaries explicit. In this repo, policy is not state, audit is not decoration, AI is not the final decision maker, and cross-chain input is not a shortcut around local formal semantics.
+Web3ID 的目标，就是把这些边界做成正式系统，而不是只留在文档描述里。在这里：
 
-这个仓库存在的意义，就是把这些边界写实、写硬、写进实现。这里 `policy is not state`，`audit` 不是事后补充，AI 不是最终裁决者，cross-chain input 也不能旁路本地正式状态。
+- `policy is not state`
+- `audit` 不是事后补充材料
+- AI 不是最终决策者
+- cross-chain input 不是绕过本地 formal semantics 的捷径
 
-## System Thesis / 系统主张
+## 🧭 系统主张
 
-Web3ID is built around a small number of non-negotiable system ideas.
+Web3ID 建立在几条不会漂移的系统主张上。
 
-Web3ID 的核心不是“支持了多少链”或“接了多少模块”，而是以下几条不会漂移的系统主张：
+- `RootIdentity` 是单 controller anchor。它由单个地址或 controller 的控制权派生，保持稳定、轻量、可验证。
+- `SubjectAggregate` 只是显式主体归并层，不是 `formal state host`。它负责 binding、索引、治理与审计，不承载正式状态机。
+- 正式状态继续运行在 root/sub 语义上，而不是运行在 aggregate、audit snapshot 或 policy snapshot 上。
+- cross-chain、AI 和任何外部输入最多只能提供 hint、review trigger 或 eligibility signal，不能绕过本地 challenge、proof、state 和 audit 边界。
 
-- `RootIdentity` is a single-controller anchor.
-- `SubjectAggregate` is an explicit merge layer, not a formal state host.
-- Formal state runs on root/sub semantics, not on aggregate, audit, or policy snapshots.
-- Cross-chain input, AI suggestions, and external signals may inform review, but they cannot bypass local challenge, proof, and state boundaries.
+这意味着 Web3ID 不是“先把对象都收进一个全局主体，再慢慢解释”的系统；它是先把正式边界锁住，再在边界之上扩展能力。
 
-对应到中文语义就是：
+## 🏗️ 系统如何组织
 
-- `RootIdentity` 仍然由单 controller 控制权派生，是身份树的根锚点。
-- `SubjectAggregate` 只是显式主体归并层，不是 formal state host。
-- 正式状态继续运行在 `RootIdentity / SubIdentity` 语义上，而不是运行在 aggregate、audit 或 policy snapshot 上。
-- cross-chain、AI 和外部输入最多只能提供 hint、review trigger 或 eligibility signal，不能越过本地 challenge、proof 和 state 边界。
-
-## How Web3ID Is Structured / 系统如何组织
-
-At a high level, Web3ID is organized as one explainable chain:
-
-从系统链路上看，Web3ID 不是平铺模块，而是一条可解释的对象关系链：
+从开发者视角看，Web3ID 是一条可解释的对象链，而不是一堆平铺模块：
 
 ```text
 Controller Proof
@@ -52,101 +49,108 @@ SubjectAggregate
   -> links multiple RootIdentity objects through explicit challenge + proof + audit
 ```
 
-`RootIdentity -> SubIdentity` gives the system a stable identity tree. `RiskSignal -> RiskAssessment -> StateTransitionDecision -> ConsequenceRecord` is the frozen formal state chain. `PolicyDecisionRecord` records action-level evaluation, while `AuditExportBundle` preserves explainability and traceability across the whole pipeline.
+这条链里的职责分工是明确的：
 
-`RootIdentity -> SubIdentity` 提供的是稳定身份树；`RiskSignal -> RiskAssessment -> StateTransitionDecision -> ConsequenceRecord` 才是冻结的正式状态链。`PolicyDecisionRecord` 负责记录动作级 policy 判断，但它不是 state source；`AuditExportBundle` 则承担系统级 explanation 和 traceability。
+- `RootIdentity -> SubIdentity` 负责提供稳定的身份树，隔离不同用途、权限和状态覆盖层。
+- `RiskSignal -> RiskAssessment -> StateTransitionDecision -> ConsequenceRecord` 是冻结的 formal state chain。
+- `PolicyDecisionRecord` 负责记录动作级判断，但它不是 state fact source。
+- `AuditExportBundle` 负责把 explanation、traceability 和 evidence continuity 串成可导出的审计闭环。
+- `SubjectAggregate` 只在 root 之上做显式 binding 与归并，不能吸收 `stored state`、`effective state`、replay facts 或 consequence ownership。
 
-`SubjectAggregate` sits above roots only as a binding, index, governance, and audit layer. It can connect multiple roots that are proven to belong to the same subject, but it must not absorb stored state, effective state, replay facts, or consequence ownership.
+## ✨ Web3ID 已实现的能力
 
-`SubjectAggregate` 只做 binding、索引、治理和审计入口。它可以把经 challenge + proof 证明属于同一主体的多个 root 放到同一个归并层下，但它不能吞掉 stored state、effective state、replay facts，也不能成为 consequence 的宿主。
+下面这些不是“规划中的方向”，而是这个仓库当前已经实现并进入系统叙事的能力面。
 
-## Multichain Identity Layer / 多链控制权身份层
+### 🔐 身份与控制权
 
-Web3ID now supports a registry-backed controller identity layer. The current baseline preserves byte-for-byte EVM compatibility while extending the controller model into a family-agnostic system with one canonical challenge, one proof envelope model, and one audit pipeline.
+- `RootIdentity` 已支持由 controller 控制权稳定派生，保持单锚点语义。
+- `SubIdentity` 已作为场景隔离层存在，用来承载权限和状态覆盖，不污染 root 主语义。
+- 系统已经具备统一的 `canonical challenge`，把 challenge、binding、proof 和审计接到同一条链路上。
+- verifier 输入已经统一收敛到 versioned `proof envelope`，避免不同链偷偷演化出互不兼容的 proof shape。
 
-当前仓库已经具备 registry-backed 的多链 controller identity 底座。EVM 旧路径保持 byte-for-byte 兼容，同时整个 controller 模型已经升级成链无关抽象：统一 canonical challenge、统一 proof envelope、统一 verifier dispatch、统一 audit metadata。
+### 🌐 多链控制器支持
 
-Current controller coverage:
+- EVM 旧路径保持兼容，现已升级为 registry-based 支持，覆盖 `Ethereum Mainnet / Arbitrum One / Base / OP Mainnet`。
+- 非 EVM controller family 已覆盖 `Solana / Bitcoin / TRON / TON / Cosmos / Aptos / Sui`。
+- 多链支持统一走 controller registry、`canonical challenge`、`proof envelope`、verifier dispatch 和 structured audit pipeline。
+- 多个 root 可以通过 challenge + control proof + audit 被显式归并到同一个 `SubjectAggregate`，但绝不存在 silent merge。
 
-当前 controller 覆盖范围如下：
+### 🧠 风险、状态与治理
 
-- EVM presets: `Ethereum Mainnet`, `Arbitrum One`, `Base`, `OP Mainnet`
-- non-EVM families: `Solana`, `Bitcoin`, `TRON`, `TON`, `Cosmos`, `Aptos`, `Sui`
+- 系统已落地 `RiskSignal -> RiskAssessment -> StateTransitionDecision -> ConsequenceRecord` 的正式状态链。
+- 已区分 `stored state` 与 `effective state`，并把 consequence 保持为独立层，而不是反写事实。
+- 已区分 `AccessPolicy` 与 `WarningPolicy`，支持 default/compliance 双轨与 aggregate-aware read context。
+- AI review 已进入系统，但仍保持 advisory-only 边界，需要人工 review，不能直接成为 state writer。
 
-This multichain support is implemented in the backend, SDK, analyzer, verifier, and audit path. It does not mean that every chain already has a dedicated wallet-connect UI in the frontend. That expansion is intentionally out of scope for the current phase.
+### 🛡️ 审计、回放与边界保护
 
-这轮多链能力主要落在 backend / SDK / analyzer / verifier / audit 主链路里，并不意味着前端已经为每条链都做了专门的钱包连接 UI。本阶段明确没有扩前端多链 wallet connect 体验。
+- 已支持 structured audit export，能够导出信号、判断、binding、proof、aggregate 与 review 上下文。
+- 已支持 replay guard、challenge digest、版本回放与 diff 类能力，帮助系统验证链路是否可重建。
+- 已实现 attested cross-domain inbox / cross-chain hint 路径，但这些输入只作本地消费，不直接改写 formal state。
+- 已具备 privacy-capable proof descriptors、recovery closed loop、runtime reliability / outbox、governance control 等系统能力。
 
-What stays fixed even after expansion:
+这些能力里，有些主要落在 backend / SDK / analyzer / audit 主链路上，而不是全部体现在前端钱包体验里。当前仓库已经实现系统底座，但并没有声称每条链都已有完整专属 wallet-connect UI。
 
-即使扩容之后，下列系统边界仍然保持不变：
+## 🌐 多链控制权身份层
 
-- EVM backward compatibility is preserved.
-- All families use the same canonical challenge envelope.
-- All verifier inputs are normalized through a versioned proof envelope.
-- Aggregate membership is created only through explicit challenge, control proof, binding, and audit.
-- Cross-chain input still cannot auto-create aggregate membership or overwrite local formal state.
+Web3ID 当前已经具备 registry-backed 的多链 controller identity 底座。它的重点不是“支持了多少条链”，而是把多链控制权统一放进同一套身份抽象里：
 
-## System Entry Points / 主要系统入口
+- EVM backward compatibility 保持不变
+- 所有 family 共享同一个 `canonical challenge` envelope
+- 所有 verifier 输入共享同一个 versioned `proof envelope`
+- 所有 aggregate membership 都必须通过 challenge / proof / audit 建立
+- 所有 controller family 都进入同一套 audit metadata 与 replay protection
 
-Web3ID can be approached through three system narratives. They are not separate products; they are three views into the same baseline.
+当前支持范围如下：
 
-这个仓库目前有三条最容易理解系统的入口，它们不是三个孤立 demo，而是同一套系统基线的三种视角：
+- EVM presets：`Ethereum Mainnet`、`Arbitrum One`、`Base`、`OP Mainnet`
+- non-EVM families：`Solana`、`Bitcoin`、`TRON`、`TON`、`Cosmos`、`Aptos`、`Sui`
+
+这轮多链能力的主要落点是 backend / SDK / analyzer / verifier / audit，不代表前端已经为每个 family 都提供完整的 wallet connect 与签名 UI。这个边界是有意保持的。
+
+## 🎯 主要系统入口
+
+虽然仓库里仍保留 `stage1 / stage2 / stage3 / platform` 这些 demo 脚本，但现在更推荐从系统叙事来理解它们，而不是把它们当成彼此无关的小样例。
 
 - `RWA Access`
-  - English: The compliance-heavy path where credentials, proofs, and access policies must line up with formal state and audit.
-  - 中文：这是合规最重的一条路径，重点看 credential、proof、policy 如何和正式状态、审计链一起工作。
+  - 这是合规约束最强的一条入口，重点看 credential、proof、access policy 如何与 formal state 和 audit 一起工作。
 - `Enterprise / Audit`
-  - English: The audit-heavy path where operator traceability, decision snapshots, and evidence continuity matter as much as access control.
-  - 中文：这是审计最重的一条路径，重点看 operator traceability、policy snapshot、evidence continuity 和导出能力。
+  - 这是审计与运营约束最重的一条入口，重点看 operator traceability、decision snapshot、evidence continuity 和导出能力。
 - `Social Governance`
-  - English: The default-path narrative where warning policy, propagation, AI review boundaries, and human intervention remain visible.
-  - 中文：这是默认路径最强的一条叙事，重点看 warning policy、状态传播、AI review 边界和人工确认如何被放进同一系统里。
+  - 这是默认路径与治理边界最清晰的一条入口，重点看 warning policy、状态传播、AI review boundary 和人工干预如何共存。
 
-## Repository Map / 仓库结构
+这三条入口不是三个独立产品，而是同一套系统在不同业务视角下的观察面。
 
-The repo is organized by system responsibility rather than by demo stage.
+## 🗂️ 仓库结构
 
-仓库结构按系统职责划分，而不是按 demo 阶段拆分：
+仓库按系统职责组织，而不是按 demo 阶段拆分。
 
 - `packages/identity`
-  - English: Root/sub identity primitives, controller normalization, root derivation, aggregates, canonical challenge, and controller verification.
-  - 中文：这里负责 `RootIdentity / SubIdentity / SubjectAggregate`、controllerRef、多链 root 派生、canonical challenge 和 verifier。
+  - 身份层核心：`RootIdentity / SubIdentity / SubjectAggregate`、controller normalization、root derivation、canonical challenge、controller verification。
 - `packages/proof`
-  - English: Proof descriptors, proof runtime helpers, and proof-facing compatibility surfaces.
-  - 中文：这里负责 proof descriptor、proof 运行时接口以及 proof 兼容层。
+  - proof descriptors、proof runtime helpers，以及 proof-facing 的兼容层。
 - `packages/state`
-  - English: Signals, assessments, decisions, consequences, replay, and explanation structures.
-  - 中文：这里是正式状态链的核心，实现 signal、assessment、decision、consequence、replay 和 explanation。
+  - formal state chain 的实现位置，包含 signal、assessment、decision、consequence、replay 与 explanation。
 - `packages/risk`
-  - English: Binding validation, scoring inputs, AI review artifacts, policy snapshots, and audit normalization.
-  - 中文：这里处理 binding、风控辅助、AI review artifacts、policy snapshot 和 audit normalization。
+  - binding validation、风控输入、AI review artifacts、policy snapshot 和 audit normalization。
 - `packages/sdk`
-  - English: Family-aware developer entrypoints and the machine-readable system model surface.
-  - 中文：这里是统一 SDK 入口，同时承载 system model 对外暴露。
+  - 统一的开发者入口，提供 family-aware API 与 machine-readable system model surface。
 - `apps/analyzer-service`
-  - English: The stateful analyzer that owns binding, replay protection, aggregate linking, audit persistence, and operator-facing read models.
-  - 中文：这是系统里的 analyzer 主服务，负责 binding、replay protection、aggregate link、审计落库和 operator 读取模型。
+  - 有状态 analyzer，负责 binding、replay protection、aggregate linking、audit persistence 和 operator-facing read model。
 - `apps/policy-api`
-  - English: Policy evaluation and aggregate-aware read compatibility.
-  - 中文：这里负责 policy evaluate，以及 aggregate-aware 的读取兼容层。
+  - policy evaluation 与 aggregate-aware read compatibility。
 - `apps/frontend`
-  - English: The system console that exposes scenario views, state summaries, policy outputs, review surfaces, and operator control.
-  - 中文：这是统一系统控制台，用来展示场景入口、状态摘要、policy 输出、review 面板和 operator 能力。
+  - 系统控制台，用来呈现场景入口、状态摘要、policy 输出、review 面板和 operator 能力。
 
-## Quick Start / 快速开始
+## ⚡ 快速开始
 
-Use the shortest path first:
-
-建议先走最短启动路径：
+如果你想用最短路径把系统跑起来，建议先走这一组命令：
 
 ```powershell
 pnpm install
 pnpm proof:setup
 pnpm demo:platform
 ```
-
-Default local services:
 
 默认本地服务地址：
 
@@ -155,17 +159,13 @@ Default local services:
 - policy-api: `http://127.0.0.1:4300`
 - frontend: `http://127.0.0.1:3000`
 
-If you are reading the repo for architecture first, start with the docs listed below before expanding into individual services.
+如果你的目标不是立刻跑 demo，而是先理解系统结构，建议先阅读后面的延伸文档，再进入具体服务实现。
 
-如果你现在的目标是先理解架构，而不是立刻运行 demo，建议先读后面的 Key Docs，再进入具体服务实现。
+## ✅ 验证与回归
 
-## Verification / 验证与回归
+对一个 developer-first 的仓库来说，命令本身也是叙事的一部分。它们决定了哪些能力只是说明文字，哪些边界真正被测试和 gate 约束住了。
 
-For a developer-first repo, commands are part of the story. They show which guarantees are merely claimed and which ones are actually enforced.
-
-对一个开发者优先的仓库来说，命令本身也是叙事的一部分。它们告诉你哪些能力只是文档描述，哪些边界已经被测试和 gate 真正约束住了。
-
-### Workspace sanity / 工作区基础校验
+### 🧪 Workspace sanity
 
 ```powershell
 pnpm -r build
@@ -174,11 +174,9 @@ pnpm proof:smoke
 pnpm test:integration
 ```
 
-These commands answer the basic question: does the workspace build, type-check, and run its core integration path?
+这一组命令主要回答：workspace 能否 build、lint、跑通 proof 基础能力，以及核心 integration 路径是否正常。
 
-这组命令回答的是最基础的问题：workspace 能不能 build、type-check，并跑通核心 integration 链路。
-
-### System gates / 系统级回归门
+### 🚦 System gates
 
 ```powershell
 pnpm test:system:smoke
@@ -191,27 +189,20 @@ pnpm test:phase4
 pnpm verify:baseline:phase4
 ```
 
-Interpretation:
-
-理解方式如下：
+建议这样理解这些 gate：
 
 - `test:system:multichain`
-  - English: validates the original multichain root + aggregate baseline.
-  - 中文：验证原有的 multichain root + subject aggregate 基线。
+  - 验证原始 multichain root + `SubjectAggregate` 基线。
 - `test:system:mainstream:smoke`
-  - English: the merge-gate suite for mainstream chain controller coverage.
-  - 中文：这是新增主流链 controller 扩容的 merge gate，要求 offline-first、稳定、快速。
+  - 主流链 controller 扩容的 merge gate，强调 offline-first、快速、稳定。
 - `test:system:mainstream`
-  - English: the fuller suite for optional proof variants and deeper audit coverage.
-  - 中文：这是更完整的 full suite，用来覆盖可选 proofType 变体和更完整的 structured audit export 场景。
+  - 更完整的 full suite，用来覆盖更多 `proofType` 变体和更深入的 structured audit export 场景。
 - `test:system`
-  - English: the main system acceptance gate, now including multichain and mainstream smoke coverage.
-  - 中文：这是系统主回归门，现在已经把 multichain 和 mainstream smoke 一并纳入。
+  - 主系统验收门，当前已经把 multichain 与 mainstream smoke 一并纳入。
 - `test:phase4`
-  - English: validates governed recovery, cross-domain hints, privacy modes, replay, governance control, and runtime reliability.
-  - 中文：这是对 phase4 边界的完整回归，包括 recovery、cross-domain、privacy、replay、governance 和 reliability。
+  - 验证 recovery、cross-domain hints、privacy modes、replay、governance control 和 runtime reliability 等冻结边界。
 
-### Demos / 演示入口
+### 🖥️ Demos
 
 ```powershell
 pnpm demo:stage1
@@ -220,55 +211,53 @@ pnpm demo:stage3
 pnpm demo:platform
 ```
 
-These demos are still useful, but they should be read as views into the same system baseline rather than as separate narratives with unrelated semantics.
+这些 demo 仍然有价值，但更适合作为“同一系统基线的不同观察面”，而不是语义彼此割裂的独立样例。
 
-这些 demo 仍然有用，但它们现在更适合被理解成同一系统基线的不同观察面，而不是语义彼此独立的小样例。
+## 📚 延伸阅读
 
-## Key Docs / 延伸阅读
+README 负责建立主线叙事，下面这些文档负责给出更稳定的系统契约。
 
-If README gives you the storyline, the docs below give you the durable system contracts.
-
-如果 README 负责建立主线叙事，下面这些文档负责给出更稳定的系统契约。
-
-### System model / 系统模型
+### 系统模型
 
 - `docs/WHAT_IS_WEB3ID.md`
 - `docs/SYSTEM_MODEL.md`
 - `docs/PLATFORM_BASELINE.md`
 
-### Multichain and aggregate / 多链与主体归并
+### 多链与主体归并
 
 - `docs/MULTICHAIN_SUBJECT_AGGREGATE.md`
 - `docs/MAINSTREAM_CHAIN_EXPANSION.md`
 - `docs/CHAIN_FAMILY_MATRIX.md`
 
-### Recovery, cross-chain, and privacy / Recovery、跨域与隐私
+### Recovery、跨域输入与隐私
 
 - `docs/RECOVERY_SYSTEM.md`
 - `docs/CROSS_CHAIN_SYNC.md`
 - `docs/PRIVACY_PROOF_MODES.md`
 
-### Runtime, governance, and demos / 运行时、治理与演示
+### Runtime、治理与演示矩阵
 
 - `docs/RUNTIME_AND_INTEGRATION.md`
 - `docs/GOVERNANCE_CONTROL_PLANE.md`
 - `docs/VERSIONING_AND_REPLAY.md`
 - `docs/DEMO_MATRIX.md`
 
-## Current Status / 当前状态
+## 📌 当前状态
 
-Web3ID is currently an active system baseline, not a concept repo. The repository already contains a governed recovery loop, replay-aware auditability, multichain controller identity expansion, aggregate-aware identity binding, and offline-first mainstream chain verification gates.
+Web3ID 现在已经不是概念验证性质的 demo repo，而是一套持续演进中的系统级 identity baseline。
 
-当前这个仓库已经不是概念验证性质的 repo，而是一套活跃维护中的系统基线。它已经具备 governed recovery、replay-aware auditability、多链 controller identity 扩容、aggregate-aware identity binding，以及 offline-first 的主流链 verifier/gate。
+当前仓库已经具备：
 
-More specifically:
+- active 且 test-gated 的系统主基线
+- backend / SDK / analyzer / audit 路径上的多链 controller expansion
+- aggregate-aware identity binding
+- governed recovery、replay-aware auditability、privacy-capable proof modes
+- operator-facing review、traceability 和 structured audit export
 
-更具体地说：
+同样重要的是，这个仓库也明确知道自己**没有**声称什么：
 
-- the system baseline is active and test-gated
-- multichain controller expansion is completed in backend, SDK, analyzer, and audit paths
-- governed recovery, replay, privacy, and operator controls are already part of the live system narrative
-
-At the same time, the repo remains disciplined about what it does not claim. `SubjectAggregate` is still not a formal state host. Policy does not become a state fact writer. AI remains advisory. Cross-chain input remains bounded. And mainstream chain support in this phase is a backend/SDK/analyzer capability, not a promise of per-chain wallet UI completeness.
-
-同时，这个仓库对“不做什么”也保持了明确克制：`SubjectAggregate` 仍不是 formal state host；policy 不会变成 state fact writer；AI 仍然只是 advisory；cross-chain input 仍然被边界约束；这轮主流链支持也明确是 backend / SDK / analyzer 能力扩容，而不是承诺前端逐链钱包 UI 已全部完成。
+- `SubjectAggregate` 仍不是 `formal state host`
+- policy 不会变成 state fact writer
+- AI 仍然只是 advisory，而不是最终决策者
+- cross-chain input 仍然是受边界约束的本地消费输入
+- 主流链支持在这一阶段是 backend / SDK / analyzer 能力扩容，而不是逐链钱包 UI 完备性的承诺
