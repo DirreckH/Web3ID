@@ -8,18 +8,23 @@ import {
   type HolderAuthorizationPayload,
 } from "@web3id/credential";
 import {
+  deriveRootIdentity,
   getRecoveryPolicySlot,
   listRecoveryGuardians,
   listRecoveryIntents,
   getIdentityCapabilities as getResolvedIdentityCapabilities,
   getPreferredMode as getResolvedPreferredMode,
+  normalizeControllerRef,
   resolveEffectiveMode as resolveIdentityEffectiveMode,
   supportsPolicy as resolveIdentityPolicySupport,
+  type ChainControllerRef,
+  type ChainControllerRefInput,
   type GuardianMetadata,
   type RecoveryCase,
   type RecoveryIntent,
   type RecoveryPolicySlot,
   type RootIdentity,
+  type SubjectAggregate,
   type SubIdentity,
 } from "@web3id/identity";
 import {
@@ -52,6 +57,8 @@ import {
 } from "@web3id/state";
 import { createWalletClient, custom, encodePacked, keccak256, type Address, type Hex, type PublicClient } from "viem";
 export * from "./system-model.js";
+export { deriveRootIdentity, normalizeControllerRef } from "@web3id/identity";
+export type { ChainControllerRef, ChainControllerRefInput, SubjectAggregate } from "@web3id/identity";
 
 export type ZkProofInput = {
   proofPoints: [
@@ -630,24 +637,77 @@ export async function registerAnalyzerIdentityTree(apiUrl: string, input: { root
 }
 
 export async function createAnalyzerBindingChallenge(apiUrl: string, input: {
-  bindingType: "root_controller" | "sub_identity_link" | "same_root_extension";
-  candidateAddress: Address;
-  rootIdentityId: Hex;
+  bindingType: "root_controller" | "sub_identity_link" | "same_root_extension" | "subject_aggregate_link";
+  controllerRef?: ChainControllerRef | ChainControllerRefInput;
+  candidateAddress?: Address;
+  rootIdentityId?: Hex;
   subIdentityId?: Hex;
+  subjectAggregateId?: string;
 }) {
   return postJson(apiUrl, "/bindings/challenge", input, "Analyzer service");
 }
 
 export async function submitAnalyzerBinding(apiUrl: string, input: {
   challengeId: string;
-  candidateSignature: Hex;
+  candidateSignature: string;
   linkProof?: unknown;
   sameRootProof?: unknown;
   authorizerAddress?: Address;
-  authorizerSignature?: Hex;
+  authorizerSignature?: string;
   metadata?: Record<string, unknown>;
 }) {
   return postJson(apiUrl, "/bindings", input, "Analyzer service");
+}
+
+export async function createSubjectAggregate(apiUrl: string, input: {
+  subjectAggregateId?: string;
+  actor?: string;
+  evidenceRefs?: string[];
+  auditBundleRef?: string;
+  status?: "ACTIVE" | "REVIEW_REQUIRED" | "SUSPENDED";
+} = {}): Promise<SubjectAggregate> {
+  return postJson(apiUrl, "/subject-aggregates", input, "Analyzer service");
+}
+
+export async function getSubjectAggregate(apiUrl: string, subjectAggregateId: string): Promise<SubjectAggregate & {
+  rootSummaries?: Array<{
+    rootIdentityId: Hex;
+    storedState: number | null;
+    effectiveState: number | null;
+    reasonCodes: string[];
+    warnings: string[];
+  }>;
+  linkedBindings?: Array<{
+    bindingId: string;
+    rootIdentityId: Hex;
+    proofHash: Hex | null;
+    challengeHash: Hex | null;
+    createdAt: string;
+  }>;
+}> {
+  const response = await fetch(`${apiUrl}/subject-aggregates/${subjectAggregateId}`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function listSubjectAggregateRoots(apiUrl: string, subjectAggregateId: string) {
+  const response = await fetch(`${apiUrl}/subject-aggregates/${subjectAggregateId}/roots`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  const body = await response.json();
+  return body.items ?? [];
+}
+
+export async function listSubjectAggregateControllers(apiUrl: string, subjectAggregateId: string) {
+  const response = await fetch(`${apiUrl}/subject-aggregates/${subjectAggregateId}/controllers`);
+  if (!response.ok) {
+    throw new Error(`Analyzer service responded with ${response.status}`);
+  }
+  const body = await response.json();
+  return body.items ?? [];
 }
 
 export async function manageAnalyzerWatch(apiUrl: string, input: {

@@ -5,7 +5,20 @@ import { createSameRootProof, createSubIdentityLinkProof, deriveRootIdentity, li
 import { buildSameRootAuthorizationMessage } from "../../../packages/risk/src/index.js";
 import { IdentityState, createExplanationBlock } from "../../../packages/state/src/index.js";
 import { analyzerConfig } from "./config.js";
-import { exportIdentityAudit, createBindingChallengeRecord, getRiskContext, recomputeIdentity, registerIdentityTree, submitBinding, applyManualRelease, shutdownAnalyzerWatchers } from "./service.js";
+import {
+  applyManualRelease,
+  createBindingChallengeRecord,
+  createSubjectAggregate,
+  exportIdentityAudit,
+  getRiskContext,
+  getSubjectAggregate,
+  listSubjectAggregateControllers,
+  listSubjectAggregateRoots,
+  recomputeIdentity,
+  registerIdentityTree,
+  shutdownAnalyzerWatchers,
+  submitBinding,
+} from "./service.js";
 import { loadStore, saveStore } from "./store.js";
 
 const PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
@@ -33,7 +46,7 @@ describe("analyzer service", () => {
 
     const challenge = await createBindingChallengeRecord({
       bindingType: "root_controller",
-      candidateAddress: account.address,
+      controllerRef: rootIdentity.primaryControllerRef,
       rootIdentityId: rootIdentity.identityId,
     });
     const signature = await account.signMessage({ message: challenge.challengeMessage });
@@ -44,7 +57,7 @@ describe("analyzer service", () => {
 
     const subChallenge = await createBindingChallengeRecord({
       bindingType: "sub_identity_link",
-      candidateAddress: account.address,
+      controllerRef: rootIdentity.primaryControllerRef,
       rootIdentityId: rootIdentity.identityId,
       subIdentityId: rwaIdentity.identityId,
     });
@@ -104,7 +117,7 @@ describe("analyzer service", () => {
 
     const rootChallenge = await createBindingChallengeRecord({
       bindingType: "root_controller",
-      candidateAddress: account.address,
+      controllerRef: rootIdentity.primaryControllerRef,
       rootIdentityId: rootIdentity.identityId,
     });
     await submitBinding({
@@ -114,7 +127,7 @@ describe("analyzer service", () => {
 
     const sameRootChallenge = await createBindingChallengeRecord({
       bindingType: "same_root_extension",
-      candidateAddress: extensionAccount.address,
+      controllerRef: deriveRootIdentity(extensionAccount.address, 31337).primaryControllerRef,
       rootIdentityId: rootIdentity.identityId,
     });
     const extensionBinding = await submitBinding({
@@ -132,6 +145,9 @@ describe("analyzer service", () => {
       }),
     });
 
+    if (!extensionBinding.address) {
+      throw new Error("Expected same-root extension binding to preserve its EVM address.");
+    }
     expect(extensionBinding.address.toLowerCase()).toBe(extensionAccount.address.toLowerCase());
     expect(extensionBinding.evidenceRefs.some((ref) => ref.startsWith("same-root-proof:"))).toBe(true);
     expect(extensionBinding.evidenceRefs.some((ref) => ref.startsWith("authorizer:"))).toBe(true);
@@ -177,5 +193,51 @@ describe("analyzer service", () => {
 
     const audit = await exportIdentityAudit(rwaIdentity.identityId);
     expect(audit.records.some((record: { action: string }) => record.action === "AI_REVIEW_ITEM_EXPIRED")).toBe(true);
+  });
+
+  it("creates subject aggregates and links roots only through explicit aggregate bindings", async () => {
+    await registerIdentityTree({ rootIdentity, subIdentities });
+
+    const aggregate = await createSubjectAggregate({
+      actor: "risk-ops",
+      evidenceRefs: ["manual:aggregate:create"],
+    });
+
+    const primaryRootChallenge = await createBindingChallengeRecord({
+      bindingType: "subject_aggregate_link",
+      controllerRef: rootIdentity.primaryControllerRef,
+      rootIdentityId: rootIdentity.identityId,
+      subjectAggregateId: aggregate.subjectAggregateId,
+    });
+    await submitBinding({
+      challengeId: primaryRootChallenge.challengeId,
+      candidateSignature: await account.signMessage({ message: primaryRootChallenge.challengeMessage }),
+    });
+
+    const secondaryRoot = deriveRootIdentity(extensionAccount.address, 31337);
+    const secondaryRootChallenge = await createBindingChallengeRecord({
+      bindingType: "subject_aggregate_link",
+      controllerRef: secondaryRoot.primaryControllerRef,
+      subjectAggregateId: aggregate.subjectAggregateId,
+    });
+    await submitBinding({
+      challengeId: secondaryRootChallenge.challengeId,
+      candidateSignature: await extensionAccount.signMessage({ message: secondaryRootChallenge.challengeMessage }),
+    });
+
+    const linkedAggregate = await getSubjectAggregate(aggregate.subjectAggregateId);
+    expect(linkedAggregate.linkedRootIds).toContain(rootIdentity.identityId);
+    expect(linkedAggregate.linkedRootIds).toContain(secondaryRoot.identityId);
+
+    const controllers = await listSubjectAggregateControllers(aggregate.subjectAggregateId);
+    expect(controllers.some((item) => item.controllerRef.normalizedAddress.toLowerCase() === account.address.toLowerCase())).toBe(true);
+    expect(controllers.some((item) => item.controllerRef.normalizedAddress.toLowerCase() === extensionAccount.address.toLowerCase())).toBe(true);
+
+    const roots = await listSubjectAggregateRoots(aggregate.subjectAggregateId);
+    expect(roots).toHaveLength(2);
+
+    const linkedRootContext = await getRiskContext(secondaryRoot.identityId);
+    expect(linkedRootContext.rootIdentity.subjectAggregateId).toBe(aggregate.subjectAggregateId);
+    expect(linkedRootContext.subjectAggregate?.subjectAggregateId).toBe(aggregate.subjectAggregateId);
   });
 });

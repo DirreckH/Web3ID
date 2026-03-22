@@ -4,6 +4,7 @@ import { evaluateAccessRisk, evaluateWarningRisk, type PolicyDecision } from "..
 import { complianceVerifierAbi } from "../../../packages/sdk/src/index.js";
 import type { CredentialBundle } from "../../../packages/credential/src/index.js";
 import { resolveEffectiveMode } from "../../../packages/identity/src/index.js";
+import { IdentityState } from "../../../packages/state/src/index.js";
 import { policyApiConfig } from "./config.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
@@ -71,6 +72,7 @@ async function loadRiskContext(identityId: Hex) {
     identityId: Hex;
     rootIdentity: any;
     subIdentity: any;
+    subjectAggregate?: any;
     summary: any;
     score: any;
     signals: any[];
@@ -167,6 +169,26 @@ function summarizeCrossChainHints(context: RiskContextResponse) {
     reviewTriggers: inbox.filter((item: any) => item.message?.consumerPolicyHint === "review_trigger").length,
     eligibilitySignals: inbox.filter((item: any) => item.message?.consumerPolicyHint === "eligibility_signal").length,
     riskHints: inbox.filter((item: any) => item.message?.consumerPolicyHint === "risk_hint").length,
+  };
+}
+
+function summarizeSubjectAggregateContext(context: RiskContextResponse) {
+  const subjectAggregate = context.subjectAggregate;
+  if (!subjectAggregate) {
+    return null;
+  }
+
+  const rootSummaries = subjectAggregate.rootSummaries ?? [];
+  const linkedBindings = subjectAggregate.linkedBindings ?? [];
+  const frozenRoots = rootSummaries.filter((item: any) => item.effectiveState === IdentityState.FROZEN || item.storedState === IdentityState.FROZEN);
+
+  return {
+    subjectAggregateId: subjectAggregate.subjectAggregateId,
+    linkedRootCount: rootSummaries.length,
+    hasLinkedFrozenRoot: frozenRoots.length > 0,
+    frozenRootIds: frozenRoots.map((item: any) => item.rootIdentityId),
+    hasTrustedControllerLink: linkedBindings.length > 0,
+    linkedBindingCount: linkedBindings.length,
   };
 }
 
@@ -389,6 +411,7 @@ export async function evaluateAccessDecision(input: {
   const proofDescriptor = resolveProofDescriptor({ payload: input.payload, credentialBundles: input.credentialBundles });
   const disclosureCheck = evaluateDisclosureRequirement(policy, proofDescriptor);
   const crossChainHints = summarizeCrossChainHints(context);
+  const subjectAggregateContext = summarizeSubjectAggregateContext(context);
   const credentialCheck = localCredentialChecks({
     identityId: input.identityId,
     policyId: input.policyId,
@@ -436,6 +459,7 @@ export async function evaluateAccessDecision(input: {
       ...(crossChainHints.reviewTriggers > 0 ? [`${crossChainHints.reviewTriggers} verified cross-chain review trigger(s) are waiting for local review.`] : []),
       ...(crossChainHints.riskHints > 0 ? [`${crossChainHints.riskHints} verified cross-chain risk hint(s) are available for local policy interpretation.`] : []),
       ...(crossChainHints.eligibilitySignals > 0 ? [`${crossChainHints.eligibilitySignals} verified cross-chain eligibility signal(s) support positive uplift review.`] : []),
+      ...(subjectAggregateContext?.hasLinkedFrozenRoot ? ["A linked root in the same subject aggregate is currently frozen."] : []),
     ],
     evidenceRefs: [...new Set([...(riskDecision.evidenceRefs ?? []), ...(context.summary.evidenceRefs ?? [])])],
   });
@@ -459,6 +483,7 @@ export async function evaluateAccessDecision(input: {
     proofDescriptor,
     disclosureRequirement: disclosureCheck.requirement,
     crossChainHints,
+    subjectAggregateContext,
   };
 }
 
@@ -466,6 +491,7 @@ export async function evaluateWarningDecision(input: { identityId: Hex; policyId
   const context = await loadRiskContext(input.identityId);
   if (!context.summary) throw new Error(`Risk summary unavailable for identity ${input.identityId}.`);
   const warningDecision = evaluateWarningRisk({ policyId: input.policyId, summary: context.summary, policyVersion: input.policyVersion });
+  const subjectAggregateContext = summarizeSubjectAggregateContext(context);
   const normalized = {
     ...normalizePolicyDecision(warningDecision),
     counterpartySummary: context.summary,
@@ -483,6 +509,7 @@ export async function evaluateWarningDecision(input: { identityId: Hex; policyId
     ...normalized,
     ...persistence,
     counterpartySummary: context.summary,
+    subjectAggregateContext,
   };
 }
 

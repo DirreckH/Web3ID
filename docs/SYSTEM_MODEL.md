@@ -1,82 +1,84 @@
 # SYSTEM MODEL
 
-Web3ID 现在按 system baseline 理解，而不是按零散 stage demo 理解。
-这份文档绑定 [packages/sdk/src/system-model.ts](../packages/sdk/src/system-model.ts)，并且只收口已经存在于 `identity / credential / proof / state / risk` 的对象源，不重新发明平行对象层。
+Web3ID is maintained as one system baseline across `identity / credential / proof / state / risk / audit / operator`.
 
-## 绑定实现
+## Bound Sources
 
-- 代码
+- Code
   - `packages/sdk/src/system-model.ts`
   - `packages/sdk/src/index.ts`
-- 测试
+- Tests
   - `packages/sdk/src/system-model.test.ts`
   - `tests/system/core-acceptance.test.ts`
   - `tests/system/scenario-acceptance.test.ts`
-- 调用点
+- Call points
   - `apps/analyzer-service/src/service.ts`
   - `apps/policy-api/src/service.ts`
   - `apps/frontend/src/console/view-models.ts`
 
-## 一级对象
+## Primary Objects
 
-| Object | Source | Stability | 说明 |
+| Object | Source | Stability | Summary |
 | --- | --- | --- | --- |
-| `RootIdentity` | `@web3id/identity` | `stable` | 根身份，唯一且不可变。 |
-| `SubIdentity` | `@web3id/identity` | `stable` | 场景隔离叶子身份。 |
-| `RecoveryPolicySlot` | `@web3id/identity` | `reserved` | 恢复预留位，当前只做 metadata。 |
-| `RecoveryIntent` | `@web3id/identity` | `reserved` | 恢复意图记录，当前不执行动作。 |
-| `CredentialBundle` | `@web3id/credential` | `stable` | access/compliance 使用的 bundle。 |
-| `ProofDescriptor` | `@web3id/proof` | `extensible` | proof metadata abstraction。 |
-| `RiskSignal` | `@web3id/state` | `stable` | 状态链起点。 |
-| `RiskAssessment` | `@web3id/state` | `stable` | signal 到 assessment 的归因节点。 |
-| `StateTransitionDecision` | `@web3id/state` | `stable` | assessment 到 decision 的状态转移节点。 |
-| `ConsequenceRecord` | `@web3id/state` | `stable` | 约束 action 的 consequence，不反写事实。 |
-| `ExplanationBlock` | `@web3id/state` | `stable` | 系统统一 why schema。 |
-| `StateSnapshot` | `@web3id/state` | `reserved` | read-only cross-chain snapshot。 |
-| `CrossChainStateMessage` | `@web3id/state` | `reserved` | read-only cross-chain message。 |
-| `PolicyDecisionRecord` | `@web3id/risk` | `stable` | action-level snapshot。 |
-| `AuditExportBundle` | `@web3id/risk` | `stable` | 结构化系统审计导出。 |
-| `AiSuggestion` | `@web3id/risk` | `stable` | advisory-only AI object。 |
+| `RootIdentity` | `@web3id/identity` | `stable` | Single-controller root anchor for the identity tree. |
+| `SubIdentity` | `@web3id/identity` | `stable` | Scenario-scoped identity that isolates permissions and state overlays. |
+| `SubjectAggregate` | `@web3id/identity` | `extensible` | Explicit merge layer above roots; not a formal state host. |
+| `RecoveryPolicySlot` | `@web3id/identity` | `reserved` | Recovery metadata slot that remains passive in the current phase. |
+| `RecoveryIntent` | `@web3id/identity` | `reserved` | Recorded recovery metadata that does not execute control changes yet. |
+| `CredentialBundle` | `@web3id/credential` | `stable` | Credential plus attestation bundle for compliance-aware access flows. |
+| `ProofDescriptor` | `@web3id/proof` | `extensible` | Proof metadata abstraction that stays backward compatible. |
+| `RiskSignal` | `@web3id/state` | `stable` | Base fact input for replay and scoring. |
+| `RiskAssessment` | `@web3id/state` | `stable` | Assessment node between signals and decisions. |
+| `StateTransitionDecision` | `@web3id/state` | `stable` | Formal state transition record. |
+| `ConsequenceRecord` | `@web3id/state` | `stable` | Action constraint layer that does not rewrite facts. |
+| `ExplanationBlock` | `@web3id/state` | `stable` | Shared explanation schema used across state, policy, AI, and audit. |
+| `StateSnapshot` | `@web3id/state` | `reserved` | Read-only cross-chain snapshot output. |
+| `CrossChainStateMessage` | `@web3id/state` | `reserved` | Read-only cross-chain message wrapper. |
+| `PolicyDecisionRecord` | `@web3id/risk` | `stable` | Action-level policy snapshot, never a state fact source. |
+| `AuditExportBundle` | `@web3id/risk` | `stable` | Structured audit export across signals, decisions, consequences, and review. |
+| `AiSuggestion` | `@web3id/risk` | `stable` | Advisory-only AI object that requires human review before state writes. |
 
-## 二级关系
+## Core Relationships
 
 - `RootIdentity -> SubIdentity`
-  - root 锚定树结构，sub identity 提供 scenario isolation。
+  - Root anchors the tree and sub identities isolate scenario scope.
+- `SubjectAggregate -> RootIdentity`
+  - Aggregate membership is created only through explicit controller proof, binding, and audit.
 - `RiskSignal -> RiskAssessment -> StateTransitionDecision -> ConsequenceRecord`
-  - 这是 frozen state chain。
+  - This is the frozen formal state chain.
 - `ConsequenceRecord -> PolicyDecisionRecord`
-  - policy 可以读取 consequence，但 policy snapshot 不是 state fact source。
+  - Policy may read consequences, but policy snapshots never become state facts.
 - `StateSnapshot -> CrossChainStateMessage`
-  - 这是 reserved read-only output chain。
+  - Reserved read-only output chain.
 - `RecoveryPolicySlot -> RecoveryIntent`
-  - 这是 reserved metadata chain，不进入当前执行链。
+  - Reserved metadata chain, not active control execution.
 
-## 分层
+## Layer Rules
 
 - `identity`
-  - 主体、scope、capability、reserved recovery metadata。
+  - Root, sub, subject aggregate, and reserved recovery metadata.
 - `credential`
-  - attestation 与 policy hints。
+  - Credential attestations and policy hints.
 - `proof`
-  - proof kind 与 privacy descriptor abstraction。
+  - Proof kind, privacy/disclosure metadata, and aggregate-aware subject routing.
 - `state`
-  - signal / assessment / decision / consequence / explanation / cross-chain snapshot。
+  - Signal, assessment, decision, consequence, explanation, and reserved cross-chain outputs.
 - `risk`
-  - scoring、lists、AI review、policy snapshot、audit export。
+  - Scoring, lists, AI review, policy snapshots, and audit export.
 - `system`
-  - `sdk` 中的 `systemModelManifest` 只做 machine-readable aggregation。
+  - `systemModelManifest` is the machine-readable index of the system narrative.
 
-## Stable / Extensible / Reserved
+## Stability Meanings
 
 - `stable`
-  - 进入当前主链路，改动必须同步 baseline + tests + `pnpm test:system`。
+  - Part of the active system baseline. Changes must update docs, tests, and pass `pnpm test:system`.
 - `extensible`
-  - 已有统一接口，但允许未来扩展字段和实现方式。
+  - Stable shell with additive fields or adapters allowed if backward compatibility is preserved.
 - `reserved`
-  - 已有 hook/metadata/guard，不进入当前主判定链。
+  - Guarded metadata or hook surfaces that must remain inactive in the current phase.
 
-## 真实门槛
+## Multichain Aggregate Invariant
 
-- `systemModelManifest` 是代码真源。
-- 文档一致性由 `packages/sdk/src/system-model.test.ts` 校验。
-- 影响上述对象的改动，必须通过 `pnpm test:system`。
+- `SubjectAggregate` is never a formal state host.
+- `RootIdentity` and `SubIdentity` remain the only formal hosts for stored state, effective state, consequence, and replay facts.
+- Cross-chain inputs stay hint-only and cannot auto-bind identities or mutate formal state.

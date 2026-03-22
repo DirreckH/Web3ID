@@ -1,4 +1,4 @@
-export type { RootIdentity, SubIdentity, RecoveryIntent, RecoveryPolicySlot } from "@web3id/identity";
+export type { RootIdentity, SubjectAggregate, SubIdentity, RecoveryIntent, RecoveryPolicySlot } from "@web3id/identity";
 export type { CredentialAttestation, CredentialBundle } from "@web3id/credential";
 export type { ProofDescriptor } from "@web3id/proof";
 export type {
@@ -65,6 +65,20 @@ export const systemModelManifest = {
         code: ["packages/identity/src/index.ts", "packages/sdk/src/system-model.ts"],
         tests: ["packages/sdk/src/system-model.test.ts", "tests/system/scenario-acceptance.test.ts"],
         callPoints: ["apps/frontend/src/console/view-models.ts", "apps/analyzer-service/src/service.ts"],
+      },
+    },
+    {
+      name: "SubjectAggregate",
+      layer: "identity",
+      sourcePackage: "@web3id/identity",
+      stability: "extensible",
+      summary: "Subject merge layer that binds multiple root identities through audited controller proofs without becoming a formal state host.",
+      binding: {
+        doc: "docs/MULTICHAIN_SUBJECT_AGGREGATE.md",
+        code: ["packages/identity/src/types.ts", "apps/analyzer-service/src/service.ts", "packages/sdk/src/system-model.ts"],
+        tests: ["apps/analyzer-service/src/service.test.ts", "tests/system/subject-aggregate-binding-acceptance.test.ts"],
+        callPoints: ["apps/frontend/src/console/view-models.ts", "apps/policy-api/src/service.ts"],
+        guards: ["aggregate-not-state-host", "no-silent-merge", "no-cross-chain-auto-bind"],
       },
     },
     {
@@ -260,6 +274,11 @@ export const systemModelManifest = {
       from: "RootIdentity",
       to: "SubIdentity",
       summary: "Root identity anchors the tree; sub identities isolate scenario-scoped permissions and state overlays.",
+    },
+    {
+      from: "SubjectAggregate",
+      to: "RootIdentity",
+      summary: "Subject aggregates bind multiple roots through explicit proof and audit, while root/sub remain the only formal state hosts.",
     },
     {
       from: "RiskSignal",

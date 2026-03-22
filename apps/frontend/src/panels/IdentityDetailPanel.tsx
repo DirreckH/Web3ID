@@ -57,6 +57,7 @@ export function IdentityDetailPanel({
       </label>
       <MetricGrid items={model.metrics} />
       <MetricGrid items={model.credentialMetrics} />
+      <MetricGrid items={model.aggregateMetrics} />
       <BulletList items={model.notes} empty="No identity notes yet." />
       <JsonSectionStack sections={model.jsonSections} />
     </article>

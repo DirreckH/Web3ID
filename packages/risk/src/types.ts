@@ -9,6 +9,7 @@ import type {
   StateTransitionDecision,
   VersionEnvelope,
 } from "../../state/src/index.js";
+import type { ChainControllerRef, ControllerBindingType, ControllerChallengeFields } from "../../identity/src/index.js";
 
 export type BehaviorKind =
   | "native_transfer"
@@ -27,11 +28,12 @@ export type BehaviorKind =
   | "unknown_contract_repetition";
 
 export type BehaviorDirection = "incoming" | "outgoing" | "self" | "unknown";
-export type BindingType = "root_controller" | "sub_identity_link" | "same_root_extension";
+export type BindingType = ControllerBindingType;
 export type BindingStatus = "PENDING" | "ACTIVE" | "REVOKED" | "EXPIRED";
 export type IdentityRecordKind = "root" | "sub";
 export type ReviewQueueStatus = "PENDING_REVIEW" | "CONFIRMED_SIGNAL" | "DISMISSED" | "EXPIRED";
 export type AuditAction =
+  | "SUBJECT_AGGREGATE_CREATED"
   | "BINDING_CHALLENGE_CREATED"
   | "BINDING_CREATED"
   | "BINDING_REJECTED"
@@ -75,14 +77,18 @@ export type BehaviorBinding = {
   bindingId: string;
   type: BindingType;
   status: BindingStatus;
-  address: Address;
+  address?: Address;
+  controllerRef: ChainControllerRef;
   rootIdentityId: Hex;
   subIdentityId?: Hex;
+  subjectAggregateId?: string;
   authorizerAddress?: Address;
   createdAt: string;
   expiresAt?: string;
   evidenceRefs: string[];
   bindingHash: Hex;
+  challengeHash?: Hex;
+  proofHash?: Hex;
   metadata?: Record<string, unknown>;
 };
 
@@ -414,10 +420,14 @@ export type BindingChallenge = {
   challengeId: string;
   challengeHash: Hex;
   challengeMessage: string;
+  challengeFields: ControllerChallengeFields;
   bindingType: BindingType;
-  candidateAddress: Address;
-  rootIdentityId: Hex;
+  candidateAddress?: Address;
+  controllerRef: ChainControllerRef;
+  rootIdentityId?: Hex;
   subIdentityId?: Hex;
+  subjectAggregateId?: string;
+  replayKey: string;
   createdAt: string;
   expiresAt: string;
 };
@@ -546,6 +556,7 @@ export type AuditExportBundle = {
     policyKind?: PolicyDecisionKind;
   };
   identities: Hex[];
+  subjectAggregates?: Array<Record<string, unknown>>;
   signals: RiskSignal[];
   assessments: RiskAssessment[];
   decisions: StateTransitionDecision[];

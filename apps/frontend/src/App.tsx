@@ -13,6 +13,7 @@ import {
   buildRwaRequestHash,
   confirmAnalyzerReview,
   createAnalyzerBindingChallenge,
+  createSubjectAggregate as createSdkSubjectAggregate,
   dismissAnalyzerReview,
   enterpriseTreasuryGateAbi,
   evaluatePolicyPreflight,
@@ -188,6 +189,8 @@ export function App() {
   const [watchRecentBlocks, setWatchRecentBlocks] = useState("16");
   const [watchPollIntervalMs, setWatchPollIntervalMs] = useState("15000");
   const [watchScope, setWatchScope] = useState<"identity" | "root">("identity");
+  const [aggregateDraftId, setAggregateDraftId] = useState("");
+  const [activeSubjectAggregateId, setActiveSubjectAggregateId] = useState("");
   const [auditTarget, setAuditTarget] = useState<AuditTargetScope>("selected_sub");
   const [auditFrom, setAuditFrom] = useState("");
   const [auditTo, setAuditTo] = useState("");
@@ -548,7 +551,12 @@ export function App() {
       }),
     ]);
 
-    setRiskContext(riskResult.status === "fulfilled" ? riskResult.value : null);
+    const nextRiskContext = riskResult.status === "fulfilled" ? riskResult.value : null;
+    setRiskContext(nextRiskContext);
+    if (nextRiskContext?.subjectAggregate?.subjectAggregateId) {
+      setActiveSubjectAggregateId(nextRiskContext.subjectAggregate.subjectAggregateId);
+      setAggregateDraftId(nextRiskContext.subjectAggregate.subjectAggregateId);
+    }
     setWatchStatus(watchResult.status === "fulfilled" ? watchResult.value : null);
     setWarningDecision(warningResult.status === "fulfilled" ? warningResult.value : null);
   }
@@ -664,6 +672,52 @@ export function App() {
     });
     await refreshPhase3State(selectedSubIdentity?.identityId ?? rootIdentity.identityId, payload);
     setStatus("Same-root extension binding recorded.");
+  }
+
+  async function handleCreateSubjectAggregate() {
+    setStatus("Creating subject aggregate...");
+    const aggregate = await createSdkSubjectAggregate(ANALYZER_API_URL, {
+      subjectAggregateId: aggregateDraftId || undefined,
+      actor: phase3Actor,
+      evidenceRefs: ["frontend:subject-aggregate:create"],
+    });
+    setActiveSubjectAggregateId(aggregate.subjectAggregateId);
+    setAggregateDraftId(aggregate.subjectAggregateId);
+    if (selectedSubIdentity) {
+      await refreshPhase3State(selectedSubIdentity.identityId, payload);
+    }
+    setStatus(`Subject aggregate ready: ${aggregate.subjectAggregateId}`);
+  }
+
+  async function handleLinkCurrentRootToAggregate() {
+    if (!rootIdentity || !address) {
+      return;
+    }
+
+    const subjectAggregateId = activeSubjectAggregateId || aggregateDraftId;
+    if (!subjectAggregateId) {
+      setStatus("Create or enter a subject aggregate id before linking the current root.");
+      return;
+    }
+
+    setStatus("Creating aggregate-link challenge...");
+    const challenge = await createAnalyzerBindingChallenge(ANALYZER_API_URL, {
+      bindingType: "subject_aggregate_link",
+      controllerRef: rootIdentity.primaryControllerRef,
+      rootIdentityId: rootIdentity.identityId,
+      subjectAggregateId,
+    });
+    const candidateSignature = await signMessageAsync({ message: challenge.challengeMessage });
+    await submitAnalyzerBinding(ANALYZER_API_URL, {
+      challengeId: challenge.challengeId,
+      candidateSignature,
+      metadata: { source: "frontend-subject-aggregate-link" },
+    });
+    setActiveSubjectAggregateId(subjectAggregateId);
+    if (selectedSubIdentity) {
+      await refreshPhase3State(selectedSubIdentity.identityId, payload);
+    }
+    setStatus(`Root linked to subject aggregate ${subjectAggregateId}.`);
   }
 
   async function handleIssueCredentials() {
@@ -1164,9 +1218,14 @@ export function App() {
           watchScope={watchScope}
           watchRecentBlocks={watchRecentBlocks}
           watchPollIntervalMs={watchPollIntervalMs}
+          aggregateDraftId={aggregateDraftId}
+          activeSubjectAggregateId={activeSubjectAggregateId}
           onBindRootController={() => void handleBindRootController()}
           onBindSelectedSubIdentity={() => void handleBindSelectedSubIdentity()}
           onBindSameRootExtension={() => void handleBindSameRootExtension()}
+          onAggregateDraftIdChange={setAggregateDraftId}
+          onCreateSubjectAggregate={() => void handleCreateSubjectAggregate()}
+          onLinkCurrentRootToAggregate={() => void handleLinkCurrentRootToAggregate()}
           onWatch={(action) => void handleWatch(action)}
           onApplySignal={(signalKey) => void handleApplySignal(signalKey)}
           onManualReleaseReasonCodeChange={setManualReleaseReasonCode}

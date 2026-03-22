@@ -16,9 +16,14 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "@scure/base": "^2.0.0",
     "@web3id/identity": "workspace:*",
     "@web3id/policy": "workspace:*",
     "@web3id/state": "workspace:*",
+    "bip322-js": "^3.0.0",
+    "bitcoinjs-message": "^2.2.0",
     "viem": "^2.23.5",
     "zod": "^3.24.2"
   }

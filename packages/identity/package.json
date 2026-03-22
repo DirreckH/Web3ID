@@ -14,6 +14,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "@scure/base": "^2.0.0",
+    "bip322-js": "^3.0.0",
+    "bitcoinjs-message": "^2.2.0",
     "viem": "^2.23.5"
   }
 }

@@ -62,6 +62,14 @@ const walletClient = createWalletClient({
   transport: http(issuerConfig.rpcUrl),
 });
 
+function extractEvmSubjectAddress(holder: string): Address {
+  const candidate = holder.includes("0x") ? holder.split(":").at(-1) : holder;
+  if (!candidate || !/^0x[0-9a-fA-F]{40}$/.test(candidate)) {
+    throw new Error("Credential reissue currently supports only EVM-bound holders.");
+  }
+  return getAddress(candidate);
+}
+
 const DEMO_SIGNAL_CATALOG: Record<
   DemoSignalKey,
   Omit<RiskSignalInput, "identityId" | "sourceId" | "observedAt" | "actor" | "policyVersion">
@@ -257,9 +265,7 @@ export async function reissueCredential(input: { credentialId: string; claimSet?
   const next = await issueCredential({
     holder: previous.bundle.credential.holder,
     holderIdentityId: previous.bundle.credential.holderIdentityId as Hex,
-    subjectAddress: previous.bundle.credential.holder.includes("0x")
-      ? (previous.bundle.credential.holder.split(":").at(-1) as Address)
-      : deriveRootIdentity(previous.bundle.credential.holder as Address).controllerAddress,
+    subjectAddress: extractEvmSubjectAddress(previous.bundle.credential.holder),
     credentialType: previous.bundle.credential.credentialType as Hex,
     credentialTypeLabel: previous.bundle.credential.credentialTypeLabel,
     claimSet: input.claimSet ?? previous.bundle.credential.claimSet,

@@ -1,4 +1,5 @@
-import { keccak256, stringToHex } from "viem";
+import { keccak256, stringToHex, type Hex } from "viem";
+import type { ChainControllerRef } from "../../identity/src/types.js";
 import { createVersionEnvelope, type VersionEnvelope } from "../../identity/src/versioning.js";
 import {
   credentialBoundProofKind,
@@ -26,6 +27,7 @@ export type ProofDescriptor = {
   proofType: string;
   privacyMode: ProofPrivacyMode;
   subjectBindingType: "root" | "sub";
+  subjectRoute?: ProofSubjectRoute;
   issuerDisclosure: "full" | "hash_only" | "hidden_reserved";
   supportsSelectiveDisclosure: boolean;
   supportsIssuerAnonymity: boolean;
@@ -42,6 +44,12 @@ export type ProofDescriptor = {
 
 export type DisclosureProfile = "public" | "selective_disclosure" | "policy_minimal_disclosure";
 export type ProofGenerationRoute = "legacy_holder_bound" | "legacy_credential_bound" | "descriptor_selective" | "descriptor_minimal";
+export type ProofSubjectRoute = {
+  controllerRef?: ChainControllerRef;
+  rootIdentityId?: Hex;
+  subjectAggregateId?: string;
+  aggregateAware?: boolean;
+};
 
 export type ProofDescriptorV2 = ProofDescriptor & {
   disclosureProfile: DisclosureProfile;
@@ -98,6 +106,7 @@ export function buildProofDescriptor(input: {
   proofId?: string;
   proofType: string;
   subjectBindingType?: "root" | "sub";
+  subjectRoute?: ProofSubjectRoute;
   createdAt?: string;
   disclosureProfile?: DisclosureProfile;
   disclosedClaims?: string[];
@@ -121,6 +130,7 @@ export function buildProofDescriptor(input: {
       proofType: legacyHolderBoundProofKind,
       privacyMode: "holder_binding",
       subjectBindingType: input.subjectBindingType ?? "sub",
+      subjectRoute: input.subjectRoute,
       issuerDisclosure: "hash_only",
       supportsSelectiveDisclosure: disclosureProfile !== "public",
       supportsIssuerAnonymity: false,
@@ -142,6 +152,7 @@ export function buildProofDescriptor(input: {
       proofType: credentialBoundProofKind,
       privacyMode: "credential_bound",
       subjectBindingType: input.subjectBindingType ?? "sub",
+      subjectRoute: input.subjectRoute,
       issuerDisclosure: "full",
       supportsSelectiveDisclosure: disclosureProfile !== "public",
       supportsIssuerAnonymity: false,
@@ -162,6 +173,7 @@ export function buildProofDescriptor(input: {
     proofType: input.proofType,
     privacyMode: "issuer_hidden_reserved",
     subjectBindingType: input.subjectBindingType ?? "sub",
+    subjectRoute: input.subjectRoute,
     issuerDisclosure: "hidden_reserved",
     supportsSelectiveDisclosure: false,
     supportsIssuerAnonymity: false,

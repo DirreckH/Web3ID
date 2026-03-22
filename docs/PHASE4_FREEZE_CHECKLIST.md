@@ -1,37 +1,53 @@
 # PHASE4 FREEZE CHECKLIST
 
-这份清单只收已经落在代码和 CI 里的 freeze 门槛。
+This checklist records the current frozen system semantics and the gates that must stay green before merging structural changes.
 
-## 绑定实现
+## Bound Implementation
 
-- 代码
+- Code
   - `packages/sdk/src/system-model.ts`
   - `packages/state/src/explanation.ts`
   - `packages/risk/src/audit-normalizer.ts`
-- 测试
+- Tests
   - `packages/sdk/src/system-model.test.ts`
   - `tests/system/*.test.ts`
 - CI
   - `.github/workflows/test.yml`
-- 协作规则
+- Collaboration rules
   - `README.md`
   - `.github/PULL_REQUEST_TEMPLATE.md`
 
-## Freeze 门槛
+## Freeze Gates
 
-- `RootIdentity / SubIdentity / RiskSignal / RiskAssessment / StateTransitionDecision / ConsequenceRecord / PolicyDecisionRecord / AuditExportBundle` 已经进入统一 system model。
-- `ExplanationBlock` 已经进入 summary / policy / AI review / audit export 真链路。
-- `cross-chain state hooks / recovery hooks / proof privacy abstraction` 已经有 guard，并且仍然是 hook-only。
-- `pnpm test:integration` 与 `pnpm test:system` 都必须通过。
-- CI 已经把 `pnpm test:system` 作为真实门槛。
+- `RootIdentity / SubIdentity / SubjectAggregate / RiskSignal / RiskAssessment / StateTransitionDecision / ConsequenceRecord / PolicyDecisionRecord / AuditExportBundle` are all represented in the unified system model.
+- `ExplanationBlock` remains the shared explanation schema across summary, policy, AI review, and audit export.
+- `cross-chain state hooks / recovery hooks / proof privacy abstraction` remain guarded and `hook_only`.
+- `pnpm test:integration`, `pnpm test:system`, and `pnpm test:phase4` remain required non-regression gates.
+- CI keeps `pnpm test:system` as a real merge gate.
 
-## PR 前必须确认
+## Multichain / Aggregate Freeze Checks
 
-- 改 frozen semantics
-  - 同步更新 baseline / docs / tests。
-- 改 stable interfaces
-  - 同步更新 README / demo matrix / system docs。
-- 改 reserved extensions
-  - 明确说明是否仍然 `hook_only`。
-- 改 `policy / state / consequence / audit / reserved hooks`
-  - 必须过 `pnpm test:system`。
+- `SubjectAggregate` is summary, read-model, governance, and audit only.
+- `SubjectAggregate` must not own `storedState`, `effectiveState`, `ConsequenceRecord`, replay facts, or anchors.
+- Existing EVM `didLikeId` and `rootId` remain byte-for-byte unchanged.
+- Migration may add `primaryControllerRef`, `schemaVersion`, and legacy aliases only.
+- Migration must not auto-create any subject aggregate.
+- Cross-chain inputs remain hints only and cannot auto-bind identities.
+
+## PR Before Merge
+
+- Changes frozen semantics
+  - Update baseline docs, implementation docs, and tests together.
+- Changes stable interfaces
+  - Update `README.md`, `docs/DEMO_MATRIX.md`, and system docs.
+- Changes reserved extensions
+  - State clearly whether the feature remains `hook_only`.
+- Changes `policy / state / consequence / audit / reserved hooks`
+  - Must pass `pnpm test:system`.
+
+## Multichain Acceptance Gates
+
+- `tests/system/multi-chain-root-acceptance.test.ts`
+- `tests/system/subject-aggregate-binding-acceptance.test.ts`
+- `tests/system/aggregate-proof-policy-acceptance.test.ts`
+- `tests/system/aggregate-audit-acceptance.test.ts`

@@ -270,19 +270,23 @@ describe("risk package", () => {
   });
 
   it("builds binding challenges with stable authorization messages", () => {
+    const rootIdentity = deriveRootIdentity(testAccount.address, 31337);
+    const extensionControllerRef = deriveRootIdentity(secondAccount.address, 31337).primaryControllerRef;
     const challenge = createBindingChallenge({
       bindingType: "same_root_extension",
-      candidateAddress: "0x0000000000000000000000000000000000000011",
-      rootIdentityId,
+      controllerRef: extensionControllerRef,
+      rootIdentityId: rootIdentity.identityId,
     });
-    expect(challenge.challengeMessage).toContain("Web3ID Binding Challenge");
+    expect(challenge.challengeMessage).toContain("Web3ID Controller Challenge");
+    expect(challenge.candidateAddress).toBe(secondAccount.address);
     const authorization = buildSameRootAuthorizationMessage({
       challengeHash: challenge.challengeHash,
-      candidateAddress: challenge.candidateAddress,
-      rootIdentityId,
-      authorizerAddress: "0x0000000000000000000000000000000000000012",
+      candidateAddress: challenge.candidateAddress!,
+      rootIdentityId: rootIdentity.identityId,
+      authorizerAddress: testAccount.address,
     });
     expect(authorization).toContain(String(challenge.challengeHash));
+    expect(challenge.challengeFields.replayScope).toContain("same_root_extension");
   });
 
   it("respects manual release observation floors", () => {
@@ -299,6 +303,7 @@ describe("risk package", () => {
       type: "root_controller" as const,
       status: "ACTIVE" as const,
       address: testAccount.address,
+      controllerRef: rootIdentity.primaryControllerRef,
       rootIdentityId: rootIdentity.identityId,
       createdAt: new Date().toISOString(),
       evidenceRefs: [],
@@ -306,7 +311,7 @@ describe("risk package", () => {
     };
     const challenge = createBindingChallenge({
       bindingType: "same_root_extension",
-      candidateAddress: secondAccount.address,
+      controllerRef: deriveRootIdentity(secondAccount.address, 31337).primaryControllerRef,
       rootIdentityId: rootIdentity.identityId,
     });
 
@@ -349,7 +354,7 @@ describe("risk package", () => {
 
     const subChallenge = createBindingChallenge({
       bindingType: "sub_identity_link",
-      candidateAddress: testAccount.address,
+      controllerRef: rootIdentity.primaryControllerRef,
       rootIdentityId: rootIdentity.identityId,
       subIdentityId: rwaIdentity.identityId,
     });

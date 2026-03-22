@@ -51,13 +51,17 @@ import {
 } from "../../../packages/risk/src/index.js";
 import {
   SubIdentityType,
+  SUBJECT_AGGREGATE_SCHEMA_VERSION,
   createVersionEnvelope,
+  normalizeControllerRef,
   type BreakGlassAction,
+  type ChainControllerRef,
   type RecoveryAction,
   type RecoveryApprovalTicket,
   type RecoveryCase,
   type RootIdentity,
   type SameRootProof,
+  type SubjectAggregate,
   type SubIdentity,
   type SubIdentityLinkProof,
 } from "../../../packages/identity/src/index.js";
@@ -133,13 +137,20 @@ const watchTimers = new Map<string, NodeJS.Timeout>();
 const activeWatchTicks = new Set<string>();
 
 export type RegisterIdentityTreeInput = { rootIdentity: RootIdentity; subIdentities: SubIdentity[] };
+export type CreateSubjectAggregateInput = {
+  subjectAggregateId?: string;
+  actor?: string;
+  evidenceRefs?: string[];
+  auditBundleRef?: string;
+  status?: SubjectAggregate["status"];
+};
 export type SubmitBindingInput = {
   challengeId: string;
-  candidateSignature: Hex;
+  candidateSignature: string;
   linkProof?: SubIdentityLinkProof;
   sameRootProof?: SameRootProof;
   authorizerAddress?: Address;
-  authorizerSignature?: Hex;
+  authorizerSignature?: string;
   metadata?: Record<string, unknown>;
 };
 export type BackfillScanInput = { rootIdentityId?: Hex; identityId?: Hex; fromBlock?: bigint; toBlock?: bigint; recentBlocks?: number };
@@ -272,19 +283,46 @@ function toBytes32(value?: string) {
   return (value.startsWith("0x") && value.length === 66 ? value : keccak256(stringToHex(value))) as Hex;
 }
 
+function controllerIndexKey(controllerRef: Pick<ChainControllerRef, "chainFamily" | "networkId" | "normalizedAddress">) {
+  return `${controllerRef.chainFamily}:${controllerRef.networkId}:${controllerRef.normalizedAddress.toLowerCase()}`;
+}
+
+function sanitizeRegisteredRootIdentity(store: AnalyzerStore, rootIdentity: RootIdentity) {
+  const aggregateId = rootIdentity.subjectAggregateId;
+  if (!aggregateId) {
+    return rootIdentity;
+  }
+  const activeAggregateBinding = Object.values(store.bindings).find(
+    (binding) =>
+      binding.status === "ACTIVE" &&
+      binding.type === "subject_aggregate_link" &&
+      binding.rootIdentityId === rootIdentity.identityId &&
+      binding.subjectAggregateId === aggregateId,
+  );
+  if (activeAggregateBinding) {
+    return rootIdentity;
+  }
+  return {
+    ...rootIdentity,
+    subjectAggregateId: undefined,
+  };
+}
+
 function ensureRootContainer(store: AnalyzerStore, rootIdentity: RootIdentity) {
-  const existing = store.roots[rootIdentity.identityId] ?? { rootIdentity, subIdentityIds: [] };
-  existing.rootIdentity = rootIdentity;
-  store.roots[rootIdentity.identityId] = existing;
+  const sanitizedRoot = sanitizeRegisteredRootIdentity(store, rootIdentity);
+  const existing = store.roots[sanitizedRoot.identityId] ?? { rootIdentity: sanitizedRoot, subIdentityIds: [] };
+  existing.rootIdentity = sanitizedRoot;
+  store.roots[sanitizedRoot.identityId] = existing;
   return existing;
 }
 
 function ensureIdentityRecord(store: AnalyzerStore, input: { rootIdentity: RootIdentity; subIdentity?: SubIdentity }): AnalyzerIdentityRecord {
-  const identityId = input.subIdentity?.identityId ?? input.rootIdentity.identityId;
+  const sanitizedRoot = sanitizeRegisteredRootIdentity(store, input.rootIdentity);
+  const identityId = input.subIdentity?.identityId ?? sanitizedRoot.identityId;
   const existing = store.identities[identityId];
   if (existing) {
     existing.kind = input.subIdentity ? "sub" : "root";
-    existing.rootIdentity = input.rootIdentity;
+    existing.rootIdentity = sanitizedRoot;
     existing.subIdentity = input.subIdentity;
     existing.signals = existing.signals ?? [];
     existing.manualSignals = existing.manualSignals ?? [];
@@ -297,7 +335,7 @@ function ensureIdentityRecord(store: AnalyzerStore, input: { rootIdentity: RootI
   const createdAt = nowIso();
   const created: AnalyzerIdentityRecord = {
     kind: input.subIdentity ? "sub" : "root",
-    rootIdentity: input.rootIdentity,
+    rootIdentity: sanitizedRoot,
     subIdentity: input.subIdentity,
     signals: [],
     manualSignals: [],
@@ -319,6 +357,55 @@ function getRootContainerOrThrow(store: AnalyzerStore, rootIdentityId: Hex) {
   const root = store.roots[rootIdentityId];
   if (!root) throw new Error(`Unknown root identity: ${rootIdentityId}`);
   return root;
+}
+function setRootSubjectAggregate(store: AnalyzerStore, rootIdentityId: Hex, subjectAggregateId?: string) {
+  const rootContainer = getRootContainerOrThrow(store, rootIdentityId);
+  rootContainer.rootIdentity = {
+    ...rootContainer.rootIdentity,
+    subjectAggregateId,
+  };
+  const rootRecord = store.identities[rootIdentityId];
+  if (rootRecord) {
+    rootRecord.rootIdentity = rootContainer.rootIdentity;
+  }
+  for (const subIdentityId of rootContainer.subIdentityIds) {
+    const subRecord = store.identities[subIdentityId];
+    if (subRecord) {
+      subRecord.rootIdentity = rootContainer.rootIdentity;
+    }
+  }
+}
+function getSubjectAggregateOrThrow(store: AnalyzerStore, subjectAggregateId: string) {
+  const subjectAggregate = store.subjectAggregates[subjectAggregateId];
+  if (!subjectAggregate) {
+    throw new Error(`Unknown subject aggregate: ${subjectAggregateId}`);
+  }
+  return subjectAggregate;
+}
+function summarizeSubjectAggregate(store: AnalyzerStore, subjectAggregateId: string) {
+  const subjectAggregate = getSubjectAggregateOrThrow(store, subjectAggregateId);
+  return {
+    ...subjectAggregate,
+    rootSummaries: subjectAggregate.linkedRootIds.map((rootIdentityId) => {
+      const rootRecord = store.identities[rootIdentityId];
+      return {
+        rootIdentityId,
+        storedState: rootRecord?.summary?.storedState ?? null,
+        effectiveState: rootRecord?.summary?.effectiveState ?? null,
+        reasonCodes: rootRecord?.summary?.reasonCodes ?? [],
+        warnings: rootRecord?.summary?.warnings ?? [],
+      };
+    }),
+    linkedBindings: Object.values(store.bindings).filter(
+      (binding) => binding.type === "subject_aggregate_link" && binding.status === "ACTIVE" && binding.subjectAggregateId === subjectAggregateId,
+    ).map((binding) => ({
+      bindingId: binding.bindingId,
+      rootIdentityId: binding.rootIdentityId,
+      proofHash: binding.proofHash ?? null,
+      challengeHash: binding.challengeHash ?? null,
+      createdAt: binding.createdAt,
+    })),
+  };
 }
 function resolveRootIdentityId(store: AnalyzerStore, input: { rootIdentityId?: Hex; identityId?: Hex }) {
   if (input.rootIdentityId) return input.rootIdentityId;
@@ -1296,30 +1383,117 @@ export async function registerIdentityTree(input: RegisterIdentityTreeInput) {
   for (const subIdentity of input.subIdentities) ensureIdentityRecord(store, { rootIdentity: input.rootIdentity, subIdentity });
   await recomputeRootState(store, input.rootIdentity.identityId);
   await saveStore(store);
-  return { rootIdentity: input.rootIdentity, subIdentities: input.subIdentities };
+  return { rootIdentity: rootContainer.rootIdentity, subIdentities: input.subIdentities };
 }
 
-export async function createBindingChallengeRecord(input: { bindingType: BindingType; candidateAddress: Address; rootIdentityId: Hex; subIdentityId?: Hex }) {
+export async function createSubjectAggregate(input: CreateSubjectAggregateInput = {}) {
   const store = await loadStore();
-  const rootContainer = getRootContainerOrThrow(store, input.rootIdentityId);
-  if (input.subIdentityId && !rootContainer.subIdentityIds.includes(input.subIdentityId)) throw new Error("Unknown sub identity for the provided root.");
+  const createdAt = nowIso();
+  const subjectAggregateId =
+    input.subjectAggregateId ??
+    keccak256(stringToHex(["subject-aggregate", createdAt, Math.random().toString(16).slice(2)].join(":")));
+  const existing = store.subjectAggregates[subjectAggregateId];
+  if (existing) {
+    return summarizeSubjectAggregate(store, subjectAggregateId);
+  }
+
+  const subjectAggregate: SubjectAggregate = {
+    subjectAggregateId,
+    status: input.status ?? "ACTIVE",
+    linkedRootIds: [],
+    controllerSummary: [],
+    bindingGraphVersion: 1,
+    createdAt,
+    updatedAt: createdAt,
+    evidenceRefs: uniqueStrings(input.evidenceRefs ?? []),
+    auditBundleRef: input.auditBundleRef,
+    schemaVersion: SUBJECT_AGGREGATE_SCHEMA_VERSION,
+  };
+  store.subjectAggregates[subjectAggregateId] = subjectAggregate;
+  persistAudit(
+    store,
+    createAuditRecord({
+      identityId: toBytes32(subjectAggregateId),
+      rootIdentityId: toBytes32(subjectAggregateId),
+      action: "SUBJECT_AGGREGATE_CREATED",
+      actor: input.actor ?? "analyzer-service",
+      evidenceRefs: subjectAggregate.evidenceRefs,
+      metadata: { subjectAggregateId },
+    }),
+  );
+  await saveStore(store);
+  return summarizeSubjectAggregate(store, subjectAggregateId);
+}
+
+export async function getSubjectAggregate(subjectAggregateId: string) {
+  const store = await loadStore();
+  return summarizeSubjectAggregate(store, subjectAggregateId);
+}
+
+export async function listSubjectAggregateRoots(subjectAggregateId: string) {
+  const store = await loadStore();
+  return summarizeSubjectAggregate(store, subjectAggregateId).rootSummaries;
+}
+
+export async function listSubjectAggregateControllers(subjectAggregateId: string) {
+  const store = await loadStore();
+  return summarizeSubjectAggregate(store, subjectAggregateId).controllerSummary;
+}
+
+export async function createBindingChallengeRecord(input: {
+  bindingType: BindingType;
+  controllerRef?: ChainControllerRef;
+  candidateAddress?: Address;
+  rootIdentityId?: Hex;
+  subIdentityId?: Hex;
+  subjectAggregateId?: string;
+}) {
+  const store = await loadStore();
+  const rootContainer = input.rootIdentityId ? getRootContainerOrThrow(store, input.rootIdentityId) : undefined;
+  if (input.subIdentityId && (!rootContainer || !rootContainer.subIdentityIds.includes(input.subIdentityId))) {
+    throw new Error("Unknown sub identity for the provided root.");
+  }
+  if (input.subjectAggregateId) {
+    getSubjectAggregateOrThrow(store, input.subjectAggregateId);
+  }
+  const controllerRef = input.controllerRef
+    ? normalizeControllerRef(input.controllerRef)
+    : rootContainer
+      ? rootContainer.rootIdentity.primaryControllerRef
+      : input.candidateAddress
+        ? normalizeControllerRef({
+            chainFamily: "evm",
+            networkId: 31337,
+            address: input.candidateAddress,
+          })
+        : undefined;
+  if (!controllerRef) {
+    throw new Error("Binding challenge requires either controllerRef or a known root identity.");
+  }
   const challenge = createBindingChallenge({
     bindingType: input.bindingType,
-    candidateAddress: getAddress(input.candidateAddress),
+    controllerRef,
     rootIdentityId: input.rootIdentityId,
     subIdentityId: input.subIdentityId,
+    subjectAggregateId: input.subjectAggregateId,
   });
   store.bindingChallenges[challenge.challengeId] = challenge;
   persistAudit(
     store,
     createAuditRecord({
-      identityId: input.subIdentityId ?? input.rootIdentityId,
-      rootIdentityId: input.rootIdentityId,
+      identityId: input.subIdentityId ?? input.rootIdentityId ?? toBytes32(input.subjectAggregateId),
+      rootIdentityId: input.rootIdentityId ?? toBytes32(input.subjectAggregateId),
       subIdentityId: input.subIdentityId,
       action: "BINDING_CHALLENGE_CREATED",
       actor: "analyzer-service",
       evidenceRefs: [`challenge:${challenge.challengeHash}`],
-      metadata: { bindingType: input.bindingType, candidateAddress: challenge.candidateAddress },
+      metadata: {
+        bindingType: input.bindingType,
+        candidateAddress: challenge.candidateAddress,
+        controllerRef: challenge.controllerRef,
+        subjectAggregateId: input.subjectAggregateId,
+        replayKey: challenge.replayKey,
+      },
     }),
   );
   await saveStore(store);
@@ -1330,46 +1504,104 @@ export async function submitBinding(input: SubmitBindingInput) {
   const store = await loadStore();
   const challenge = store.bindingChallenges[input.challengeId];
   if (!challenge) throw new Error(`Unknown binding challenge: ${input.challengeId}`);
-
-  const rootContainer = getRootContainerOrThrow(store, challenge.rootIdentityId);
+  const rootContainer = challenge.rootIdentityId ? getRootContainerOrThrow(store, challenge.rootIdentityId) : undefined;
   const subRecord = challenge.subIdentityId ? getIdentityRecordOrThrow(store, challenge.subIdentityId) : undefined;
   const verification = await verifyBindingSubmission({
     challenge,
     candidateSignature: input.candidateSignature,
-    rootIdentity: rootContainer.rootIdentity,
+    rootIdentity: rootContainer?.rootIdentity,
     subIdentity: subRecord?.subIdentity,
     linkProof: input.linkProof,
     sameRootProof: input.sameRootProof,
     authorizerAddress: input.authorizerAddress,
     authorizerSignature: input.authorizerSignature,
-    activeBindings: Object.values(store.bindings).filter((binding) => binding.rootIdentityId === challenge.rootIdentityId),
+    activeBindings: Object.values(store.bindings).filter((binding) => challenge.rootIdentityId ? binding.rootIdentityId === challenge.rootIdentityId : true),
+    consumedReplayKeys: new Set(Object.keys(store.bindingReplayKeys)),
   });
+  const resolvedRootIdentity = rootContainer?.rootIdentity ?? verification.derivedRootIdentity;
+  const resolvedRootContainer = ensureRootContainer(store, resolvedRootIdentity);
+  ensureIdentityRecord(store, { rootIdentity: resolvedRootIdentity });
+
+  if (challenge.subjectAggregateId && store.subjectAggregateRootIndex[resolvedRootIdentity.identityId]) {
+    const existingAggregateId = store.subjectAggregateRootIndex[resolvedRootIdentity.identityId];
+    if (existingAggregateId !== challenge.subjectAggregateId) {
+      throw new Error(`Root identity ${resolvedRootIdentity.identityId} is already linked to subject aggregate ${existingAggregateId}.`);
+    }
+  }
+  if (challenge.bindingType === "subject_aggregate_link" && challenge.subjectAggregateId) {
+    const existingBinding = Object.values(store.bindings).find(
+      (binding) =>
+        binding.status === "ACTIVE" &&
+        binding.type === "subject_aggregate_link" &&
+        binding.rootIdentityId === resolvedRootIdentity.identityId &&
+        binding.subjectAggregateId === challenge.subjectAggregateId &&
+        binding.controllerRef.normalizedAddress.toLowerCase() === challenge.controllerRef.normalizedAddress.toLowerCase(),
+    );
+    if (existingBinding) {
+      store.bindingReplayKeys[challenge.replayKey] = nowIso();
+      delete store.bindingChallenges[input.challengeId];
+      await saveStore(store);
+      return existingBinding;
+    }
+  }
 
   const binding: BehaviorBinding = {
     bindingId: verification.bindingHash,
     type: challenge.bindingType,
     status: "ACTIVE",
-    address: getAddress(challenge.candidateAddress),
-    rootIdentityId: challenge.rootIdentityId,
+    address: challenge.candidateAddress ? getAddress(challenge.candidateAddress) : undefined,
+    controllerRef: challenge.controllerRef,
+    rootIdentityId: resolvedRootIdentity.identityId,
     subIdentityId: challenge.subIdentityId,
+    subjectAggregateId: challenge.subjectAggregateId,
     authorizerAddress: input.authorizerAddress ? getAddress(input.authorizerAddress) : undefined,
     createdAt: nowIso(),
     evidenceRefs: verification.evidenceRefs,
     bindingHash: verification.bindingHash,
+    challengeHash: challenge.challengeHash,
+    proofHash: verification.proofHash,
     metadata: input.metadata,
   };
   store.bindings[binding.bindingId] = binding;
+  store.bindingReplayKeys[challenge.replayKey] = nowIso();
   delete store.bindingChallenges[input.challengeId];
+
+  if (binding.type === "subject_aggregate_link" && binding.subjectAggregateId) {
+    const subjectAggregate = getSubjectAggregateOrThrow(store, binding.subjectAggregateId);
+    subjectAggregate.linkedRootIds = uniqueStrings([...subjectAggregate.linkedRootIds, binding.rootIdentityId]) as Hex[];
+    subjectAggregate.controllerSummary = [
+      ...subjectAggregate.controllerSummary.filter((item) => item.rootIdentityId !== binding.rootIdentityId),
+      {
+        rootIdentityId: binding.rootIdentityId,
+        rootId: resolvedRootContainer.rootIdentity.rootId,
+        controllerRef: binding.controllerRef,
+        linkedAt: binding.createdAt,
+      },
+    ];
+    subjectAggregate.bindingGraphVersion += 1;
+    subjectAggregate.updatedAt = nowIso();
+    subjectAggregate.evidenceRefs = uniqueStrings([...subjectAggregate.evidenceRefs, ...binding.evidenceRefs]);
+    store.subjectAggregateRootIndex[binding.rootIdentityId] = binding.subjectAggregateId;
+    store.subjectAggregateControllerIndex[controllerIndexKey(binding.controllerRef)] = binding.subjectAggregateId;
+    setRootSubjectAggregate(store, binding.rootIdentityId, binding.subjectAggregateId);
+  }
+
   persistAudit(
     store,
     createAuditRecord({
-      identityId: challenge.subIdentityId ?? challenge.rootIdentityId,
-      rootIdentityId: challenge.rootIdentityId,
+      identityId: challenge.subIdentityId ?? challenge.rootIdentityId ?? toBytes32(challenge.subjectAggregateId),
+      rootIdentityId: resolvedRootIdentity.identityId,
       subIdentityId: challenge.subIdentityId,
       action: "BINDING_CREATED",
-      actor: binding.address,
+      actor: binding.address ?? binding.controllerRef.normalizedAddress,
       evidenceRefs: verification.evidenceRefs,
-      metadata: { bindingId: binding.bindingId, bindingType: binding.type },
+      metadata: {
+        bindingId: binding.bindingId,
+        bindingType: binding.type,
+        subjectAggregateId: binding.subjectAggregateId,
+        controllerRef: binding.controllerRef,
+        challengeFields: challenge.challengeFields,
+      },
     }),
   );
   await saveStore(store);
@@ -1791,6 +2023,9 @@ export async function getRiskContext(identityId: Hex) {
   const record = getIdentityRecordOrThrow(store, identityId);
   const rootIdentityId = record.rootIdentity.identityId;
   const rootContainer = getRootContainerOrThrow(store, rootIdentityId);
+  const subjectAggregate = record.rootIdentity.subjectAggregateId
+    ? summarizeSubjectAggregate(store, record.rootIdentity.subjectAggregateId)
+    : null;
   const reviewQueue = getReviewsForIdentity(store, identityId);
   const summary = record.summary
     ? {
@@ -1812,6 +2047,7 @@ export async function getRiskContext(identityId: Hex) {
     stateContext: record.stateContext ?? null,
     signals: record.signals,
     manualSignals: record.manualSignals,
+    subjectAggregate,
     listEntries: record.listEntries,
     bindings: getBindingsForIdentity(store, identityId),
     aiSuggestions: getSuggestionsForIdentity(store, identityId),
@@ -2563,6 +2799,21 @@ export async function exportIdentityAudit(identityId: Hex) {
 export async function exportStructuredAudit(input: AuditExportInput): Promise<AuditExportBundle> {
   const store = await loadStore();
   const identityIds = resolveAuditIdentityIds(store, input);
+  const subjectAggregateIds = (() => {
+    if (!input.identityId && !input.rootIdentityId && !input.subIdentityId) {
+      return Object.keys(store.subjectAggregates);
+    }
+
+    const aggregateIds = new Set<string>();
+    for (const identityId of identityIds) {
+      const record = store.identities[identityId];
+      if (record?.rootIdentity.subjectAggregateId) {
+        aggregateIds.add(record.rootIdentity.subjectAggregateId);
+      }
+    }
+    return [...aggregateIds];
+  })();
+  const aggregateAuditIds = new Set(subjectAggregateIds.map((item) => toBytes32(item)));
   const policyDecisions = Object.values(store.policyDecisions)
     .filter((item) => identityIds.includes(item.identityId))
     .filter((item) => !input.policyId || item.policyId === input.policyId)
@@ -2572,7 +2823,16 @@ export async function exportStructuredAudit(input: AuditExportInput): Promise<Au
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
 
   const records = filterAuditByWindow(
-    Object.values(store.audits).filter((record) => identityIds.includes(record.identityId)),
+    Object.values(store.audits).filter((record) => {
+      if (identityIds.includes(record.identityId)) {
+        return true;
+      }
+      if (aggregateAuditIds.has(record.identityId)) {
+        return true;
+      }
+      const metadata = record.metadata as Record<string, unknown> | undefined;
+      return typeof metadata?.subjectAggregateId === "string" && subjectAggregateIds.includes(metadata.subjectAggregateId);
+    }),
     { from: input.from, to: input.to },
   )
     .filter((record) => {
@@ -2601,6 +2861,7 @@ export async function exportStructuredAudit(input: AuditExportInput): Promise<Au
     generatedAt: nowIso(),
     filters: input,
     identities: identityIds,
+    subjectAggregates: subjectAggregateIds.map((subjectAggregateId) => summarizeSubjectAggregate(store, subjectAggregateId)),
     signals: includedRecords.flatMap((record) => record.signals),
     assessments: includedRecords.flatMap((record) => record.stateContext?.assessments ?? []),
     decisions: includedRecords.flatMap((record) => record.stateContext?.decisions ?? []),

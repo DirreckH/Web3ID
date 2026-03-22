@@ -1,5 +1,5 @@
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
-import type { RecoveryCase, RootIdentity, SubIdentity } from "../../../packages/identity/src/index.js";
+import type { RecoveryCase, RootIdentity, SubjectAggregate, SubIdentity } from "../../../packages/identity/src/index.js";
 import type {
   ApprovalTicket,
   AiSuggestion,
@@ -93,8 +93,12 @@ export type AnalyzerRuntimeMetrics = {
 export type AnalyzerStore = {
   roots: Record<string, { rootIdentity: RootIdentity; subIdentityIds: string[] }>;
   identities: Record<string, AnalyzerIdentityRecord>;
+  subjectAggregates: Record<string, SubjectAggregate>;
+  subjectAggregateRootIndex: Record<string, string>;
+  subjectAggregateControllerIndex: Record<string, string>;
   bindings: Record<string, BehaviorBinding>;
   bindingChallenges: Record<string, BindingChallenge>;
+  bindingReplayKeys: Record<string, string>;
   events: Record<string, BehaviorEvent>;
   aiSuggestions: Record<string, AiSuggestion>;
   reviewQueue: Record<string, ReviewQueueItem>;
@@ -114,8 +118,12 @@ function createEmptyStore(): AnalyzerStore {
   return {
     roots: {},
     identities: {},
+    subjectAggregates: {},
+    subjectAggregateRootIndex: {},
+    subjectAggregateControllerIndex: {},
     bindings: {},
     bindingChallenges: {},
+    bindingReplayKeys: {},
     events: {},
     aiSuggestions: {},
     reviewQueue: {},
@@ -263,8 +271,12 @@ function normalizeStore(parsed: Partial<AnalyzerStore>): AnalyzerStore {
   return {
     roots: parsed.roots ?? {},
     identities: normalizedIdentities,
+    subjectAggregates: parsed.subjectAggregates ?? {},
+    subjectAggregateRootIndex: parsed.subjectAggregateRootIndex ?? {},
+    subjectAggregateControllerIndex: parsed.subjectAggregateControllerIndex ?? {},
     bindings: parsed.bindings ?? {},
     bindingChallenges: parsed.bindingChallenges ?? {},
+    bindingReplayKeys: parsed.bindingReplayKeys ?? {},
     events: parsed.events ?? {},
     aiSuggestions: normalizedAiSuggestions,
     reviewQueue: normalizedReviewQueue,

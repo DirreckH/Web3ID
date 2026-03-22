@@ -452,7 +452,7 @@ export async function createServiceHarness(portSeed = 13055): Promise<ServiceHar
     createBindings: async () => {
       const rootChallenge = await postJson<{ challengeId: string; challengeMessage: string }>(`${urls.analyzer}/bindings/challenge`, {
         bindingType: "root_controller",
-        candidateAddress: rootIdentity.controllerAddress,
+        controllerRef: rootIdentity.primaryControllerRef,
         rootIdentityId: rootIdentity.identityId,
       });
       await postJson(`${urls.analyzer}/bindings`, {
@@ -462,7 +462,7 @@ export async function createServiceHarness(portSeed = 13055): Promise<ServiceHar
       for (const subIdentity of subIdentities) {
         const challenge = await postJson<{ challengeId: string; challengeMessage: string }>(`${urls.analyzer}/bindings/challenge`, {
           bindingType: "sub_identity_link",
-          candidateAddress: rootIdentity.controllerAddress,
+          controllerRef: rootIdentity.primaryControllerRef,
           rootIdentityId: rootIdentity.identityId,
           subIdentityId: subIdentity.identityId,
         });
@@ -474,7 +474,7 @@ export async function createServiceHarness(portSeed = 13055): Promise<ServiceHar
       }
       const sameRootChallenge = await postJson<{ challengeId: string; challengeMessage: string; challengeHash: `0x${string}` }>(`${urls.analyzer}/bindings/challenge`, {
         bindingType: "same_root_extension",
-        candidateAddress: extensionAccount.address,
+        controllerRef: deriveRootIdentity(extensionAccount.address, 31337).primaryControllerRef,
         rootIdentityId: rootIdentity.identityId,
       });
       const authorizationMessage = [

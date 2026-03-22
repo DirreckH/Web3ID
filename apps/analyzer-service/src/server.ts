@@ -9,6 +9,7 @@ import {
   backfillScan,
   consumeCrossChainMessage,
   confirmReview,
+  createSubjectAggregate,
   createApprovalTicket,
   createBindingChallengeRecord,
   createCrossChainMessageRecord,
@@ -21,11 +22,14 @@ import {
   getIdentityEvents,
   getOperatorDashboard,
   getRiskContext,
+  getSubjectAggregate,
   getRuntimeMetrics,
   getWatchStatus,
   ingestCrossChainMessage,
   initializeAnalyzerWatchers,
   diffIdentityReplay,
+  listSubjectAggregateControllers,
+  listSubjectAggregateRoots,
   listApprovalTickets,
   listCrossChainInbox,
   listRiskHistory,
@@ -48,14 +52,33 @@ const hexSchema = z.string().regex(/^0x[0-9a-fA-F]+$/);
 const hex32Schema = z.string().regex(/^0x[0-9a-fA-F]{64}$/);
 const addressSchema = z.string().regex(/^0x[0-9a-fA-F]{40}$/).transform((value) => getAddress(value));
 const stateSchema = z.nativeEnum(IdentityState);
+const controllerRefSchema = z.object({
+  chainFamily: z.enum(["evm", "solana", "bitcoin"]),
+  networkId: z.union([z.string().min(1), z.number().int().nonnegative()]),
+  address: z.string().min(1),
+  normalizedAddress: z.string().min(1).optional(),
+  proofType: z.enum(["eip191", "solana_ed25519", "bitcoin_bip322", "bitcoin_legacy"]).optional(),
+  publicKeyHint: z.string().optional(),
+  didLikeId: z.string().optional(),
+  controllerVersion: z.string().optional(),
+});
 
 const registerTreeRequestSchema = z.object({
   rootIdentity: z.object({
     rootId: hex32Schema,
     identityId: hex32Schema,
-    controllerAddress: addressSchema,
+    controllerAddress: addressSchema.optional(),
+    legacyControllerAddress: addressSchema.optional(),
     didLikeId: z.string(),
-    chainId: z.number().int().positive(),
+    chainId: z.number().int().positive().optional(),
+    primaryControllerRef: controllerRefSchema.extend({
+      normalizedAddress: z.string().min(1),
+      proofType: z.enum(["eip191", "solana_ed25519", "bitcoin_bip322", "bitcoin_legacy"]),
+      didLikeId: z.string(),
+      controllerVersion: z.string(),
+    }),
+    subjectAggregateId: z.string().optional(),
+    schemaVersion: z.string().optional(),
     createdAt: z.string(),
     guardianSetRef: z.string().optional(),
     recoveryPolicySlotId: z.string().optional(),
@@ -96,15 +119,46 @@ const registerTreeRequestSchema = z.object({
 });
 
 const bindingChallengeSchema = z.object({
-  bindingType: z.enum(["root_controller", "sub_identity_link", "same_root_extension"]),
-  candidateAddress: addressSchema,
-  rootIdentityId: hex32Schema,
+  bindingType: z.enum(["root_controller", "sub_identity_link", "same_root_extension", "subject_aggregate_link"]),
+  controllerRef: controllerRefSchema.optional(),
+  candidateAddress: addressSchema.optional(),
+  rootIdentityId: hex32Schema.optional(),
   subIdentityId: hex32Schema.optional(),
+  subjectAggregateId: z.string().optional(),
+}).superRefine((value, ctx) => {
+  if (!value.controllerRef && !value.candidateAddress) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Either controllerRef or candidateAddress is required.",
+      path: ["controllerRef"],
+    });
+  }
+  if (value.bindingType === "sub_identity_link" && (!value.rootIdentityId || !value.subIdentityId)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "sub_identity_link requires both rootIdentityId and subIdentityId.",
+      path: ["subIdentityId"],
+    });
+  }
+  if (value.bindingType === "same_root_extension" && !value.rootIdentityId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "same_root_extension requires rootIdentityId.",
+      path: ["rootIdentityId"],
+    });
+  }
+  if (value.bindingType === "subject_aggregate_link" && !value.subjectAggregateId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "subject_aggregate_link requires subjectAggregateId.",
+      path: ["subjectAggregateId"],
+    });
+  }
 });
 
 const submitBindingSchema = z.object({
   challengeId: z.string().min(1),
-  candidateSignature: hexSchema,
+  candidateSignature: z.string().min(1),
   linkProof: z.object({
     proofType: z.literal("SUB_IDENTITY_LINK_V1"),
     rootIdentityId: hex32Schema,
@@ -120,8 +174,15 @@ const submitBindingSchema = z.object({
     commitment: hex32Schema,
   }).optional(),
   authorizerAddress: addressSchema.optional(),
-  authorizerSignature: hexSchema.optional(),
+  authorizerSignature: z.string().min(1).optional(),
   metadata: z.record(z.unknown()).optional(),
+});
+const createSubjectAggregateSchema = z.object({
+  subjectAggregateId: z.string().optional(),
+  actor: z.string().min(1).optional(),
+  evidenceRefs: z.array(z.string()).optional(),
+  auditBundleRef: z.string().optional(),
+  status: z.enum(["ACTIVE", "REVIEW_REQUIRED", "SUSPENDED"]).optional(),
 });
 
 const scanRequestSchema = z.object({
@@ -336,6 +397,22 @@ app.post("/bindings/challenge", async (req, res) => {
 app.post("/bindings", async (req, res) => {
   try { res.json(await submitBinding(submitBindingSchema.parse(req.body) as any)); }
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.post("/subject-aggregates", async (req, res) => {
+  try { res.json(await createSubjectAggregate(createSubjectAggregateSchema.parse(req.body ?? {}) as any)); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/subject-aggregates/:id", async (req, res) => {
+  try { res.json(await getSubjectAggregate(req.params.id)); }
+  catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/subject-aggregates/:id/roots", async (req, res) => {
+  try { res.json({ items: await listSubjectAggregateRoots(req.params.id) }); }
+  catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
+});
+app.get("/subject-aggregates/:id/controllers", async (req, res) => {
+  try { res.json({ items: await listSubjectAggregateControllers(req.params.id) }); }
+  catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
 });
 app.post("/scan/backfill", async (req, res) => {
   try { res.json(await backfillScan(scanRequestSchema.parse(req.body) as any)); }

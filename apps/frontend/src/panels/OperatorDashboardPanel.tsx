@@ -16,9 +16,14 @@ type Props = {
   watchScope: "identity" | "root";
   watchRecentBlocks: string;
   watchPollIntervalMs: string;
+  aggregateDraftId: string;
+  activeSubjectAggregateId: string;
   onBindRootController: () => void;
   onBindSelectedSubIdentity: () => void;
   onBindSameRootExtension: () => void;
+  onAggregateDraftIdChange: (value: string) => void;
+  onCreateSubjectAggregate: () => void;
+  onLinkCurrentRootToAggregate: () => void;
   onWatch: (action: "refresh" | "start" | "stop") => void;
   onApplySignal: (signalKey: "new_wallet_observation" | "negative_risk_flag" | "sanction_hit" | "governance_participation" | "good_standing") => void;
   onManualReleaseReasonCodeChange: (value: string) => void;
@@ -54,6 +59,19 @@ export function OperatorDashboardPanel(props: Props) {
             </button>
             <button disabled={!props.identityReady} onClick={props.onBindSameRootExtension} type="button">
               Create Same Root Extension
+            </button>
+          </div>
+          <label>
+            Subject Aggregate Id
+            <input value={props.aggregateDraftId} onChange={(event) => props.onAggregateDraftIdChange(event.target.value)} placeholder="0x..." />
+          </label>
+          <p className="hint">Active aggregate: {props.activeSubjectAggregateId || "Not linked"}</p>
+          <div className="actions">
+            <button disabled={!props.identityReady} onClick={props.onCreateSubjectAggregate} type="button">
+              Create Aggregate
+            </button>
+            <button disabled={!props.identityReady} onClick={props.onLinkCurrentRootToAggregate} type="button">
+              Link Root To Aggregate
             </button>
           </div>
           <label>

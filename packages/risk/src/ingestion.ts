@@ -39,6 +39,9 @@ function createBehaviorEvent(input: {
   evidenceRefs: string[];
   metadata?: Record<string, unknown>;
 }): BehaviorEvent {
+  if (!input.binding.address) {
+    throw new Error(`Behavior ingestion requires an address-bound binding: ${input.binding.bindingId}`);
+  }
   return {
     eventId: encodeEventId([input.txHash, input.binding.bindingId, input.kind, input.logIndex]),
     chainId: input.chainId,
@@ -83,7 +86,11 @@ export async function collectBehaviorEvents(input: {
   toBlock?: bigint;
 }): Promise<BehaviorEvent[]> {
   const toBlock = input.toBlock ?? (await input.publicClient.getBlockNumber());
-  const bindingMap = new Map(input.bindings.map((binding) => [binding.address.toLowerCase(), binding]));
+  const bindingMap = new Map(
+    input.bindings
+      .filter((binding) => Boolean(binding.address))
+      .map((binding) => [binding.address!.toLowerCase(), binding]),
+  );
   const events: BehaviorEvent[] = [];
 
   for (let blockNumber = input.fromBlock; blockNumber <= toBlock; blockNumber += 1n) {
@@ -102,7 +109,7 @@ export async function collectBehaviorEvents(input: {
 
       const receipt = await input.publicClient.getTransactionReceipt({ hash: transaction.hash });
       for (const binding of subjectBindings) {
-        const counterparty = binding.address.toLowerCase() === from.toLowerCase() ? to : from;
+        const counterparty = binding.address!.toLowerCase() === from.toLowerCase() ? to : from;
         const registryMatch = lookupRegistryAddress(counterparty);
         if (registryMatch) {
           events.push(
@@ -192,7 +199,7 @@ export async function collectBehaviorEvents(input: {
               value: isNft && log.topics[3] ? hexToBigInt(log.topics[3]) : log.data && log.data !== "0x" ? hexToBigInt(log.data) : 0n,
               from: logFrom,
               to: logTo,
-              counterparty: binding.address.toLowerCase() === logFrom.toLowerCase() ? logTo : logFrom,
+              counterparty: binding.address!.toLowerCase() === logFrom.toLowerCase() ? logTo : logFrom,
               evidenceRefs: [`tx:${transaction.hash}`, `log:${log.logIndex}`],
             }),
           );

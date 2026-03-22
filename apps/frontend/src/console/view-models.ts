@@ -49,6 +49,7 @@ export type PlatformOverviewViewModel = {
 export type IdentityDetailViewModel = {
   metrics: MetricItem[];
   credentialMetrics: MetricItem[];
+  aggregateMetrics: MetricItem[];
   notes: string[];
   jsonSections: JsonSection[];
 };
@@ -128,6 +129,7 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
   const recoveryProgress = selected.summary?.recoveryProgress;
   const propagation = selected.summary?.propagation;
   const operatorDashboard = selection.operatorDashboard;
+  const subjectAggregate = selection.riskContext?.subjectAggregate ?? null;
 
   return {
     overview: {
@@ -210,15 +212,27 @@ export function buildPlatformConsoleViewModels(selection: ConsoleSelection): Pla
         { label: "Payload ready", value: selection.payload ? "Yes" : "No" },
         { label: "Minted balance", value: selection.mintedBalance },
       ],
+      aggregateMetrics: [
+        { label: "Subject aggregate", value: subjectAggregate?.subjectAggregateId ?? "Not linked" },
+        { label: "Aggregate status", value: subjectAggregate?.status ?? "N/A" },
+        { label: "Linked roots", value: `${subjectAggregate?.linkedRootIds?.length ?? 0}` },
+        { label: "Linked controllers", value: `${subjectAggregate?.controllerSummary?.length ?? 0}` },
+        { label: "Binding graph version", value: `${subjectAggregate?.bindingGraphVersion ?? 0}` },
+        { label: "Aggregate bindings", value: `${subjectAggregate?.linkedBindings?.length ?? 0}` },
+      ],
       notes: [
         "Root identity stays unique and immutable.",
         "Sub identity scope is fixed after normalization and drives scenario isolation.",
         "Capability-first does not mean a permanent mode label; policy and credentials still matter.",
+        subjectAggregate
+          ? "Subject aggregate is a read-model and governance layer only; it does not replace the root/sub state hosts."
+          : "Subject aggregate remains optional and is created only through explicit controller binding.",
       ],
       jsonSections: [
         jsonSection("Root Identity", selection.rootIdentity, "Connect and sign to derive the root identity tree."),
         jsonSection("Selected Sub Identity", selection.selectedSubIdentity, "Choose a scenario identity to inspect its permissions."),
         jsonSection("Issued Credential Bundles", selection.bundles, "Issue a scenario credential to populate linked credential evidence."),
+        jsonSection("Subject Aggregate", subjectAggregate, "No subject aggregate has been linked to this root identity yet."),
       ],
     },
     stateConsequence: {

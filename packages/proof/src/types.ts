@@ -1,5 +1,6 @@
 import type { CredentialBundle } from "@web3id/credential";
-import type { Address } from "viem";
+import type { Address, Hex } from "viem";
+import type { ChainControllerRef } from "../../identity/src/types.js";
 import type { ProofDescriptor } from "./interfaces.js";
 
 export type ProofMode = "browser" | "node";
@@ -8,6 +9,9 @@ export type HolderBindingContext = {
   mode?: ProofMode;
   subjectAddress: Address;
   subjectBindingType?: "root" | "sub";
+  controllerRef?: ChainControllerRef;
+  rootIdentityId?: Hex;
+  subjectAggregateId?: string;
   artifactsBasePath?: string;
   wasmPath?: string;
   zkeyPath?: string;

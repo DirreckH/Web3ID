@@ -27,4 +27,8 @@ The repo still keeps `stage1 / stage2 / stage3 / platform`, but the recommended 
 - Boundary invariants: `tests/system/boundary-acceptance.test.ts`
 - Scenario baseline: `tests/system/scenario-acceptance.test.ts`
 - Reserved safety: `tests/system/reserved-safety-acceptance.test.ts`
+- Multichain roots: `tests/system/multi-chain-root-acceptance.test.ts`
+- Subject aggregate binding: `tests/system/subject-aggregate-binding-acceptance.test.ts`
+- Aggregate proof + policy: `tests/system/aggregate-proof-policy-acceptance.test.ts`
+- Aggregate audit: `tests/system/aggregate-audit-acceptance.test.ts`
 - Phase4 smoke: `pnpm test:phase4:smoke`

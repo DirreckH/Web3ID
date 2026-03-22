@@ -46,6 +46,9 @@ export const web3IdCredentialSchema = z.object({
   credentialType: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
   credentialTypeLabel: z.string(),
   subjectBinding: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+  rootBinding: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
+  subjectAggregateBinding: z.string().optional(),
+  subjectAggregateId: z.string().optional(),
   claimSet: z.record(z.unknown()),
   issueTime: z.string(),
   expiry: z.number().int().positive(),
@@ -300,6 +303,9 @@ export function createW3cCredentialView(credential: Web3IdCredential): W3cCreden
       holder: credential.holder,
       holderIdentityId: credential.holderIdentityId,
       subjectBinding: credential.subjectBinding,
+      rootBinding: credential.rootBinding,
+      subjectAggregateBinding: credential.subjectAggregateBinding,
+      subjectAggregateId: credential.subjectAggregateId,
       claimSet: credential.claimSet,
       policyHints: credential.policyHints,
     },
@@ -344,6 +350,9 @@ export function createCredentialBundle(input: {
   credentialType: Hex;
   credentialTypeLabel: string;
   subjectBinding: Hex;
+  rootBinding?: Hex;
+  subjectAggregateBinding?: string;
+  subjectAggregateId?: string;
   claimSet: Record<string, unknown>;
   issueTime?: string;
   expiry: number;
@@ -362,6 +371,9 @@ export function createCredentialBundle(input: {
     credentialType: pad(input.credentialType, { size: 32 }),
     credentialTypeLabel: input.credentialTypeLabel,
     subjectBinding: pad(input.subjectBinding, { size: 32 }),
+    rootBinding: input.rootBinding ? pad(input.rootBinding, { size: 32 }) : undefined,
+    subjectAggregateBinding: input.subjectAggregateBinding,
+    subjectAggregateId: input.subjectAggregateId,
     claimSet: input.claimSet,
     issueTime: input.issueTime ?? new Date().toISOString(),
     expiry: input.expiry,
