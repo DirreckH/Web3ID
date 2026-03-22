@@ -1,5 +1,6 @@
-import { base58, bech32, bech32m } from "@scure/base";
-import { getAddress, keccak256, stringToHex, type Address, type Hex } from "viem";
+import { keccak256, stringToHex, type Address, type Hex } from "viem";
+import { normalizeLegacyCandidateSignature, parseControllerProofEnvelope } from "./controller-proof-envelope.js";
+import { getControllerRegistryEntry, verifyControllerProof } from "./controller-registry.js";
 import {
   CONTROLLER_CHALLENGE_DOMAIN_TAG,
   CONTROLLER_CHALLENGE_VERSION,
@@ -8,8 +9,11 @@ import {
   ROOT_IDENTITY_SCHEMA_VERSION,
   type ChainControllerRef,
   type ChainControllerRefInput,
-  type ControllerBindingType,
+  type ControllerChallengeLike,
   type ControllerChallengeFields,
+  type ControllerProofEnvelope,
+  type ControllerVerificationResult,
+  type ControllerVerifierContext,
   type RootIdentity,
 } from "./types.js";
 
@@ -21,98 +25,20 @@ function normalizeNetworkId(networkId: number | string) {
   return normalized;
 }
 
-function assertBase58Address(input: string, expectedLength?: number) {
-  try {
-    const decoded = base58.decode(input);
-    if (expectedLength !== undefined && decoded.length !== expectedLength) {
-      throw new Error(`Expected ${expectedLength} bytes, received ${decoded.length}.`);
-    }
-  } catch (error) {
-    throw new Error(`Invalid base58 address: ${error instanceof Error ? error.message : "decode failed"}`);
-  }
-}
-
-function assertBitcoinAddress(input: string) {
-  if (/^(bc1|tb1|bcrt1)/i.test(input)) {
-    const lowered = input.toLowerCase();
-    try {
-      bech32.decode(lowered as `${string}1${string}`);
-      return lowered;
-    } catch {
-      try {
-        bech32m.decode(lowered as `${string}1${string}`);
-        return lowered;
-      } catch (error) {
-        throw new Error(`Invalid bech32 bitcoin address: ${error instanceof Error ? error.message : "decode failed"}`);
-      }
-    }
-  }
-
-  assertBase58Address(input);
-  return input;
-}
-
-function buildControllerDidLikeId(input: {
-  chainFamily: ChainControllerRef["chainFamily"];
-  networkId: string;
-  normalizedAddress: string;
-}) {
-  switch (input.chainFamily) {
-    case "evm":
-      return `did:pkh:eip155:${input.networkId}:${input.normalizedAddress}`;
-    case "solana":
-      return `did:pkh:solana:${input.networkId}:${input.normalizedAddress}`;
-    case "bitcoin":
-      return `did:pkh:bitcoin:${input.networkId}:${input.normalizedAddress}`;
-  }
-}
-
 export function normalizeControllerRef(input: ChainControllerRefInput): ChainControllerRef {
   const chainFamily = input.chainFamily;
-  const networkId = normalizeNetworkId(input.networkId);
-  const address = input.address.trim();
-  if (!address) {
-    throw new Error("Controller address is required.");
-  }
-
-  if (chainFamily === "evm") {
-    const normalizedAddress = getAddress(address);
-    return {
-      chainFamily,
-      networkId,
-      address,
-      normalizedAddress,
-      proofType: input.proofType ?? "eip191",
-      publicKeyHint: input.publicKeyHint,
-      didLikeId: input.didLikeId ?? buildControllerDidLikeId({ chainFamily, networkId, normalizedAddress }),
-      controllerVersion: input.controllerVersion ?? CONTROLLER_REF_VERSION,
-    };
-  }
-
-  if (chainFamily === "solana") {
-    assertBase58Address(address, 32);
-    return {
-      chainFamily,
-      networkId,
-      address,
-      normalizedAddress: address,
-      proofType: input.proofType ?? "solana_ed25519",
-      publicKeyHint: input.publicKeyHint,
-      didLikeId: input.didLikeId ?? buildControllerDidLikeId({ chainFamily, networkId, normalizedAddress: address }),
-      controllerVersion: input.controllerVersion ?? CONTROLLER_REF_VERSION,
-    };
-  }
-
-  const normalizedAddress = assertBitcoinAddress(address);
-  return {
-    chainFamily,
-    networkId,
-    address,
-    normalizedAddress,
-    proofType: input.proofType ?? "bitcoin_bip322",
-    publicKeyHint: input.publicKeyHint,
-    didLikeId: input.didLikeId ?? buildControllerDidLikeId({ chainFamily, networkId, normalizedAddress }),
+  const registryEntry = getControllerRegistryEntry(chainFamily);
+  const normalizedInput: ChainControllerRefInput = {
+    ...input,
+    networkId: normalizeNetworkId(input.networkId),
+    address: input.address.trim(),
     controllerVersion: input.controllerVersion ?? CONTROLLER_REF_VERSION,
+  };
+  const normalized = registryEntry.normalizeControllerRef(normalizedInput);
+  return {
+    ...normalized,
+    capabilityFlags: normalized.capabilityFlags ?? registryEntry.capabilityFlags,
+    didLikeId: normalized.didLikeId || registryEntry.buildDidLikeId(normalized),
   };
 }
 
@@ -154,7 +80,7 @@ export function deriveRootIdentityFromControllerRef(
 }
 
 export function buildControllerChallengeReplayScope(input: {
-  bindingType: ControllerBindingType;
+  bindingType: ControllerChallengeFields["bindingType"];
   controllerRef: Pick<ChainControllerRef, "chainFamily" | "networkId" | "normalizedAddress">;
   rootIdentityId?: string | null;
   subjectAggregateId?: string | null;
@@ -171,7 +97,7 @@ export function buildControllerChallengeReplayScope(input: {
 }
 
 export function buildControllerChallengeFields(input: {
-  bindingType: ControllerBindingType;
+  bindingType: ControllerChallengeFields["bindingType"];
   controllerRef: ChainControllerRef;
   nonce: string;
   issuedAt: string;
@@ -197,20 +123,55 @@ export function buildControllerChallengeFields(input: {
 }
 
 export function buildControllerChallengeMessage(fields: ControllerChallengeFields) {
-  return [
-    "Web3ID Controller Challenge",
-    `domainTag: ${fields.domainTag}`,
-    `challengeVersion: ${fields.challengeVersion}`,
-    `bindingType: ${fields.bindingType}`,
-    `chainFamily: ${fields.chainFamily}`,
-    `networkId: ${fields.networkId}`,
-    `normalizedAddress: ${fields.normalizedAddress}`,
-    `proofType: ${fields.proofType}`,
-    `rootIdentityId: ${fields.rootIdentityId}`,
-    `subjectAggregateId: ${fields.subjectAggregateId}`,
-    `nonce: ${fields.nonce}`,
-    `issuedAt: ${fields.issuedAt}`,
-    `expiresAt: ${fields.expiresAt}`,
-    `replayScope: ${fields.replayScope}`,
-  ].join("\n");
+  return getControllerRegistryEntry(fields.chainFamily).buildChallengeMessage(fields);
+}
+
+export async function verifyControllerChallenge(input: {
+  challenge: ControllerChallengeLike;
+  candidateSignature?: string;
+  candidateProof?: ControllerProofEnvelope | unknown;
+  consumedReplayKeys?: Set<string>;
+  context?: ControllerVerifierContext;
+}): Promise<ControllerVerificationResult> {
+  if (Date.parse(input.challenge.expiresAt) < Date.now()) {
+    throw new Error("Binding challenge expired.");
+  }
+  if (input.challenge.replayKey && input.consumedReplayKeys?.has(input.challenge.replayKey)) {
+    throw new Error("Binding challenge replay detected.");
+  }
+
+  const proofEnvelope = input.candidateProof
+    ? parseControllerProofEnvelope(input.candidateProof)
+    : input.candidateSignature
+      ? normalizeLegacyCandidateSignature(input.challenge.controllerRef, input.candidateSignature)
+      : undefined;
+  if (!proofEnvelope) {
+    throw new Error("Binding challenge verification requires candidateProof or candidateSignature.");
+  }
+
+  const verification = await verifyControllerProof({
+    challenge: input.challenge,
+    proofEnvelope,
+    context: input.context,
+  });
+  const proofHash = keccak256(
+    stringToHex([
+      verification.proofEnvelope.proofType,
+      input.challenge.challengeHash,
+      verification.proofEnvelope.signature,
+    ].join(":")),
+  );
+
+  return {
+    ...verification,
+    challengeDigest: input.challenge.challengeHash,
+    proofHash,
+    derivedRootIdentity: deriveRootIdentityFromControllerRef(input.challenge.controllerRef),
+    evidenceRefs: [
+      `challenge:${input.challenge.challengeHash}`,
+      ...(input.challenge.replayKey ? [`replay:${input.challenge.replayKey}`] : []),
+      ...verification.evidenceRefs,
+      `proof:${proofHash}`,
+    ],
+  };
 }

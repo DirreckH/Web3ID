@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearRecoveryHooksForTests,
+  controllerProofEnvelopeSchema,
   createRecoveryIntent,
   deriveRootIdentity,
   deriveSubIdentity,
@@ -13,6 +14,7 @@ import {
 import { IdentityState, createExplanationBlock } from "@web3id/state";
 import {
   buildCrossChainStateMessage,
+  buildControllerChallenge,
   buildStateSnapshot,
   buildEnterpriseAuditRequestHash,
   buildEnterprisePaymentRequestHash,
@@ -23,8 +25,12 @@ import {
   getProofCapabilities,
   getProofDescriptor,
   getRecoveryHooksSnapshot,
+  listSupportedChainFamilies,
+  listSupportedEvmNetworks,
+  parseControllerProofEnvelope,
   policyIds,
   resolveEffectiveMode,
+  resolveEvmNetworkPreset,
   supportsPolicy,
 } from "./index.js";
 
@@ -142,6 +148,46 @@ describe("sdk helpers", () => {
     expect(preflight.allowed).toBe(false);
     expect(preflight.source).toBe("consequence");
     expect(preflight.blockingConsequences).toHaveLength(1);
+  });
+
+  it("reuses the shared proof envelope schema and exposes supported mainstream networks", () => {
+    const envelope = parseControllerProofEnvelope({
+      proofEnvelopeVersion: "1",
+      proofType: "aptos_sign_message",
+      signature: "0x1234",
+      publicKey: "0xabcd",
+      fullMessage: "full-message",
+      proofPayload: {
+        address: "0x01",
+        application: "web3id",
+        chainId: 1,
+        nonce: "nonce-1",
+        message: "challenge",
+      },
+    });
+
+    expect(controllerProofEnvelopeSchema.parse(envelope).proofType).toBe("aptos_sign_message");
+    expect(listSupportedChainFamilies()).toContain("tron");
+    expect(listSupportedEvmNetworks().map((item) => item.networkRef)).toContain("eip155:8453");
+    expect(resolveEvmNetworkPreset(42161)?.label).toBe("Arbitrum One");
+  });
+
+  it("builds canonical controller challenges through the SDK entrypoint", () => {
+    const challenge = buildControllerChallenge({
+      bindingType: "subject_aggregate_link",
+      controllerRef: {
+        chainFamily: "tron",
+        networkId: "mainnet",
+        address: "0x41b3fd7ef7d3c0d7e6db4b297927651c01fb9b31c4",
+      },
+      nonce: "nonce-1",
+      issuedAt: "2030-03-22T00:00:00.000Z",
+      expiresAt: "2030-03-22T00:10:00.000Z",
+      subjectAggregateId: "subject-1",
+    });
+
+    expect(challenge.message).toContain("Web3ID Controller Challenge");
+    expect(challenge.networkRef).toBe("tron:mainnet");
   });
 
   it("builds state snapshots from analyzer risk-context while preferring structured state facts", async () => {

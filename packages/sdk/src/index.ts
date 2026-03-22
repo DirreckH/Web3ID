@@ -8,17 +8,31 @@ import {
   type HolderAuthorizationPayload,
 } from "@web3id/credential";
 import {
+  buildControllerChallengeFields,
+  buildControllerChallengeMessage,
+  controllerProofEnvelopeSchema,
   deriveRootIdentity,
+  getControllerRegistryEntry,
   getRecoveryPolicySlot,
   listRecoveryGuardians,
   listRecoveryIntents,
+  listSupportedChainFamilies as listIdentityChainFamilies,
+  listSupportedEvmNetworks as listIdentityEvmNetworks,
+  listSupportedNetworks as listIdentityNetworks,
   getIdentityCapabilities as getResolvedIdentityCapabilities,
   getPreferredMode as getResolvedPreferredMode,
+  normalizeLegacyCandidateSignature,
   normalizeControllerRef,
+  parseControllerProofEnvelope,
+  resolveEvmNetworkPreset as resolveIdentityEvmNetworkPreset,
   resolveEffectiveMode as resolveIdentityEffectiveMode,
   supportsPolicy as resolveIdentityPolicySupport,
+  verifyControllerChallenge as verifyIdentityControllerChallenge,
   type ChainControllerRef,
   type ChainControllerRefInput,
+  type ControllerChallengeLike,
+  type ControllerProofEnvelope,
+  type ControllerVerifierContext,
   type GuardianMetadata,
   type RecoveryCase,
   type RecoveryIntent,
@@ -57,8 +71,20 @@ import {
 } from "@web3id/state";
 import { createWalletClient, custom, encodePacked, keccak256, type Address, type Hex, type PublicClient } from "viem";
 export * from "./system-model.js";
-export { deriveRootIdentity, normalizeControllerRef } from "@web3id/identity";
-export type { ChainControllerRef, ChainControllerRefInput, SubjectAggregate } from "@web3id/identity";
+export {
+  controllerProofEnvelopeSchema,
+  deriveRootIdentity,
+  normalizeControllerRef,
+  parseControllerProofEnvelope,
+  normalizeLegacyCandidateSignature,
+} from "@web3id/identity";
+export type {
+  ChainControllerRef,
+  ChainControllerRefInput,
+  ControllerProofEnvelope,
+  ControllerVerifierContext,
+  SubjectAggregate,
+} from "@web3id/identity";
 
 export type ZkProofInput = {
   proofPoints: [
@@ -351,6 +377,59 @@ export const policyRegistryAbi = [
     ],
   },
 ] as const;
+
+export function listSupportedChainFamilies() {
+  return listIdentityChainFamilies();
+}
+
+export function listSupportedNetworks(family: ChainControllerRef["chainFamily"]) {
+  return listIdentityNetworks(family);
+}
+
+export function listSupportedEvmNetworks() {
+  return listIdentityEvmNetworks();
+}
+
+export function resolveEvmNetworkPreset(networkId: number | string) {
+  return resolveIdentityEvmNetworkPreset(networkId);
+}
+
+export function buildControllerChallenge(input: {
+  bindingType: "root_controller" | "sub_identity_link" | "same_root_extension" | "subject_aggregate_link";
+  controllerRef: ChainControllerRef | ChainControllerRefInput;
+  nonce: string;
+  issuedAt: string;
+  expiresAt: string;
+  rootIdentityId?: string | null;
+  subjectAggregateId?: string | null;
+}) {
+  const controllerRef = normalizeControllerRef(input.controllerRef);
+  const fields = buildControllerChallengeFields({
+    bindingType: input.bindingType,
+    controllerRef,
+    nonce: input.nonce,
+    issuedAt: input.issuedAt,
+    expiresAt: input.expiresAt,
+    rootIdentityId: input.rootIdentityId,
+    subjectAggregateId: input.subjectAggregateId,
+  });
+  return {
+    controllerRef,
+    fields,
+    message: buildControllerChallengeMessage(fields),
+    networkRef: getControllerRegistryEntry(controllerRef.chainFamily).networkRef(controllerRef.networkId),
+  };
+}
+
+export async function verifyControllerChallenge(input: {
+  challenge: ControllerChallengeLike;
+  candidateSignature?: string;
+  candidateProof?: ControllerProofEnvelope | unknown;
+  consumedReplayKeys?: Set<string>;
+  context?: ControllerVerifierContext;
+}) {
+  return verifyIdentityControllerChallenge(input);
+}
 
 export function getIdentityCapabilities(identity: IdentityLike, bundles: CredentialBundle[] = []) {
   return getResolvedIdentityCapabilities(identity, {
@@ -649,7 +728,8 @@ export async function createAnalyzerBindingChallenge(apiUrl: string, input: {
 
 export async function submitAnalyzerBinding(apiUrl: string, input: {
   challengeId: string;
-  candidateSignature: string;
+  candidateSignature?: string;
+  candidateProof?: ControllerProofEnvelope;
   linkProof?: unknown;
   sameRootProof?: unknown;
   authorizerAddress?: Address;
@@ -657,6 +737,50 @@ export async function submitAnalyzerBinding(apiUrl: string, input: {
   metadata?: Record<string, unknown>;
 }) {
   return postJson(apiUrl, "/bindings", input, "Analyzer service");
+}
+
+export async function registerControllerRoot(apiUrl: string, input: {
+  controllerRef: ChainControllerRef | ChainControllerRefInput;
+  candidateSignature?: string;
+  candidateProof?: ControllerProofEnvelope;
+}) {
+  const controllerRef = normalizeControllerRef(input.controllerRef);
+  const rootIdentity = deriveRootIdentity(controllerRef);
+  await registerAnalyzerIdentityTree(apiUrl, { rootIdentity, subIdentities: [] });
+  const challenge = await createAnalyzerBindingChallenge(apiUrl, {
+    bindingType: "root_controller",
+    controllerRef,
+    rootIdentityId: rootIdentity.identityId,
+  });
+  const binding = await submitAnalyzerBinding(apiUrl, {
+    challengeId: challenge.challengeId,
+    candidateSignature: input.candidateSignature,
+    candidateProof: input.candidateProof,
+  });
+  return { controllerRef, rootIdentity, challenge, binding };
+}
+
+export async function linkRootToAggregate(apiUrl: string, input: {
+  subjectAggregateId: string;
+  controllerRef: ChainControllerRef | ChainControllerRefInput;
+  rootIdentityId?: Hex;
+  candidateSignature?: string;
+  candidateProof?: ControllerProofEnvelope;
+}) {
+  const controllerRef = normalizeControllerRef(input.controllerRef);
+  const rootIdentity = input.rootIdentityId ? null : deriveRootIdentity(controllerRef);
+  const challenge = await createAnalyzerBindingChallenge(apiUrl, {
+    bindingType: "subject_aggregate_link",
+    controllerRef,
+    rootIdentityId: input.rootIdentityId,
+    subjectAggregateId: input.subjectAggregateId,
+  });
+  const binding = await submitAnalyzerBinding(apiUrl, {
+    challengeId: challenge.challengeId,
+    candidateSignature: input.candidateSignature,
+    candidateProof: input.candidateProof,
+  });
+  return { controllerRef, rootIdentity, challenge, binding };
 }
 
 export async function createSubjectAggregate(apiUrl: string, input: {

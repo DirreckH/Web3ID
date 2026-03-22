@@ -9,7 +9,13 @@ import type {
   StateTransitionDecision,
   VersionEnvelope,
 } from "../../state/src/index.js";
-import type { ChainControllerRef, ControllerBindingType, ControllerChallengeFields } from "../../identity/src/index.js";
+import type {
+  ChainControllerRef,
+  ControllerBindingType,
+  ControllerChallengeFields,
+  ControllerProofEnvelope,
+  ControllerProofEnvelopeSummary,
+} from "../../identity/src/index.js";
 
 export type BehaviorKind =
   | "native_transfer"
@@ -89,6 +95,13 @@ export type BehaviorBinding = {
   bindingHash: Hex;
   challengeHash?: Hex;
   proofHash?: Hex;
+  proofEnvelopeVersion?: string;
+  proofEnvelope?: ControllerProofEnvelope;
+  proofEnvelopeSummary?: ControllerProofEnvelopeSummary;
+  verifierKind?: string;
+  verifierVersion?: string;
+  challengeDigest?: Hex;
+  usedFallbackResolver?: boolean;
   metadata?: Record<string, unknown>;
 };
 

@@ -28,6 +28,8 @@ The frontend console keeps these scenarios on one system baseline, so stored sta
 - `docs/VERSIONING_AND_REPLAY.md`
 - `docs/RUNTIME_AND_INTEGRATION.md`
 - `docs/MULTICHAIN_SUBJECT_AGGREGATE.md`
+- `docs/MAINSTREAM_CHAIN_EXPANSION.md`
+- `docs/CHAIN_FAMILY_MATRIX.md`
 
 ## Quick Start
 
@@ -53,6 +55,8 @@ pnpm proof:smoke
 pnpm test:integration
 pnpm test:system:smoke
 pnpm test:system:multichain
+pnpm test:system:mainstream:smoke
+pnpm test:system:mainstream
 pnpm test:system
 pnpm test:phase4:smoke
 pnpm test:phase4
@@ -68,6 +72,7 @@ pnpm demo:platform
 - Recovery is now a governed closed loop with `case -> evidence -> approval -> decision -> execution -> outcome`.
 - Cross-chain messages are attested, versioned, replay-protected local hints, not a parallel state source.
 - Multichain controller refs and subject aggregates now support explicit multi-root subject grouping without replacing root/sub state hosts.
+- Mainstream backend/SDK expansion now covers registry-based EVM presets plus TRON, TON, Cosmos, Aptos, and Sui through one proof-envelope and verifier pipeline.
 - Proof descriptors now support disclosure profiles while keeping legacy verify semantics intact.
 - Replay and diff are read-only, explanation-first, and never become a new fact writer.
 - Break-glass is limited to `queue_unblock`, `temporary_release`, and `consequence_rollback`.
@@ -81,3 +86,4 @@ pnpm demo:platform
 - PolicyDecisionRecord is an action-level audit snapshot, not a state source.
 - AI suggestion is never the final decision maker.
 - Cross-chain, recovery, and proof privacy extensions remain controlled, additive, and guardrailed.
+- Mainstream chain verification remains offline-first for merge gates and never depends on public RPC availability.

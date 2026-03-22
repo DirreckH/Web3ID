@@ -1,8 +1,10 @@
 import cors from "cors";
-import express from "express";
+import express, { type Express } from "express";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { getAddress, type Hex } from "viem";
 import { analyzerConfig } from "./config.js";
+import { controllerProofEnvelopeSchema } from "../../../packages/identity/src/index.js";
 import {
   applyManualListAction,
   applyManualRelease,
@@ -52,13 +54,43 @@ const hexSchema = z.string().regex(/^0x[0-9a-fA-F]+$/);
 const hex32Schema = z.string().regex(/^0x[0-9a-fA-F]{64}$/);
 const addressSchema = z.string().regex(/^0x[0-9a-fA-F]{40}$/).transform((value) => getAddress(value));
 const stateSchema = z.nativeEnum(IdentityState);
-const controllerRefSchema = z.object({
-  chainFamily: z.enum(["evm", "solana", "bitcoin"]),
+const chainFamilySchema = z.enum(["evm", "solana", "bitcoin", "tron", "ton", "cosmos", "aptos", "sui"]);
+const controllerProofTypeSchema = z.enum([
+  "eip191",
+  "solana_ed25519",
+  "bitcoin_bip322",
+  "bitcoin_legacy",
+  "tron_signed_message_v2",
+  "ton_proof_v2",
+  "cosmos_adr036_direct",
+  "cosmos_adr036_legacy_amino",
+  "aptos_sign_message",
+  "aptos_siwa",
+  "sui_personal_message_ed25519",
+  "sui_personal_message_secp256k1",
+  "sui_personal_message_secp256r1",
+]);
+export const controllerRefSchema = z.object({
+  chainFamily: chainFamilySchema,
   networkId: z.union([z.string().min(1), z.number().int().nonnegative()]),
   address: z.string().min(1),
   normalizedAddress: z.string().min(1).optional(),
-  proofType: z.enum(["eip191", "solana_ed25519", "bitcoin_bip322", "bitcoin_legacy"]).optional(),
+  proofType: controllerProofTypeSchema.optional(),
   publicKeyHint: z.string().optional(),
+  chainNamespace: z.string().optional(),
+  bech32Prefix: z.string().optional(),
+  chainId: z.union([z.number().int().nonnegative(), z.string().min(1)]).optional(),
+  walletStateInit: z.string().optional(),
+  workchain: z.number().int().optional(),
+  signatureScheme: z.enum(["ed25519", "secp256k1", "secp256r1"]).optional(),
+  capabilityFlags: z.object({
+    supportsAddressRecovery: z.boolean(),
+    requiresPublicKeyHint: z.boolean(),
+    supportsOfflineVerification: z.boolean(),
+    supportsRpcFallback: z.boolean(),
+    supportsStructuredProofPayload: z.boolean(),
+    reservedMultiSig: z.boolean(),
+  }).optional(),
   didLikeId: z.string().optional(),
   controllerVersion: z.string().optional(),
 });
@@ -73,7 +105,7 @@ const registerTreeRequestSchema = z.object({
     chainId: z.number().int().positive().optional(),
     primaryControllerRef: controllerRefSchema.extend({
       normalizedAddress: z.string().min(1),
-      proofType: z.enum(["eip191", "solana_ed25519", "bitcoin_bip322", "bitcoin_legacy"]),
+      proofType: controllerProofTypeSchema,
       didLikeId: z.string(),
       controllerVersion: z.string(),
     }),
@@ -118,7 +150,7 @@ const registerTreeRequestSchema = z.object({
   })),
 });
 
-const bindingChallengeSchema = z.object({
+export const bindingChallengeSchema = z.object({
   bindingType: z.enum(["root_controller", "sub_identity_link", "same_root_extension", "subject_aggregate_link"]),
   controllerRef: controllerRefSchema.optional(),
   candidateAddress: addressSchema.optional(),
@@ -156,9 +188,10 @@ const bindingChallengeSchema = z.object({
   }
 });
 
-const submitBindingSchema = z.object({
+export const submitBindingSchema = z.object({
   challengeId: z.string().min(1),
-  candidateSignature: z.string().min(1),
+  candidateSignature: z.string().min(1).optional(),
+  candidateProof: controllerProofEnvelopeSchema.optional(),
   linkProof: z.object({
     proofType: z.literal("SUB_IDENTITY_LINK_V1"),
     rootIdentityId: hex32Schema,
@@ -176,6 +209,14 @@ const submitBindingSchema = z.object({
   authorizerAddress: addressSchema.optional(),
   authorizerSignature: z.string().min(1).optional(),
   metadata: z.record(z.unknown()).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.candidateSignature && !value.candidateProof) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Either candidateSignature or candidateProof is required.",
+      path: ["candidateSignature"],
+    });
+  }
 });
 const createSubjectAggregateSchema = z.object({
   subjectAggregateId: z.string().optional(),
@@ -377,7 +418,7 @@ const diffSchema = z.object({
   to: z.string(),
 });
 
-const app = express();
+export const app: Express = express();
 app.set("json replacer", (_key: string, value: unknown) => (typeof value === "bigint" ? value.toString() : value));
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
@@ -586,11 +627,20 @@ app.post("/policy-decisions", async (req, res) => {
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Unknown analyzer error" }); }
 });
 
-app.listen(analyzerConfig.port, () => {
-  console.log(`Web3ID analyzer service listening on http://127.0.0.1:${analyzerConfig.port}`);
-});
+export async function startAnalyzerServer() {
+  const server = app.listen(analyzerConfig.port, () => {
+    console.log(`Web3ID analyzer service listening on http://127.0.0.1:${analyzerConfig.port}`);
+  });
 
-void initializeAnalyzerWatchers().catch((error) => {
-  console.error("Failed to initialize analyzer watchers", error);
-});
+  await initializeAnalyzerWatchers().catch((error) => {
+    console.error("Failed to initialize analyzer watchers", error);
+  });
+
+  return server;
+}
+
+const entrypoint = process.argv[1] ? pathToFileURL(process.argv[1]).href : undefined;
+if (entrypoint && import.meta.url === entrypoint) {
+  void startAnalyzerServer();
+}
 

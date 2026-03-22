@@ -1,47 +1,18 @@
-name: CI
+name: Mainstream Full Suites
 
 permissions: {}
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *"
 
 env:
   FOUNDRY_PROFILE: ci
 
 jobs:
-  check:
-    name: Foundry project
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: contracts
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-          submodules: recursive
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-
-      - name: Show Forge version
-        run: forge --version
-
-      - name: Run Forge fmt
-        run: forge fmt --check
-
-      - name: Run Forge build
-        run: forge build --sizes
-
-      - name: Run Forge tests
-        run: forge test -vvv
-
-  node-platform:
-    name: Node platform checks
+  node-platform-full:
+    name: Node full suites
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -76,8 +47,11 @@ jobs:
       - name: Integration suite
         run: pnpm test:integration
 
-      - name: System acceptance suite (includes mainstream smoke)
+      - name: System suite
         run: pnpm test:system
 
-      - name: Phase4 smoke suite
-        run: pnpm test:phase4:smoke
+      - name: Mainstream full suite
+        run: pnpm test:system:mainstream
+
+      - name: Phase4 full suite
+        run: pnpm test:phase4

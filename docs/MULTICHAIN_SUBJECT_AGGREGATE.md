@@ -60,6 +60,37 @@ Replay rules:
 - previously consumed `replayScope + nonce` is rejected
 - aggregate-link and root-controller challenges cannot share replay scope when target aggregate or target root differs
 
+## Mainstream Backend Expansion
+
+The multichain baseline now uses a registry-backed controller core and a versioned proof envelope so new families can join the same verifier and audit pipeline without changing aggregate semantics.
+
+Added controller families:
+
+- `tron`
+- `ton`
+- `cosmos`
+- `aptos`
+- `sui`
+
+Added EVM presets:
+
+- `eip155:1`
+- `eip155:42161`
+- `eip155:8453`
+- `eip155:10`
+
+Guardrails that remain fixed:
+
+- aggregate binding still reuses the same challenge, replay, proof, and audit path
+- new family support does not promote `SubjectAggregate` into a state source
+- analyzer and SDK share one proof-envelope schema module
+- merge-gate acceptance stays offline-first and does not depend on live RPC
+
+See:
+
+- `docs/MAINSTREAM_CHAIN_EXPANSION.md`
+- `docs/CHAIN_FAMILY_MATRIX.md`
+
 ## Non-goals
 
 - No silent merge

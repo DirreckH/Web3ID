@@ -82,3 +82,26 @@ Web3ID is maintained as one system baseline across `identity / credential / proo
 - `SubjectAggregate` is never a formal state host.
 - `RootIdentity` and `SubIdentity` remain the only formal hosts for stored state, effective state, consequence, and replay facts.
 - Cross-chain inputs stay hint-only and cannot auto-bind identities or mutate formal state.
+
+## Controller Registry And Proof Envelope
+
+Mainstream chain expansion is implemented as additive identity-layer infrastructure:
+
+- `controller-registry`
+  - family and network presets
+  - address normalization
+  - did-like namespace rules
+  - verifier kind/version
+- `controller-proof-envelope`
+  - versioned proof schemas
+  - one shared parser for SDK and analyzer
+  - legacy `candidateSignature` normalization into the same verifier path
+
+This keeps `RootIdentity` stable while allowing new controller families to flow through the same challenge, binding, aggregate, and audit system.
+
+## Mainstream Expansion Gates
+
+- Smoke merge gate: `pnpm test:system:mainstream:smoke`
+- Full offline suite: `pnpm test:system:mainstream`
+- Existing `pnpm test:system` now includes mainstream smoke coverage
+- New mainstream acceptance remains backend/SDK/analyzer-only and does not require wallet UI

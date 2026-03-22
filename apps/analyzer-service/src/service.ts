@@ -53,7 +53,9 @@ import {
   SubIdentityType,
   SUBJECT_AGGREGATE_SCHEMA_VERSION,
   createVersionEnvelope,
+  getControllerRegistryEntry,
   normalizeControllerRef,
+  type ControllerProofEnvelope,
   type BreakGlassAction,
   type ChainControllerRef,
   type RecoveryAction,
@@ -146,7 +148,8 @@ export type CreateSubjectAggregateInput = {
 };
 export type SubmitBindingInput = {
   challengeId: string;
-  candidateSignature: string;
+  candidateSignature?: string;
+  candidateProof?: ControllerProofEnvelope;
   linkProof?: SubIdentityLinkProof;
   sameRootProof?: SameRootProof;
   authorizerAddress?: Address;
@@ -1493,6 +1496,11 @@ export async function createBindingChallengeRecord(input: {
         controllerRef: challenge.controllerRef,
         subjectAggregateId: input.subjectAggregateId,
         replayKey: challenge.replayKey,
+        chainFamily: challenge.controllerRef.chainFamily,
+        networkId: challenge.controllerRef.networkId,
+        proofType: challenge.controllerRef.proofType,
+        challengeDigest: challenge.challengeHash,
+        networkRef: getControllerRegistryEntry(challenge.controllerRef.chainFamily).networkRef(challenge.controllerRef.networkId),
       },
     }),
   );
@@ -1509,6 +1517,7 @@ export async function submitBinding(input: SubmitBindingInput) {
   const verification = await verifyBindingSubmission({
     challenge,
     candidateSignature: input.candidateSignature,
+    candidateProof: input.candidateProof,
     rootIdentity: rootContainer?.rootIdentity,
     subIdentity: subRecord?.subIdentity,
     linkProof: input.linkProof,
@@ -1560,6 +1569,13 @@ export async function submitBinding(input: SubmitBindingInput) {
     bindingHash: verification.bindingHash,
     challengeHash: challenge.challengeHash,
     proofHash: verification.proofHash,
+    proofEnvelopeVersion: verification.proofEnvelopeVersion,
+    proofEnvelope: verification.proofEnvelope,
+    proofEnvelopeSummary: verification.proofEnvelopeSummary,
+    verifierKind: verification.verifierKind,
+    verifierVersion: verification.verifierVersion,
+    challengeDigest: verification.challengeDigest,
+    usedFallbackResolver: verification.usedFallbackResolver,
     metadata: input.metadata,
   };
   store.bindings[binding.bindingId] = binding;
@@ -1601,6 +1617,17 @@ export async function submitBinding(input: SubmitBindingInput) {
         subjectAggregateId: binding.subjectAggregateId,
         controllerRef: binding.controllerRef,
         challengeFields: challenge.challengeFields,
+        chainFamily: binding.controllerRef.chainFamily,
+        networkId: binding.controllerRef.networkId,
+        proofType: binding.controllerRef.proofType,
+        proofEnvelopeVersion: binding.proofEnvelopeVersion,
+        verifierKind: binding.verifierKind,
+        verifierVersion: binding.verifierVersion,
+        challengeDigest: binding.challengeDigest,
+        networkRef: getControllerRegistryEntry(binding.controllerRef.chainFamily).networkRef(binding.controllerRef.networkId),
+        signatureScheme: binding.proofEnvelopeSummary?.signatureScheme,
+        usedFallbackResolver: binding.usedFallbackResolver,
+        proofEnvelopeSummary: binding.proofEnvelopeSummary,
       },
     }),
   );

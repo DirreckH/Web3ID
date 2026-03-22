@@ -339,8 +339,7 @@ export async function loadStore(): Promise<AnalyzerStore> {
       throw new Error(`Failed to load analyzer store at ${analyzerConfig.dataFile}.`);
     }
   }
-
-  return createEmptyStore();
+  throw new Error(`Failed to load analyzer store at ${analyzerConfig.dataFile}: malformed JSON persisted after ${STORE_READ_RETRIES + 1} read attempts.`);
 }
 
 export async function saveStore(store: AnalyzerStore) {

@@ -6,6 +6,7 @@ export const SUBJECT_AGGREGATE_SCHEMA_VERSION = "1.0";
 export const CONTROLLER_REF_VERSION = "1";
 export const CONTROLLER_CHALLENGE_DOMAIN_TAG = "web3id.controller.challenge.v1";
 export const CONTROLLER_CHALLENGE_VERSION = "1";
+export const CONTROLLER_PROOF_ENVELOPE_VERSION = "1";
 
 export enum IdentityMode {
   DEFAULT_BEHAVIOR_MODE = "DEFAULT_BEHAVIOR_MODE",
@@ -62,12 +63,21 @@ export type IdentityCapabilities = {
   preferredMode: IdentityMode;
 };
 
-export type ChainFamily = "evm" | "solana" | "bitcoin";
+export type ChainFamily = "evm" | "solana" | "bitcoin" | "tron" | "ton" | "cosmos" | "aptos" | "sui";
 export type ControllerProofType =
   | "eip191"
   | "solana_ed25519"
   | "bitcoin_bip322"
-  | "bitcoin_legacy";
+  | "bitcoin_legacy"
+  | "tron_signed_message_v2"
+  | "ton_proof_v2"
+  | "cosmos_adr036_direct"
+  | "cosmos_adr036_legacy_amino"
+  | "aptos_sign_message"
+  | "aptos_siwa"
+  | "sui_personal_message_ed25519"
+  | "sui_personal_message_secp256k1"
+  | "sui_personal_message_secp256r1";
 export type ControllerBindingType =
   | "root_controller"
   | "sub_identity_link"
@@ -75,6 +85,48 @@ export type ControllerBindingType =
   | "subject_aggregate_link";
 export type SubjectAggregateStatus = "ACTIVE" | "REVIEW_REQUIRED" | "SUSPENDED";
 export type SubjectAggregateBindingStatus = "ACTIVE" | "REVOKED" | "EXPIRED";
+export type ControllerSignatureScheme = "ed25519" | "secp256k1" | "secp256r1";
+export type ControllerCapabilityFlags = {
+  supportsAddressRecovery: boolean;
+  requiresPublicKeyHint: boolean;
+  supportsOfflineVerification: boolean;
+  supportsRpcFallback: boolean;
+  supportsStructuredProofPayload: boolean;
+  reservedMultiSig: boolean;
+};
+
+export type TonProofPayload = {
+  domain: string;
+  payload: string;
+  timestamp: number;
+  address: string;
+  stateInitHash?: string;
+};
+
+export type CosmosAdr036ProofPayload = {
+  signMode: "direct" | "legacy_amino";
+  signerAddress: string;
+  chainId: string;
+  signDoc: string;
+  signedBytes: string;
+  bech32Prefix: string;
+};
+
+export type AptosSignMessageProofPayload = {
+  address: string;
+  application: string;
+  chainId: number;
+  nonce: string;
+  message: string;
+  issuedAt?: string;
+  expirationTime?: string;
+  statement?: string;
+};
+
+export type SuiPersonalMessageProofPayload = {
+  address: string;
+  messageBytes: string;
+};
 
 export type ChainControllerRef = {
   chainFamily: ChainFamily;
@@ -83,6 +135,13 @@ export type ChainControllerRef = {
   normalizedAddress: string;
   proofType: ControllerProofType;
   publicKeyHint?: string;
+  chainNamespace?: string;
+  bech32Prefix?: string;
+  chainId?: number;
+  walletStateInit?: string;
+  workchain?: number;
+  signatureScheme?: ControllerSignatureScheme;
+  capabilityFlags?: ControllerCapabilityFlags;
   didLikeId: string;
   controllerVersion: string;
 };
@@ -94,8 +153,128 @@ export type ChainControllerRefInput = {
   normalizedAddress?: string;
   proofType?: ControllerProofType;
   publicKeyHint?: string;
+  chainNamespace?: string;
+  bech32Prefix?: string;
+  chainId?: number | string;
+  walletStateInit?: string;
+  workchain?: number;
+  signatureScheme?: ControllerSignatureScheme;
+  capabilityFlags?: ControllerCapabilityFlags;
   didLikeId?: string;
   controllerVersion?: string;
+};
+
+type ControllerProofEnvelopeBase = {
+  proofEnvelopeVersion: typeof CONTROLLER_PROOF_ENVELOPE_VERSION;
+  proofType: ControllerProofType;
+  signature: string;
+  publicKey?: string;
+  signatureScheme?: ControllerSignatureScheme;
+  walletStateInit?: string;
+  fullMessage?: string;
+  evidenceRefs?: string[];
+};
+
+export type SimpleControllerProofEnvelope = ControllerProofEnvelopeBase & {
+  proofType: "eip191" | "solana_ed25519" | "bitcoin_bip322" | "bitcoin_legacy" | "tron_signed_message_v2";
+  proofPayload?: undefined;
+};
+
+export type TonControllerProofEnvelope = ControllerProofEnvelopeBase & {
+  proofType: "ton_proof_v2";
+  proofPayload: TonProofPayload;
+};
+
+export type CosmosDirectControllerProofEnvelope = ControllerProofEnvelopeBase & {
+  proofType: "cosmos_adr036_direct";
+  publicKey: string;
+  proofPayload: CosmosAdr036ProofPayload & { signMode: "direct" };
+};
+
+export type CosmosLegacyControllerProofEnvelope = ControllerProofEnvelopeBase & {
+  proofType: "cosmos_adr036_legacy_amino";
+  publicKey: string;
+  proofPayload: CosmosAdr036ProofPayload & { signMode: "legacy_amino" };
+};
+
+export type AptosSignMessageControllerProofEnvelope = ControllerProofEnvelopeBase & {
+  proofType: "aptos_sign_message";
+  fullMessage: string;
+  proofPayload: AptosSignMessageProofPayload;
+};
+
+export type AptosSiwaControllerProofEnvelope = ControllerProofEnvelopeBase & {
+  proofType: "aptos_siwa";
+  fullMessage: string;
+  proofPayload: Required<Pick<AptosSignMessageProofPayload, "address" | "application" | "chainId" | "nonce" | "message" | "issuedAt">> &
+    Partial<Pick<AptosSignMessageProofPayload, "expirationTime" | "statement">>;
+};
+
+export type SuiControllerProofEnvelope = ControllerProofEnvelopeBase & {
+  proofType: "sui_personal_message_ed25519" | "sui_personal_message_secp256k1" | "sui_personal_message_secp256r1";
+  publicKey: string;
+  signatureScheme: ControllerSignatureScheme;
+  proofPayload: SuiPersonalMessageProofPayload;
+};
+
+export type ControllerProofEnvelope =
+  | SimpleControllerProofEnvelope
+  | TonControllerProofEnvelope
+  | CosmosDirectControllerProofEnvelope
+  | CosmosLegacyControllerProofEnvelope
+  | AptosSignMessageControllerProofEnvelope
+  | AptosSiwaControllerProofEnvelope
+  | SuiControllerProofEnvelope;
+
+export type ControllerProofEnvelopeSummary = {
+  proofEnvelopeVersion: string;
+  proofType: ControllerProofType;
+  hasPublicKey: boolean;
+  signatureScheme?: ControllerSignatureScheme;
+  hasWalletStateInit: boolean;
+  hasFullMessage: boolean;
+  proofPayloadKeys: string[];
+  evidenceRefCount: number;
+};
+
+export type ControllerVerifierContext = {
+  tonResolvePublicKey?: (input: {
+    controllerRef: ChainControllerRef;
+    walletStateInit?: string;
+    publicKeyHint?: string;
+  }) => Promise<string | undefined>;
+  onFallbackResolverUsed?: (input: {
+    chainFamily: ChainFamily;
+    networkId: string;
+    normalizedAddress: string;
+    resolver: string;
+  }) => void;
+};
+
+export type ControllerChallengeLike = {
+  challengeId?: string;
+  challengeHash: Hex;
+  challengeMessage: string;
+  challengeFields: ControllerChallengeFields;
+  controllerRef: ChainControllerRef;
+  replayKey?: string;
+  createdAt: string;
+  expiresAt: string;
+  rootIdentityId?: Hex;
+  subjectAggregateId?: string;
+};
+
+export type ControllerVerificationResult = {
+  normalizedSigner: string;
+  derivedRootIdentity: RootIdentity;
+  proofHash: Hex;
+  verifierKind: string;
+  verifierVersion: string;
+  challengeDigest: Hex;
+  proofEnvelope: ControllerProofEnvelope;
+  proofEnvelopeSummary: ControllerProofEnvelopeSummary;
+  usedFallbackResolver: boolean;
+  evidenceRefs: string[];
 };
 
 export type RootIdentity = {

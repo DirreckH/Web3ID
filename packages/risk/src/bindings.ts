@@ -1,17 +1,16 @@
-import { Buffer } from "node:buffer";
-import { ed25519 } from "@noble/curves/ed25519.js";
-import { base58 } from "@scure/base";
-import { Verifier as Bip322Verifier } from "bip322-js";
-import * as bitcoinMessage from "bitcoinjs-message";
-import { recoverMessageAddress, keccak256, stringToHex, type Address, type Hex } from "viem";
+import { keccak256, recoverMessageAddress, stringToHex, type Address, type Hex } from "viem";
 import {
   buildControllerChallengeFields,
   buildControllerChallengeMessage,
   deriveRootIdentity,
   normalizeControllerRef,
+  verifyControllerChallenge,
   verifySubIdentityLinkProof,
   type ChainControllerRef,
   type ChainControllerRefInput,
+  type ControllerProofEnvelope,
+  type ControllerProofEnvelopeSummary,
+  type ControllerVerifierContext,
   type RootIdentity,
   type SameRootProof,
   type SubIdentity,
@@ -105,90 +104,10 @@ function getActiveBindingAddress(binding: BehaviorBinding) {
   return binding.controllerRef.normalizedAddress.toLowerCase();
 }
 
-async function verifyEvmChallenge(input: { challenge: BindingChallenge; candidateSignature: string }) {
-  const recoveredSigner = await recoverMessageAddress({
-    message: input.challenge.challengeMessage,
-    signature: input.candidateSignature as Hex,
-  });
-  if (recoveredSigner.toLowerCase() !== input.challenge.controllerRef.normalizedAddress.toLowerCase()) {
-    throw new Error("Controller signature does not match the normalized EVM address.");
-  }
-  return recoveredSigner;
-}
-
-function verifySolanaChallenge(input: { challenge: BindingChallenge; candidateSignature: string }) {
-  const signature = Buffer.from(input.candidateSignature, "base64");
-  const publicKey = base58.decode(input.challenge.controllerRef.normalizedAddress);
-  const message = new TextEncoder().encode(input.challenge.challengeMessage);
-  if (!ed25519.verify(signature, message, publicKey)) {
-    throw new Error("Solana controller signature is invalid.");
-  }
-  return input.challenge.controllerRef.normalizedAddress;
-}
-
-function verifyBitcoinChallenge(input: { challenge: BindingChallenge; candidateSignature: string }) {
-  const address = input.challenge.controllerRef.normalizedAddress;
-  const message = input.challenge.challengeMessage;
-  const verified =
-    input.challenge.controllerRef.proofType === "bitcoin_legacy"
-      ? bitcoinMessage.verify(message, address, input.candidateSignature)
-      : Bip322Verifier.verifySignature(address, message, input.candidateSignature);
-  if (!verified) {
-    throw new Error("Bitcoin controller signature is invalid.");
-  }
-  return address;
-}
-
-export async function verifyControllerChallenge(input: {
-  challenge: BindingChallenge;
-  candidateSignature: string;
-  consumedReplayKeys?: Set<string>;
-}) {
-  if (Date.parse(input.challenge.expiresAt) < Date.now()) {
-    throw new Error("Binding challenge expired.");
-  }
-  if (input.consumedReplayKeys?.has(input.challenge.replayKey)) {
-    throw new Error("Binding challenge replay detected.");
-  }
-
-  let normalizedSigner = input.challenge.controllerRef.normalizedAddress;
-  switch (input.challenge.controllerRef.chainFamily) {
-    case "evm":
-      normalizedSigner = await verifyEvmChallenge(input);
-      break;
-    case "solana":
-      normalizedSigner = verifySolanaChallenge(input);
-      break;
-    case "bitcoin":
-      normalizedSigner = verifyBitcoinChallenge(input);
-      break;
-  }
-
-  const derivedRootIdentity = deriveRootIdentity(input.challenge.controllerRef);
-  const proofHash = keccak256(
-    stringToHex([
-      input.challenge.controllerRef.proofType,
-      input.challenge.challengeHash,
-      input.candidateSignature,
-    ].join(":")),
-  );
-
-  return {
-    normalizedSigner,
-    derivedRootIdentity,
-    proofHash,
-    evidenceRefs: [
-      `challenge:${input.challenge.challengeHash}`,
-      `replay:${input.challenge.replayKey}`,
-      `signer:${normalizedSigner}`,
-      `proof:${proofHash}`,
-    ],
-  };
-}
-
 export async function verifyBindingSubmission(input: {
   challenge: BindingChallenge;
-  candidateSignature: string;
+  candidateSignature?: string;
+  candidateProof?: ControllerProofEnvelope | unknown;
   rootIdentity?: RootIdentity;
   subIdentity?: SubIdentity;
   linkProof?: SubIdentityLinkProof;
@@ -197,17 +116,27 @@ export async function verifyBindingSubmission(input: {
   authorizerSignature?: string;
   activeBindings?: BehaviorBinding[];
   consumedReplayKeys?: Set<string>;
+  verifierContext?: ControllerVerifierContext;
 }): Promise<{
   bindingHash: Hex;
   proofHash: Hex;
+  challengeDigest: Hex;
   evidenceRefs: string[];
   recoveredSigner: string;
   derivedRootIdentity: RootIdentity;
+  proofEnvelopeVersion: string;
+  proofEnvelope: ControllerProofEnvelope;
+  proofEnvelopeSummary: ControllerProofEnvelopeSummary;
+  verifierKind: string;
+  verifierVersion: string;
+  usedFallbackResolver: boolean;
 }> {
   const verification = await verifyControllerChallenge({
     challenge: input.challenge,
     candidateSignature: input.candidateSignature,
+    candidateProof: input.candidateProof,
     consumedReplayKeys: input.consumedReplayKeys,
+    context: input.verifierContext,
   });
   const rootIdentity = input.rootIdentity ?? verification.derivedRootIdentity;
   const evidenceRefs = [...verification.evidenceRefs];
@@ -249,15 +178,13 @@ export async function verifyBindingSubmission(input: {
     if (!activeAuthorizer) {
       throw new Error("Same-root extension requires an already active authorizer binding.");
     }
-
-    const authorizationMessage = buildSameRootAuthorizationMessage({
-      challengeHash: input.challenge.challengeHash,
-      candidateAddress: input.challenge.candidateAddress,
-      rootIdentityId: input.challenge.rootIdentityId,
-      authorizerAddress: input.authorizerAddress,
-    });
     const recoveredAuthorizer = await recoverMessageAddress({
-      message: authorizationMessage,
+      message: buildSameRootAuthorizationMessage({
+        challengeHash: input.challenge.challengeHash,
+        candidateAddress: input.challenge.candidateAddress,
+        rootIdentityId: input.challenge.rootIdentityId,
+        authorizerAddress: input.authorizerAddress,
+      }),
       signature: input.authorizerSignature as Hex,
     });
     if (recoveredAuthorizer.toLowerCase() !== input.authorizerAddress.toLowerCase()) {
@@ -281,8 +208,19 @@ export async function verifyBindingSubmission(input: {
   return {
     bindingHash,
     proofHash: verification.proofHash,
+    challengeDigest: verification.challengeDigest,
     evidenceRefs,
     recoveredSigner: verification.normalizedSigner,
     derivedRootIdentity: rootIdentity,
+    proofEnvelopeVersion: verification.proofEnvelope.proofEnvelopeVersion,
+    proofEnvelope: verification.proofEnvelope,
+    proofEnvelopeSummary: verification.proofEnvelopeSummary,
+    verifierKind: verification.verifierKind,
+    verifierVersion: verification.verifierVersion,
+    usedFallbackResolver: verification.usedFallbackResolver,
   };
+}
+
+export function deriveBindingRootIdentity(controllerRef: ChainControllerRef | ChainControllerRefInput) {
+  return deriveRootIdentity(normalizeControllerRef(controllerRef));
 }
