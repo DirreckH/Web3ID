@@ -1,0 +1,299 @@
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+
+export type Language = "en" | "zh-CN" | "zh-TW";
+
+interface TranslationTree {
+  [key: string]: string | TranslationTree;
+}
+
+interface LanguageContextValue {
+  language: Language;
+  setLanguage: (nextLanguage: Language) => void;
+  t: (key: string) => string;
+}
+
+const STORAGE_KEY = "app-language";
+const LanguageContext = createContext<LanguageContextValue | null>(null);
+
+const translations: Record<Language, TranslationTree> = {
+  en: {
+    nav: { wallet: "Wallet", trade: "Trade", market: "Market", portfolio: "Portfolio", history: "History", profile: "Profile", me: "Me" },
+    common: { add: "Add", search: "Search", confirm: "Confirm", cancel: "Cancel", close: "Close", complete: "Complete", back: "Back", buyNow: "Buy now", viewAll: "View all" },
+    wallet: { title: "Wallet", subtitle: "Manage your identity cards and Web3 access points.", inbox: "Inbox", addCard: "Add card", searchPlaceholder: "Search cards or addresses...", emptyTitle: "Start with your first identity card", emptyDescription: "Add an address to visualize your Web3ID wallet.", kycVerified: "KYC L2 Verified", stack: "Stacked", expanded: "Expanded" },
+    cardWallet: { title: "Wallet", inbox: "Inbox", searchPlaceholder: "Search cards or addresses...", kycVerified: "KYC L2 Verified" },
+    identityTree: {
+      eyebrow: "Identity Graph",
+      title: "Root Identity Tree",
+      rootIdentity: "Root identity",
+      derivedFromRoot: "Derived from the same root",
+      signalSources: "Risk signal sources",
+      currentAggregateStatus: "Current aggregate status",
+      trustScore: "Trust score",
+      latestTransition: "Latest transition",
+      activeConsequences: "Active consequences",
+      recoveryPath: "Manual review / recovery",
+      riskSignals: "Risk signals",
+      evaluationDecision: "Evaluation & decision",
+      stateTransition: "State transition",
+      regulatoryConsequences: "Regulatory consequences",
+      manualReviewRecovery: "Manual review / recovery",
+      statuses: { NORMAL: "Normal", OBSERVED: "Observed", RESTRICTED: "Restricted", HIGH_RISK: "High Risk", FROZEN: "Frozen" },
+      sources: { onchain: "On-chain", sanctions: "Watchlist / sanctions", governance: "Governance", advisor: "Human / AI advice" },
+      consequences: {
+        restriction: "Restrictions",
+        freeze: "Freeze",
+        review: "Review required",
+        trustAdjustment: "Trust adjustment",
+        restore: "Restore path",
+      },
+    },
+    trade: { title: "Trade", subtitle: "Browse compliant tokenized assets and simulated order flow.", searchPlaceholder: "Search RWA assets...", buy: "Buy", sell: "Sell", orderBook: "Order book", recentTrades: "Recent trades" },
+    market: { title: "Market", subtitle: "Explore tokenized real-world asset opportunities.", searchPlaceholder: "Search assets, locations, or descriptions..." },
+    profile: {
+      title: "Profile",
+      subtitle: "Identity, compliance, wallets, and language settings.",
+      identityCompliance: "Identity & Compliance",
+      assetsActivity: "Assets & Activity",
+      securitySystem: "Security & System",
+      rootIdentity: "Root Identity",
+      rootIdentityStatus: "Verified",
+      rootIdentityActive: "Root Identity Active",
+      rootActive: "Root Identity Active",
+      kycStatus: "KYC / AML",
+      kycAmlStatus: "KYC / AML",
+      kycLevel: "Level 2",
+      subIdentities: "Sub-identities",
+      subIdentityCount: "4 active",
+      subIdentitiesCount: "4 active",
+      rwaPortfolio: "RWA Portfolio",
+      transactionHistory: "Transaction History",
+      complianceReports: "Compliance Reports",
+      connectedWallets: "Connected Wallets",
+      connectedWallet: "MetaMask",
+      connectedWalletLabel: "MetaMask",
+      privacy: "ZKP Privacy",
+      zkpPrivacy: "ZKP Privacy",
+      systemSettings: "System Settings",
+      language: "Language",
+      updateAvatar: "Update Avatar",
+      verifyKyc: "Verify KYC",
+      verifyKYC: "Verify KYC",
+      disconnect: "Disconnect Wallet",
+      disconnectWallet: "Disconnect Wallet",
+      securedBy: "Secured by ZK-Identity Protocol v2.4.0",
+      edit: "Edit",
+    },
+    languageModal: {
+      title: "Select language",
+      subtitle: "Choose your preferred interface language.",
+      english: "English",
+      simplifiedChinese: "Simplified Chinese",
+      traditionalChinese: "Traditional Chinese",
+      confirm: "Confirm",
+      cancel: "Cancel",
+    },
+    history: { title: "Transaction History", subtitle: "Review simulated trading activity and asset flows." },
+    portfolio: { title: "Portfolio", subtitle: "Track allocations, returns, and sector exposure." },
+  },
+  "zh-CN": {
+    nav: { wallet: "\u94b1\u5305", trade: "\u4ea4\u6613", market: "\u5546\u57ce", portfolio: "\u7ec4\u5408", history: "\u5386\u53f2", profile: "\u6211\u7684", me: "\u6211\u7684" },
+    common: { add: "\u6dfb\u52a0", search: "\u641c\u7d22", confirm: "\u786e\u8ba4", cancel: "\u53d6\u6d88", close: "\u5173\u95ed", complete: "\u5b8c\u6210", back: "\u8fd4\u56de", buyNow: "\u7acb\u5373\u8d2d\u4e70", viewAll: "\u67e5\u770b\u5168\u90e8" },
+    wallet: { title: "\u94b1\u5305", subtitle: "\u7ba1\u7406\u4f60\u7684 Web3ID \u5361\u7247\u4e0e\u8bbf\u95ee\u5165\u53e3\u3002", inbox: "\u6536\u4ef6\u7bb1", addCard: "\u6dfb\u52a0\u5361\u7247", searchPlaceholder: "\u641c\u7d22\u5361\u7247\u6216\u5730\u5740...", emptyTitle: "\u4ece\u7b2c\u4e00\u5f20\u8eab\u4efd\u5361\u5f00\u59cb", emptyDescription: "\u6dfb\u52a0\u4e00\u4e2a\u5730\u5740\uff0c\u751f\u6210\u4f60\u7684 Web3ID \u94b1\u5305\u89c6\u56fe\u3002", kycVerified: "KYC L2 \u5df2\u9a8c\u8bc1", stack: "\u5806\u53e0", expanded: "\u5c55\u5f00" },
+    cardWallet: { title: "\u94b1\u5305", inbox: "\u6536\u4ef6\u7bb1", searchPlaceholder: "\u641c\u7d22\u5361\u7247\u6216\u5730\u5740...", kycVerified: "KYC L2 \u5df2\u9a8c\u8bc1" },
+    identityTree: {
+      eyebrow: "\u8eab\u4efd\u56fe\u8c31",
+      title: "\u6839\u8eab\u4efd\u6811",
+      rootIdentity: "\u6839\u8eab\u4efd",
+      derivedFromRoot: "\u6d3e\u751f\u81ea\u540c\u4e00\u6839\u8eab\u4efd",
+      signalSources: "\u98ce\u9669\u4fe1\u53f7\u6765\u6e90",
+      currentAggregateStatus: "\u5f53\u524d\u805a\u5408\u72b6\u6001",
+      trustScore: "\u4fe1\u4efb\u5206",
+      latestTransition: "\u6700\u65b0\u72b6\u6001\u8fc1\u79fb",
+      activeConsequences: "\u751f\u6548\u4e2d\u7684\u76d1\u7ba1\u540e\u679c",
+      recoveryPath: "\u4eba\u5de5\u590d\u6838 / \u6062\u590d\u8def\u5f84",
+      riskSignals: "\u98ce\u9669\u4fe1\u53f7",
+      evaluationDecision: "\u8bc4\u4f30\u4e0e\u51b3\u7b56",
+      stateTransition: "\u72b6\u6001\u8fc1\u79fb",
+      regulatoryConsequences: "\u76d1\u7ba1\u540e\u679c",
+      manualReviewRecovery: "\u4eba\u5de5\u590d\u6838 / \u6062\u590d",
+      statuses: { NORMAL: "\u6b63\u5e38", OBSERVED: "\u89c2\u5bdf\u4e2d", RESTRICTED: "\u53d7\u9650", HIGH_RISK: "\u9ad8\u98ce\u9669", FROZEN: "\u51bb\u7ed3" },
+      sources: { onchain: "\u94fe\u4e0a", sanctions: "\u884c\u4e3a\u540d\u5355 / \u5236\u88c1", governance: "\u6cbb\u7406", advisor: "\u4eba\u5de5 / AI \u5efa\u8bae" },
+      consequences: {
+        restriction: "\u9650\u5236",
+        freeze: "\u51bb\u7ed3",
+        review: "\u9700\u4eba\u5de5\u590d\u6838",
+        trustAdjustment: "\u4fe1\u4efb\u8c03\u6574",
+        restore: "\u6062\u590d\u8def\u5f84",
+      },
+    },
+    trade: { title: "\u4ea4\u6613", subtitle: "\u6d4f\u89c8\u5408\u89c4\u4ee3\u5e01\u5316\u8d44\u4ea7\u4e0e\u6a21\u62df\u4ea4\u6613\u6d41\u3002", searchPlaceholder: "\u641c\u7d22 RWA \u8d44\u4ea7...", buy: "\u4e70\u5165", sell: "\u5356\u51fa", orderBook: "\u8ba2\u5355\u7c3f", recentTrades: "\u6700\u8fd1\u6210\u4ea4" },
+    market: { title: "\u5546\u57ce", subtitle: "\u63a2\u7d22\u5168\u7403 RWA \u4ee3\u5e01\u5316\u673a\u4f1a\u3002", searchPlaceholder: "\u641c\u7d22\u8d44\u4ea7\u3001\u5730\u70b9\u6216\u63cf\u8ff0..." },
+    profile: {
+      title: "\u6211\u7684",
+      subtitle: "\u8eab\u4efd\u3001\u5408\u89c4\u3001\u94b1\u5305\u548c\u8bed\u8a00\u8bbe\u7f6e\u3002",
+      identityCompliance: "\u8eab\u4efd\u4e0e\u5408\u89c4",
+      assetsActivity: "\u8d44\u4ea7\u4e0e\u6d3b\u52a8",
+      securitySystem: "\u5b89\u5168\u4e0e\u7cfb\u7edf",
+      rootIdentity: "\u6839\u8eab\u4efd",
+      rootIdentityStatus: "\u5df2\u9a8c\u8bc1",
+      rootIdentityActive: "\u6839\u8eab\u4efd\u5df2\u6fc0\u6d3b",
+      rootActive: "\u6839\u8eab\u4efd\u5df2\u6fc0\u6d3b",
+      kycStatus: "KYC / AML",
+      kycAmlStatus: "KYC / AML",
+      kycLevel: "\u7b49\u7ea7 2",
+      subIdentities: "\u5b50\u8eab\u4efd",
+      subIdentityCount: "4 \u4e2a\u6d3b\u8dc3",
+      subIdentitiesCount: "4 \u4e2a\u6d3b\u8dc3",
+      rwaPortfolio: "RWA \u8d44\u4ea7\u7ec4\u5408",
+      transactionHistory: "\u4ea4\u6613\u5386\u53f2",
+      complianceReports: "\u5408\u89c4\u62a5\u544a",
+      connectedWallets: "\u5df2\u8fde\u63a5\u94b1\u5305",
+      connectedWallet: "MetaMask",
+      connectedWalletLabel: "MetaMask",
+      privacy: "ZKP \u9690\u79c1",
+      zkpPrivacy: "ZKP \u9690\u79c1",
+      systemSettings: "\u7cfb\u7edf\u8bbe\u7f6e",
+      language: "\u8bed\u8a00",
+      updateAvatar: "\u66f4\u65b0\u5934\u50cf",
+      verifyKyc: "\u9a8c\u8bc1 KYC",
+      verifyKYC: "\u9a8c\u8bc1 KYC",
+      disconnect: "\u65ad\u5f00\u94b1\u5305",
+      disconnectWallet: "\u65ad\u5f00\u94b1\u5305",
+      securedBy: "\u7531 ZK-Identity Protocol v2.4.0 \u63d0\u4f9b\u4fdd\u62a4",
+      edit: "\u7f16\u8f91",
+    },
+    languageModal: {
+      title: "\u9009\u62e9\u8bed\u8a00",
+      subtitle: "\u9009\u62e9\u4f60\u504f\u597d\u7684\u754c\u9762\u8bed\u8a00\u3002",
+      english: "\u82f1\u8bed",
+      simplifiedChinese: "\u7b80\u4f53\u4e2d\u6587",
+      traditionalChinese: "\u7e41\u9ad4\u4e2d\u6587",
+      confirm: "\u786e\u8ba4",
+      cancel: "\u53d6\u6d88",
+    },
+    history: { title: "\u4ea4\u6613\u5386\u53f2", subtitle: "\u67e5\u770b\u6a21\u62df\u4ea4\u6613\u6d3b\u52a8\u4e0e\u8d44\u4ea7\u6d41\u8f6c\u8bb0\u5f55\u3002" },
+    portfolio: { title: "\u8d44\u4ea7\u7ec4\u5408", subtitle: "\u8ddf\u8e2a\u6301\u4ed3\u3001\u6536\u76ca\u548c\u914d\u7f6e\u66b4\u9732\u3002" },
+  },
+  "zh-TW": {
+    nav: { wallet: "\u9322\u5305", trade: "\u4ea4\u6613", market: "\u5546\u57ce", portfolio: "\u7d44\u5408", history: "\u6b77\u53f2", profile: "\u6211\u7684", me: "\u6211\u7684" },
+    common: { add: "\u65b0\u589e", search: "\u641c\u5c0b", confirm: "\u78ba\u8a8d", cancel: "\u53d6\u6d88", close: "\u95dc\u9589", complete: "\u5b8c\u6210", back: "\u8fd4\u56de", buyNow: "\u7acb\u5373\u8cfc\u8cb7", viewAll: "\u67e5\u770b\u5168\u90e8" },
+    wallet: { title: "\u9322\u5305", subtitle: "\u7ba1\u7406\u4f60\u7684 Web3ID \u5361\u7247\u8207\u5b58\u53d6\u5165\u53e3\u3002", inbox: "\u6536\u4ef6\u7bb1", addCard: "\u65b0\u589e\u5361\u7247", searchPlaceholder: "\u641c\u5c0b\u5361\u7247\u6216\u5730\u5740...", emptyTitle: "\u5f9e\u7b2c\u4e00\u5f35\u8eab\u4efd\u5361\u958b\u59cb", emptyDescription: "\u65b0\u589e\u4e00\u500b\u5730\u5740\uff0c\u5efa\u7acb\u4f60\u7684 Web3ID \u9322\u5305\u8996\u5716\u3002", kycVerified: "KYC L2 \u5df2\u9a57\u8b49", stack: "\u5806\u758a", expanded: "\u5c55\u958b" },
+    cardWallet: { title: "\u9322\u5305", inbox: "\u6536\u4ef6\u7bb1", searchPlaceholder: "\u641c\u5c0b\u5361\u7247\u6216\u5730\u5740...", kycVerified: "KYC L2 \u5df2\u9a57\u8b49" },
+    identityTree: {
+      eyebrow: "\u8eab\u4efd\u5716\u8b5c",
+      title: "\u6839\u8eab\u4efd\u6a39",
+      rootIdentity: "\u6839\u8eab\u4efd",
+      derivedFromRoot: "\u6d3e\u751f\u81ea\u540c\u4e00\u500b\u6839\u8eab\u4efd",
+      signalSources: "\u98a8\u96aa\u8a0a\u865f\u4f86\u6e90",
+      currentAggregateStatus: "\u76ee\u524d\u805a\u5408\u72c0\u614b",
+      trustScore: "\u4fe1\u4efb\u5206",
+      latestTransition: "\u6700\u65b0\u72c0\u614b\u9077\u79fb",
+      activeConsequences: "\u751f\u6548\u4e2d\u7684\u76e3\u7ba1\u5f8c\u679c",
+      recoveryPath: "\u4eba\u5de5\u8907\u6838 / \u6062\u5fa9\u8def\u5f91",
+      riskSignals: "\u98a8\u96aa\u8a0a\u865f",
+      evaluationDecision: "\u8a55\u4f30\u8207\u6c7a\u7b56",
+      stateTransition: "\u72c0\u614b\u9077\u79fb",
+      regulatoryConsequences: "\u76e3\u7ba1\u5f8c\u679c",
+      manualReviewRecovery: "\u4eba\u5de5\u8907\u6838 / \u6062\u5fa9",
+      statuses: { NORMAL: "\u6b63\u5e38", OBSERVED: "\u89c0\u5bdf\u4e2d", RESTRICTED: "\u53d7\u9650", HIGH_RISK: "\u9ad8\u98a8\u96aa", FROZEN: "\u51cd\u7d50" },
+      sources: { onchain: "\u93c8\u4e0a", sanctions: "\u884c\u70ba\u540d\u55ae / \u5236\u88c1", governance: "\u6cbb\u7406", advisor: "\u4eba\u5de5 / AI \u5efa\u8b70" },
+      consequences: {
+        restriction: "\u9650\u5236",
+        freeze: "\u51cd\u7d50",
+        review: "\u9700\u4eba\u5de5\u8907\u6838",
+        trustAdjustment: "\u4fe1\u4efb\u8abf\u6574",
+        restore: "\u6062\u5fa9\u8def\u5f91",
+      },
+    },
+    trade: { title: "\u4ea4\u6613", subtitle: "\u700f\u89bd\u5408\u898f\u4ee3\u5e63\u5316\u8cc7\u7522\u8207\u6a21\u64ec\u8a02\u55ae\u6d41\u3002", searchPlaceholder: "\u641c\u5c0b RWA \u8cc7\u7522...", buy: "\u8cb7\u5165", sell: "\u8ce3\u51fa", orderBook: "\u8a02\u55ae\u7c3f", recentTrades: "\u6700\u8fd1\u6210\u4ea4" },
+    market: { title: "\u5546\u57ce", subtitle: "\u63a2\u7d22\u5168\u7403 RWA \u4ee3\u5e63\u5316\u6a5f\u6703\u3002", searchPlaceholder: "\u641c\u5c0b\u8cc7\u7522\u3001\u5730\u9ede\u6216\u63cf\u8ff0..." },
+    profile: {
+      title: "\u6211\u7684",
+      subtitle: "\u8eab\u4efd\u3001\u5408\u898f\u3001\u9322\u5305\u548c\u8a9e\u8a00\u8a2d\u5b9a\u3002",
+      identityCompliance: "\u8eab\u4efd\u8207\u5408\u898f",
+      assetsActivity: "\u8cc7\u7522\u8207\u6d3b\u52d5",
+      securitySystem: "\u5b89\u5168\u8207\u7cfb\u7d71",
+      rootIdentity: "\u6839\u8eab\u4efd",
+      rootIdentityStatus: "\u5df2\u9a57\u8b49",
+      rootIdentityActive: "\u6839\u8eab\u4efd\u5df2\u555f\u7528",
+      rootActive: "\u6839\u8eab\u4efd\u5df2\u555f\u7528",
+      kycStatus: "KYC / AML",
+      kycAmlStatus: "KYC / AML",
+      kycLevel: "\u7b49\u7d1a 2",
+      subIdentities: "\u5b50\u8eab\u4efd",
+      subIdentityCount: "4 \u500b\u555f\u7528",
+      subIdentitiesCount: "4 \u500b\u555f\u7528",
+      rwaPortfolio: "RWA \u8cc7\u7522\u7d44\u5408",
+      transactionHistory: "\u4ea4\u6613\u6b77\u53f2",
+      complianceReports: "\u5408\u898f\u5831\u544a",
+      connectedWallets: "\u5df2\u9023\u63a5\u9322\u5305",
+      connectedWallet: "MetaMask",
+      connectedWalletLabel: "MetaMask",
+      privacy: "ZKP \u96b1\u79c1",
+      zkpPrivacy: "ZKP \u96b1\u79c1",
+      systemSettings: "\u7cfb\u7d71\u8a2d\u5b9a",
+      language: "\u8a9e\u8a00",
+      updateAvatar: "\u66f4\u65b0\u982d\u50cf",
+      verifyKyc: "\u9a57\u8b49 KYC",
+      verifyKYC: "\u9a57\u8b49 KYC",
+      disconnect: "\u65b7\u958b\u9322\u5305",
+      disconnectWallet: "\u65b7\u958b\u9322\u5305",
+      securedBy: "\u7531 ZK-Identity Protocol v2.4.0 \u63d0\u4f9b\u4fdd\u8b77",
+      edit: "\u7de8\u8f2f",
+    },
+    languageModal: {
+      title: "\u9078\u64c7\u8a9e\u8a00",
+      subtitle: "\u9078\u64c7\u4f60\u504f\u597d\u7684\u4ecb\u9762\u8a9e\u8a00\u3002",
+      english: "\u82f1\u8a9e",
+      simplifiedChinese: "\u7c21\u9ad4\u4e2d\u6587",
+      traditionalChinese: "\u7e41\u9ad4\u4e2d\u6587",
+      confirm: "\u78ba\u8a8d",
+      cancel: "\u53d6\u6d88",
+    },
+    history: { title: "\u4ea4\u6613\u6b77\u53f2", subtitle: "\u6aa2\u8996\u6a21\u64ec\u4ea4\u6613\u6d3b\u52d5\u8207\u8cc7\u7522\u6d41\u5411\u8a18\u9304\u3002" },
+    portfolio: { title: "\u8cc7\u7522\u7d44\u5408", subtitle: "\u8ffd\u8e64\u6301\u5009\u3001\u5831\u916c\u8207\u914d\u7f6e\u66b4\u9732\u3002" },
+  },
+};
+
+function readTranslation(language: Language, key: string) {
+  return key.split(".").reduce<string | TranslationTree | undefined>((accumulator, segment) => {
+    if (typeof accumulator === "string" || accumulator == null) {
+      return accumulator;
+    }
+    return accumulator[segment];
+  }, translations[language]);
+}
+
+export function LanguageProvider({ children }: { children: ReactNode }) {
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLanguage = localStorage.getItem(STORAGE_KEY);
+    return savedLanguage === "en" || savedLanguage === "zh-TW" ? savedLanguage : "zh-CN";
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, language);
+    document.documentElement.lang = language;
+  }, [language]);
+
+  const value = useMemo<LanguageContextValue>(
+    () => ({
+      language,
+      setLanguage,
+      t: (key) => {
+        const translation = readTranslation(language, key);
+        return typeof translation === "string" ? translation : key;
+      },
+    }),
+    [language],
+  );
+
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
+}
+
+export function useLanguage() {
+  const context = useContext(LanguageContext);
+  if (!context) {
+    throw new Error("useLanguage must be used inside LanguageProvider");
+  }
+  return context;
+}

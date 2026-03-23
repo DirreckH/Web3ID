@@ -1,124 +1,69 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { DEFAULT_ACCOUNT, installMockWallet } from "./mockWallet";
+import { expect, test } from "@playwright/test";
 
-async function waitForDemoReady(request: APIRequestContext) {
-  await expect
-    .poll(async () => {
-      const issuer = await request.get("http://127.0.0.1:4100/health");
-      const rpc = await request.post("http://127.0.0.1:8545", {
-        data: { jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] },
-      });
-      return issuer.ok() && rpc.ok();
-    }, { timeout: 120_000 })
-    .toBe(true);
-}
+function trackPageErrors(page: Parameters<(typeof test)["beforeEach"]>[0][0]["page"]) {
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
 
-async function connectAndDeriveIdentity(page: Page, request: APIRequestContext) {
-  await waitForDemoReady(request);
-  await page.goto("/");
-  await page.getByRole("button", { name: "Connect Wallet" }).click();
-  await expect(page.getByText(DEFAULT_ACCOUNT, { exact: true })).toBeVisible({ timeout: 15_000 });
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
 
-  await page.getByRole("button", { name: "Sign Identity Challenge" }).click();
-  await expect(page.getByText("Identity tree ready.")).toBeVisible({ timeout: 20_000 });
-}
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
 
-async function issueCredentialAndBuildPayload(page: Page) {
-  await page.getByRole("button", { name: "Issue Scenario Credential" }).click();
-  await expect(page.getByText("Credential issued.")).toBeVisible({ timeout: 20_000 });
-
-  await page.getByRole("button", { name: "Build Access Payload" }).click();
-  await expect(page.getByText("Access payload ready.")).toBeVisible({ timeout: 120_000 });
+  return { consoleErrors, pageErrors };
 }
 
 test.beforeEach(async ({ page }) => {
-  await installMockWallet(page);
+  await page.setViewportSize({ width: 390, height: 844 });
 });
 
-test("builds an RWA payload end to end", async ({ page, request }) => {
-  await connectAndDeriveIdentity(page, request);
-  await issueCredentialAndBuildPayload(page);
-  await expect(page.getByRole("button", { name: "Submit buyRwa" })).toBeEnabled();
-});
+test("mobile wallet shell, dialogs, and bottom navigation work", async ({ page }) => {
+  const errors = trackPageErrors(page);
 
-test("switches between scenario controls", async ({ page, request }) => {
-  await connectAndDeriveIdentity(page, request);
-  await page.locator("select").selectOption({ label: "social / SOCIAL" });
-  await expect(page.locator(".hero-card span").nth(0)).toHaveText("social / SOCIAL", { timeout: 15_000 });
-  await page.getByRole("button", { name: "Enterprise Treasury" }).click();
-  await expect(page.getByRole("button", { name: "Payment", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Audit", exact: true })).toBeVisible();
-});
+  await page.goto("/");
+  await expect(page.getByTestId("wallet-page")).toBeVisible();
+  await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
 
-test("builds an enterprise payment payload", async ({ page, request }) => {
-  await connectAndDeriveIdentity(page, request);
-  await page.getByRole("button", { name: "Enterprise Treasury" }).click();
+  await page.getByTestId("wallet-add-card").click();
+  await expect(page.getByTestId("add-card-modal")).toBeVisible();
+  await page.getByRole("button", { name: "Ethereum Mainnet" }).click();
+  await page.getByPlaceholder("输入您的钱包地址").fill("0x1234567890abcdef1234567890abcdef12345678");
+  await page.getByRole("button", { name: "下一步" }).click();
+  await page.getByRole("button", { name: "签名确认" }).click();
+  await expect(page.getByText("0x1234...5678")).toBeVisible();
 
-  await issueCredentialAndBuildPayload(page);
-  await expect(page.getByRole("button", { name: "Submit Payment" })).toBeEnabled();
-});
+  await page.getByTestId("wallet-inbox-button").click();
+  await expect(page.getByTestId("messages-inbox")).toBeVisible();
+  await page.locator('[data-testid="messages-inbox"] button').first().click();
+  await expect(page.getByTestId("messages-inbox")).toBeHidden();
 
-test("builds an enterprise audit payload", async ({ page, request }) => {
-  await connectAndDeriveIdentity(page, request);
-  await page.getByRole("button", { name: "Enterprise Treasury" }).click();
-  await page.getByRole("button", { name: "Audit", exact: true }).click();
+  await page.getByText("0x1234...5678").click();
+  await expect(page.getByTestId("identity-tree-modal")).toBeVisible();
+  await expect(page.getByTestId("identity-root-card")).toBeVisible();
+  await page.getByTestId("identity-root-card").click({ force: true });
+  await expect(page.getByTestId("identity-root-overview")).toBeVisible();
+  await page.getByTestId("identity-lane-card-rwa").scrollIntoViewIfNeeded();
+  await page.getByTestId("identity-lane-card-rwa").click({ force: true });
+  await expect(page.getByTestId("identity-root-overview")).toBeHidden();
+  await expect(page.getByTestId("identity-regulation-detail-rwa")).toBeVisible();
+  await page.getByTestId("identity-lane-card-gaming").scrollIntoViewIfNeeded();
+  await page.getByTestId("identity-lane-card-gaming").click({ force: true });
+  await expect(page.getByTestId("identity-regulation-detail-rwa")).toBeHidden();
+  await expect(page.getByTestId("identity-regulation-detail-gaming")).toBeVisible();
+  await page.getByLabel("Close identity tree").click();
+  await expect(page.getByTestId("identity-tree-modal")).toBeHidden();
 
-  await issueCredentialAndBuildPayload(page);
-  await expect(page.getByRole("button", { name: "Export Audit Record" })).toBeEnabled();
-});
+  await page.getByTestId("mobile-nav-trade").click();
+  await expect(page.getByTestId("trade-page")).toBeVisible();
+  await page.getByTestId("mobile-nav-profile").click();
+  await expect(page.getByTestId("profile-page")).toBeVisible();
+  await page.getByTestId("mobile-nav-wallet").click();
+  await expect(page.getByTestId("wallet-page")).toBeVisible();
 
-test("builds a default-mode social payload without credentials", async ({ page, request }) => {
-  await connectAndDeriveIdentity(page, request);
-  await page.getByRole("button", { name: "Social Governance" }).click();
-
-  await page.getByRole("button", { name: "Build Access Payload" }).click();
-  await expect(page.getByText("Access payload ready.")).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByRole("button", { name: "Submit Vote" })).toBeEnabled();
-});
-
-test("shows social denial after applying a deterministic risk signal", async ({ page, request }) => {
-  await connectAndDeriveIdentity(page, request);
-  await page.getByRole("button", { name: "Social Governance" }).click();
-  await page.getByRole("button", { name: "Apply Risk Flag" }).click();
-  await expect(page.getByText("Signal applied: negative_risk_flag")).toBeVisible({ timeout: 20_000 });
-
-  await page.getByRole("button", { name: "Build Access Payload" }).click();
-  await expect(page.getByText("Access payload ready.")).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText(/Policy preflight: Denied by active consequence:/)).toBeVisible({ timeout: 120_000 });
-});
-
-test("social new wallet stays denied until recovery path completes", async ({ page, request }) => {
-  await connectAndDeriveIdentity(page, request);
-  await page.getByRole("button", { name: "Social Governance" }).click();
-  await page.getByRole("button", { name: "Observe New Wallet" }).click();
-  await expect(page.getByText("Signal applied: new_wallet_observation")).toBeVisible({ timeout: 20_000 });
-
-  await page.getByRole("button", { name: "Build Access Payload" }).click();
-  await expect(page.getByText("Access payload ready.")).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText(/Policy preflight: Denied by (active consequence|state):/)).toBeVisible({ timeout: 120_000 });
-
-  await page.getByRole("button", { name: "Build Access Payload" }).click();
-  await expect(page.getByText("Access payload ready.")).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText(/Policy preflight: Denied by (active consequence|state):/)).toBeVisible({ timeout: 120_000 });
-});
-
-test("social recovers after good standing and can re-enter", async ({ page, request }) => {
-  await connectAndDeriveIdentity(page, request);
-  await page.getByRole("button", { name: "Social Governance" }).click();
-  await page.getByRole("button", { name: "Apply Risk Flag" }).click();
-  await expect(page.getByText("Signal applied: negative_risk_flag")).toBeVisible({ timeout: 20_000 });
-
-  await page.getByRole("button", { name: "Build Access Payload" }).click();
-  await expect(page.getByText(/Policy preflight: Denied by active consequence:/)).toBeVisible({ timeout: 120_000 });
-
-  await page.getByRole("button", { name: "Recover to Normal" }).click();
-  await expect(page.getByText("Signal applied: good_standing")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(/"resolvedAt":/)).toBeVisible({ timeout: 20_000 });
-
-  await page.getByRole("button", { name: "Build Access Payload" }).click();
-  await expect(page.getByText("Policy preflight: Allowed: policy preflight passed.")).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText(/Verifier preflight: Allowed by on-chain verifier:/)).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText("Current State")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(/^NORMAL$/)).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("button", { name: "Submit Vote" })).toBeEnabled();
+  expect(errors.consoleErrors).toEqual([]);
+  expect(errors.pageErrors).toEqual([]);
 });
