@@ -5,7 +5,7 @@ import { WagmiProvider, createConfig, http } from "wagmi";
 import { foundry } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 import { App } from "./App";
-import "./styles.css";
+import "./styles/index.css";
 
 const queryClient = new QueryClient();
 
