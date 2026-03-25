@@ -16,7 +16,7 @@ export function BottomNav() {
   ];
 
   return (
-    <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-30 px-6 pb-6" data-testid="mobile-bottom-nav">
+    <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-30 px-6 pb-6 lg:left-1/2 lg:right-auto lg:w-full lg:max-w-[760px] lg:-translate-x-1/2 lg:px-0 lg:pb-8" data-testid="mobile-bottom-nav">
       <motion.div
         animate={{ y: 0, opacity: 1 }}
         className="pointer-events-auto rounded-[28px] border border-gray-200/50 bg-white/90 shadow-2xl shadow-gray-900/10 backdrop-blur-2xl"

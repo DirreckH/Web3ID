@@ -111,7 +111,7 @@ export function TradingExchange() {
 
   if (!selected) {
     return (
-      <div className="min-h-full bg-gray-50 pb-24" data-testid="trade-page">
+      <div className="min-h-full bg-gray-50 pb-24 lg:rounded-[34px] lg:border lg:border-white/70 lg:bg-white/92 lg:pb-32 lg:shadow-[0_32px_84px_rgba(15,23,42,0.08)]" data-testid="trade-page">
         <div className="relative z-10 rounded-b-3xl bg-white px-6 pb-6 pt-12 shadow-sm">
           <div className="mb-6 flex justify-center">
             <div className="flex gap-1 rounded-full bg-gray-100 p-1.5 shadow-inner">
@@ -261,7 +261,7 @@ export function TradingExchange() {
   const recentTrades = makeTrades();
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-gray-50 to-white pb-24" data-testid="trade-page">
+    <div className="min-h-full bg-gradient-to-b from-gray-50 to-white pb-24 lg:rounded-[34px] lg:border lg:border-white/70 lg:bg-white/92 lg:pb-32 lg:shadow-[0_32px_84px_rgba(15,23,42,0.08)]" data-testid="trade-page">
       <motion.div animate={{ opacity: 1, y: 0 }} className="sticky top-0 z-20 border-b border-gray-100/50 bg-white/90 px-6 pb-4 pt-12 backdrop-blur-xl" initial={{ opacity: 0, y: -20 }}>
         <div className="flex items-center justify-between">
           <motion.button className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100" onClick={() => setSelected(null)} type="button" whileTap={{ scale: 0.9 }}>

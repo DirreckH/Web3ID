@@ -63,7 +63,7 @@ export function Profile() {
   ];
 
   return (
-    <div className="min-h-full bg-gray-50 pb-24 font-sans" data-testid="profile-page">
+    <div className="min-h-full bg-gray-50 pb-24 font-sans lg:rounded-[34px] lg:border lg:border-white/70 lg:bg-white/92 lg:pb-32 lg:shadow-[0_32px_84px_rgba(15,23,42,0.08)]" data-testid="profile-page">
       <div className="border-b border-gray-100 bg-white px-6 pb-6 pt-12">
         <div className="flex items-center justify-between">
           <motion.button className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 transition-colors hover:bg-gray-200" type="button" whileTap={{ scale: 0.95 }}>

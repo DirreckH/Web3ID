@@ -40,7 +40,7 @@ export function Portfolio() {
   }));
 
   return (
-    <section className="space-y-6 lg:space-y-8" data-testid="portfolio-page">
+    <section className="space-y-6 lg:space-y-8 lg:rounded-[34px] lg:border lg:border-white/70 lg:bg-white/92 lg:px-8 lg:py-8 lg:shadow-[0_32px_84px_rgba(15,23,42,0.08)]" data-testid="portfolio-page">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-400">Portfolio analytics</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">{t("portfolio.title")}</h1>

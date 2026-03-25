@@ -27,6 +27,13 @@ test("desktop routes, trade flow, market purchase, and language persistence work
   await page.goto("/");
   await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
   await expect(page.getByTestId("mobile-nav-portfolio")).toBeVisible();
+  const walletShell = await page.getByTestId("desktop-core-shell").boundingBox();
+  const navBox = await page.getByTestId("mobile-bottom-nav").boundingBox();
+  expect(walletShell).not.toBeNull();
+  expect(navBox).not.toBeNull();
+  expect(walletShell!.width).toBeLessThan(1400);
+  expect(walletShell!.x).toBeGreaterThan(0);
+  expect(navBox!.width).toBeLessThan(900);
   await page.getByTestId("mobile-nav-portfolio").click();
   await expect(page.getByTestId("portfolio-page")).toBeVisible();
   await page.getByTestId("mobile-nav-wallet").click();
@@ -53,6 +60,9 @@ test("desktop routes, trade flow, market purchase, and language persistence work
 
   await page.goto("/mall");
   await expect(page.getByTestId("trade-page")).toBeVisible();
+  const tradeShell = await page.getByTestId("desktop-core-shell").boundingBox();
+  expect(tradeShell).not.toBeNull();
+  expect(tradeShell!.width).toBeLessThan(1400);
   await page.getByTestId("trade-token-nyc").click();
   await page.getByTestId("trade-timeframe-4h").click();
   await page.getByTestId("trade-buy-button").click();
@@ -76,12 +86,23 @@ test("desktop routes, trade flow, market purchase, and language persistence work
 
   await page.goto("/portfolio");
   await expect(page.getByTestId("portfolio-page")).toBeVisible();
+  const portfolioShell = await page.getByTestId("desktop-core-shell").boundingBox();
+  expect(portfolioShell).not.toBeNull();
+  expect(portfolioShell!.width).toBeLessThan(1400);
+  await expect(page.getByTestId("portfolio-page")).toHaveAttribute("class", /lg:rounded-\[34px\]/);
 
   await page.goto("/history");
   await expect(page.getByTestId("history-page")).toBeVisible();
+  const historyShell = await page.getByTestId("desktop-core-shell").boundingBox();
+  expect(historyShell).not.toBeNull();
+  expect(historyShell!.width).toBeLessThan(1400);
+  await expect(page.getByTestId("history-page")).toHaveAttribute("class", /lg:rounded-\[34px\]/);
 
   await page.goto("/profile");
   await expect(page.getByTestId("profile-page")).toBeVisible();
+  const profileShell = await page.getByTestId("desktop-core-shell").boundingBox();
+  expect(profileShell).not.toBeNull();
+  expect(profileShell!.width).toBeLessThan(1400);
   await page.getByTestId("profile-language-button").click();
   await expect(page.getByTestId("language-modal")).toBeVisible();
   await page.getByRole("button", { name: "English" }).click();

@@ -30,7 +30,7 @@ export function CardWallet() {
   }
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-gray-50 to-white" data-testid="wallet-page">
+    <div className="min-h-full bg-gradient-to-b from-gray-50 to-white lg:rounded-[34px] lg:border lg:border-white/70 lg:bg-white/92 lg:shadow-[0_32px_84px_rgba(15,23,42,0.08)]" data-testid="wallet-page">
       <motion.div
         animate={{ opacity: 1, y: 0 }}
         className="relative border-b border-gray-100/50 bg-white/80 px-6 pb-6 pt-12 backdrop-blur-xl"
