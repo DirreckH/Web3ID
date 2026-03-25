@@ -10,6 +10,8 @@
 [![pnpm](https://img.shields.io/badge/pnpm-10-F69220?style=flat-square&logo=pnpm&logoColor=white)](https://pnpm.io/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-D22128?style=flat-square)](./LICENSE)
 
+Demo entry: [中文 Demo](./DEMO.md) | [English Demo](./DEMO_EN.md)
+
 Web3ID is a Web3 identity baseline built for real systems. It brings programmable identity, proof-aware access, auditability, and governed risk into a single system chain that is explainable, verifiable, and governable.
 
 It is not a wallet-login demo, nor a sample project that loosely stitches together signatures, credentials, risk controls, audit, and operator panels. This repository is about how system boundaries are made real: how identity is anchored, how state evolves, how policy constrains behavior, how audit forms a closed loop, and how AI is kept inside an advisory boundary.

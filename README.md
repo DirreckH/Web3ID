@@ -10,6 +10,8 @@
 [![pnpm](https://img.shields.io/badge/pnpm-10-F69220?style=flat-square&logo=pnpm&logoColor=white)](https://pnpm.io/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-D22128?style=flat-square)](./LICENSE)
 
+演示入口: [中文 Demo](./DEMO.md) | [English Demo](./DEMO_EN.md)
+
 Web3ID 是一套面向真实系统运行的 Web3 身份基线，用来把 programmable identity、proof-aware access、auditability 和 governed risk 放进同一条可解释、可验证、可治理的系统主链路里。
 
 它不是 wallet-login demo，也不是把签名、凭证、风控、审计和运营面板临时拼起来的样例工程。这个仓库关注的是系统边界如何成立: 身份如何锚定、状态如何演化、策略如何约束、审计如何闭环、AI 如何被限制在 advisory 边界内。
