@@ -203,6 +203,38 @@ AI can detect patterns, generate risk hints, and assist explanation. It cannot d
 
 ![Profile compliance](./screenshots/06-profile-compliance.png)
 
+### Purchase Outcome Matrix
+
+#### Approved: NYC direct execution
+
+Manhattan Core REIT Spot (`NYC`) shows the direct-approval path: the purchase ticket returns an approved verdict, the live status tracks proof generation, and the result page closes the order as completed.
+
+![Approved ticket for NYC](./screenshots/07-approved-ticket.png)
+
+![Approved live status for NYC](./screenshots/08-approved-live-status.png)
+
+![Approved result for NYC](./screenshots/09-approved-result.png)
+
+#### Review: AMZN manual queue
+
+Amazon Carbon Reserve Spot (`AMZN`) shows the review-required path: automated checks prepare the proof and payload, then the order enters a manual review queue and the result page preserves the pending-review outcome.
+
+![Review ticket for AMZN](./screenshots/10-review-ticket.png)
+
+![Review live status for AMZN](./screenshots/11-review-live-status.png)
+
+![Review result for AMZN](./screenshots/12-review-result.png)
+
+#### Restricted: DEF denied purchase
+
+North America Defense Equity Spot (`DEF`) shows the restricted path: the purchase ticket explains the restriction, the live status records the restriction handoff, and the result page confirms that the order is blocked.
+
+![Restricted ticket for DEF](./screenshots/13-restricted-ticket.png)
+
+![Restricted live status for DEF](./screenshots/14-restricted-live-status.png)
+
+![Restricted result for DEF](./screenshots/15-restricted-result.png)
+
 ## 8. Video Script Foundation
 
 This document is already a usable base for the later demo video:
