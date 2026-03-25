@@ -1,10 +1,11 @@
-import { BarChart3, History, LayoutGrid, User, Wallet } from "lucide-react";
+import { BarChart3, History, LayoutGrid, Store, User, Wallet } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useLanguage } from "../contexts/LanguageContext";
 
 const items = [
   { key: "wallet", path: "/", icon: Wallet },
-  { key: "trade", path: "/mall", icon: BarChart3 },
+  { key: "trade", path: "/trade", icon: BarChart3 },
+  { key: "market", path: "/market", icon: Store },
   { key: "portfolio", path: "/portfolio", icon: LayoutGrid },
   { key: "history", path: "/history", icon: History },
   { key: "profile", path: "/profile", icon: User },
@@ -19,7 +20,7 @@ export function TopNav() {
     <header className="fixed inset-x-0 top-0 z-40 hidden lg:block">
       <div className="mx-auto flex max-w-[1600px] items-center gap-6 px-8 pt-6">
         <button
-          className="glass-nav panel-hover rounded-[26px] px-5 py-3"
+          className="glass-surface rounded-[26px] border border-white/70 px-5 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.08)]"
           onClick={() => navigate("/")}
           type="button"
         >
@@ -36,7 +37,7 @@ export function TopNav() {
 
         <nav
           aria-label="Desktop navigation"
-          className="glass-nav flex flex-1 items-center gap-2 rounded-[26px] px-4 py-3"
+          className="glass-surface flex flex-1 items-center gap-2 rounded-[26px] border border-white/70 px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.08)]"
           data-testid="desktop-top-nav"
         >
           {items.map(({ key, path, icon: Icon }) => {
@@ -45,9 +46,7 @@ export function TopNav() {
               <button
                 key={key}
                 className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                  isActive
-                    ? "bg-white/78 text-[var(--accent-blue-strong)] shadow-[0_16px_34px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.85)]"
-                    : "text-slate-600 hover:bg-white/68 hover:text-slate-900"
+                  isActive ? "bg-slate-900 text-white shadow-lg shadow-slate-900/20" : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
                 }`}
                 data-testid={`desktop-nav-${key}`}
                 onClick={() => navigate(path)}

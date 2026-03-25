@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { Mail, Plus, Search } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useState } from "react";
 import { AddCardModal, type CardData } from "../components/AddCardModal";
 import { BlockchainCard } from "../components/BlockchainCard";
 import { EmptyCardCharacter } from "../components/EmptyCardCharacter";
@@ -12,14 +11,12 @@ import { useLanguage } from "../contexts/LanguageContext";
 
 export function CardWallet() {
   const { t } = useLanguage();
-  const location = useLocation();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [cards, setCards] = useState<CardData[]>([]);
   const [showMessages, setShowMessages] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [replayId, setReplayId] = useState(0);
 
   const handleAddCard = (card: CardData) => {
     setCards([card, ...cards]);
@@ -28,27 +25,15 @@ export function CardWallet() {
 
   const hasCards = cards.length > 0;
 
-  useEffect(() => {
-    if (!hasCards) {
-      // Ensure the empty hero is in view before replaying animations.
-      window.scrollTo(0, 0);
-      const raf = window.requestAnimationFrame(() => {
-        setReplayId((prev) => prev + 1);
-      });
-      return () => window.cancelAnimationFrame(raf);
-    }
-    setReplayId(0);
-  }, [hasCards, location.key]);
-
   if (showMessages) {
     return <MessagesInbox onClose={() => setShowMessages(false)} />;
   }
 
   return (
-    <div className="spotlight-bg min-h-full pb-2" data-testid="wallet-page">
+    <div className="min-h-full bg-gradient-to-b from-gray-50 to-white" data-testid="wallet-page">
       <motion.div
         animate={{ opacity: 1, y: 0 }}
-        className="relative border-b stage-divider bg-white/76 px-6 pb-6 pt-12 backdrop-blur-xl"
+        className="relative border-b border-gray-100/50 bg-white/80 px-6 pb-6 pt-12 backdrop-blur-xl"
         initial={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.5 }}
       >
@@ -57,7 +42,7 @@ export function CardWallet() {
             {!isSearchOpen ? (
               <motion.div animate={{ opacity: 1, x: 0 }} className="flex flex-col" exit={{ opacity: 0, x: -20 }} initial={{ opacity: 0, x: -20 }} key="title" transition={{ duration: 0.3 }}>
                 <div className="flex items-center gap-3">
-                  <h1 className="stage-title text-3xl font-bold tracking-tight text-gray-900">{t("cardWallet.title")}</h1>
+                  <h1 className="text-3xl font-bold tracking-tight text-gray-900">{t("cardWallet.title")}</h1>
                   {hasCards ? (
                     <motion.span
                       animate={{ scale: 1 }}
@@ -157,13 +142,9 @@ export function CardWallet() {
         </div>
       </motion.div>
 
-      <div className={`${hasCards ? "mt-8" : "mt-2"} px-6 pb-32`}>
+      <div className="mt-8 px-6 pb-32">
         {!hasCards ? (
-          <div className="flex min-h-[calc(100dvh-15rem)] items-center justify-center md:min-h-[calc(100dvh-17rem)]">
-            <AnimatePresence mode="wait">
-              <EmptyCardCharacter key={`empty-${replayId}`} onAddCard={() => setIsAddModalOpen(true)} replayKey={replayId} />
-            </AnimatePresence>
-          </div>
+          <EmptyCardCharacter onAddCard={() => setIsAddModalOpen(true)} />
         ) : (
           <div className="relative" style={{ minHeight: "400px" }}>
             <AnimatePresence mode="wait">

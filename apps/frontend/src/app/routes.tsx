@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { Market } from "./pages/Market";
 import { Portfolio } from "./pages/Portfolio";
 import { Profile } from "./pages/Profile";
 import { TradingExchange } from "./pages/TradingExchange";
@@ -14,11 +15,11 @@ export const router = createBrowserRouter([
       { index: true, Component: CardWallet },
       { path: "mall", Component: TradingExchange },
       { path: "trade", element: <Navigate replace to="/mall" /> },
-      { path: "market", element: <Navigate replace to="/mall" /> },
+      { path: "market", Component: Market },
       { path: "profile", Component: Profile },
       { path: "history", Component: TransactionHistory },
       { path: "portfolio", Component: Portfolio },
-      { path: "assets", element: <Navigate replace to="/mall" /> },
+      { path: "assets", element: <Navigate replace to="/market" /> },
     ],
   },
 ]);

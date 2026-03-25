@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight, X } from "lucide-react";
 import { useState } from "react";
-import { chromeSpring, modalRevealMotion, pressDown } from "../lib/uiPresets";
 
 interface AddCardModalProps {
   isOpen: boolean;
@@ -105,26 +104,26 @@ export function AddCardModal({ isOpen, onClose, onAdd }: AddCardModalProps) {
         <>
           <motion.div
             animate={{ opacity: 1 }}
-            className="fixed inset-0 z-50 bg-[rgba(15,23,42,0.24)] backdrop-blur-md"
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
             exit={{ opacity: 0 }}
             initial={{ opacity: 0 }}
             onClick={handleClose}
           />
 
           <motion.div
-            animate={modalRevealMotion.animate}
-            className="elevated-panel fixed inset-x-4 bottom-4 z-50 mx-auto max-w-md overflow-hidden rounded-3xl"
+            animate={{ opacity: 1, y: 0 }}
+            className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl"
             data-testid="add-card-modal"
-            exit={modalRevealMotion.exit}
-            initial={modalRevealMotion.initial}
+            exit={{ opacity: 0, y: 50 }}
+            initial={{ opacity: 0, y: 50 }}
             style={{ maxHeight: "85vh" }}
-            transition={chromeSpring}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
           >
-            <div className="border-b stage-divider spotlight-bg flex items-center justify-between px-6 py-4">
-              <h2 className="stage-title text-xl font-semibold text-slate-950">
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+              <h2 className="text-xl font-semibold">
                 {step === "network" ? "\u9009\u62e9\u533a\u5757\u94fe\u7f51\u7edc" : step === "address" ? "\u8f93\u5165\u94b1\u5305\u5730\u5740" : "\u7b7e\u540d\u786e\u8ba4"}
               </h2>
-              <button className="glass-button flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/80" onClick={handleClose} type="button">
+              <button className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200" onClick={handleClose} type="button">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -139,7 +138,7 @@ export function AddCardModal({ isOpen, onClose, onAdd }: AddCardModalProps) {
                         {category.chains.map((chain) => (
                           <button
                             key={chain.id}
-                            className="soft-panel panel-hover flex w-full items-center justify-between rounded-2xl p-4 text-left"
+                            className="flex w-full items-center justify-between rounded-2xl bg-gray-50 p-4 text-left transition-colors hover:bg-gray-100"
                             onClick={() => handleNetworkSelect(chain)}
                             type="button"
                           >
@@ -158,15 +157,14 @@ export function AddCardModal({ isOpen, onClose, onAdd }: AddCardModalProps) {
 
               {step === "address" ? (
                 <div className="space-y-4 p-6">
-                  <div className="soft-panel rounded-2xl p-4">
+                  <div className="rounded-2xl bg-blue-50 p-4">
                     <div className="mb-1 text-sm text-gray-600">{"\u9009\u62e9\u7684\u7f51\u7edc"}</div>
                     <div className="font-medium">{selectedNetwork?.name}</div>
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">{"\u94b1\u5305\u5730\u5740"}</label>
                     <input
-                      className="w-full rounded-2xl border border-slate-200/80 bg-white/72 px-4 py-3 outline-none transition-colors focus:border-[var(--accent-blue-soft)] focus:bg-white"
-                      data-testid="wallet-address-input"
+                      className="w-full rounded-2xl bg-gray-50 px-4 py-3 outline-none transition-colors focus:bg-gray-100"
                       onChange={(event) => setAddress(event.target.value)}
                       placeholder={"\u8f93\u5165\u60a8\u7684\u94b1\u5305\u5730\u5740"}
                       type="text"
@@ -178,7 +176,7 @@ export function AddCardModal({ isOpen, onClose, onAdd }: AddCardModalProps) {
 
               {step === "sign" ? (
                 <div className="space-y-4 p-6">
-                  <div className="soft-panel rounded-2xl p-4">
+                  <div className="space-y-3 rounded-2xl bg-gray-50 p-4">
                     <div>
                       <div className="text-sm text-gray-600">{"\u7f51\u7edc"}</div>
                       <div className="font-medium">{selectedNetwork?.name}</div>
@@ -188,7 +186,7 @@ export function AddCardModal({ isOpen, onClose, onAdd }: AddCardModalProps) {
                       <div className="break-all font-mono text-sm">{address}</div>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-amber-100 bg-amber-50/80 p-4">
+                  <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4">
                     <p className="text-sm text-yellow-800">{"\u8bf7\u786e\u8ba4\u4ee5\u4e0a\u4fe1\u606f\u65e0\u8bef\uff0c\u70b9\u51fb\u7b7e\u540d\u6309\u94ae\u5b8c\u6210\u8eab\u4efd\u9a8c\u8bc1\u3002"}</p>
                   </div>
                 </div>
@@ -198,24 +196,17 @@ export function AddCardModal({ isOpen, onClose, onAdd }: AddCardModalProps) {
             <div className="border-t border-gray-200 px-6 py-4">
               {step === "address" ? (
                 <motion.button
-                  className="accent-action w-full rounded-full py-3 font-medium text-white transition-colors disabled:bg-gray-300"
-                  data-testid="wallet-address-next"
+                  className="w-full rounded-full bg-blue-500 py-3 font-medium text-white transition-colors hover:bg-blue-600 disabled:bg-gray-300"
                   disabled={!address.trim()}
                   onClick={handleAddressSubmit}
                   type="button"
-                  whileTap={pressDown}
+                  whileTap={{ scale: 0.98 }}
                 >
                   {"\u4e0b\u4e00\u6b65"}
                 </motion.button>
               ) : null}
               {step === "sign" ? (
-                <motion.button
-                  className="accent-action w-full rounded-full py-3 font-medium text-white transition-colors"
-                  data-testid="wallet-sign-confirm"
-                  onClick={handleSign}
-                  type="button"
-                  whileTap={pressDown}
-                >
+                <motion.button className="w-full rounded-full bg-blue-500 py-3 font-medium text-white transition-colors hover:bg-blue-600" onClick={handleSign} type="button" whileTap={{ scale: 0.98 }}>
                   {"\u7b7e\u540d\u786e\u8ba4"}
                 </motion.button>
               ) : null}

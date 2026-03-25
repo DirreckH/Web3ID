@@ -1,7 +1,6 @@
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import type { CardData } from "./AddCardModal";
-import { cardSpring, hoverLift, pressDown } from "../lib/uiPresets";
 
 interface BlockchainCardProps {
   card: CardData;
@@ -109,7 +108,6 @@ const NETWORK_NAMES: Record<string, string> = {
 };
 
 export function BlockchainCard({ card, index = 0, total = 1, isExpanded = true, onClick }: BlockchainCardProps) {
-  const reduceMotion = useReducedMotion();
   const style = BLOCKCHAIN_STYLES[card.network] ?? BLOCKCHAIN_STYLES.ethereum;
   const networkName = NETWORK_NAMES[card.network] ?? card.network;
   const collapsedOffset = index * 20;
@@ -133,19 +131,15 @@ export function BlockchainCard({ card, index = 0, total = 1, isExpanded = true, 
         onClick?.();
       }}
       style={{ left: 0, position: "absolute", right: 0, transformOrigin: "top center" }}
-      transition={reduceMotion ? { duration: 0.16, delay: isExpanded ? index * 0.02 : index * 0.04 } : { ...cardSpring, delay: isExpanded ? index * 0.02 : index * 0.05 }}
-      whileHover={reduceMotion ? undefined : hoverLift}
-      whileTap={pressDown}
+      transition={{ type: "spring", stiffness: 150, damping: 25, delay: isExpanded ? index * 0.02 : index * 0.05 }}
+      whileTap={{ scale: (isExpanded ? 1 : collapsedScale) * 0.98 }}
     >
-      <div className={`group relative h-[200px] overflow-hidden rounded-3xl bg-gradient-to-br ${style.gradient} shadow-[0_28px_64px_rgba(15,23,42,0.18)]`}>
-        <div className={`absolute inset-0 transition-opacity duration-500 ${isExpanded ? "opacity-[0.18]" : "opacity-10"}`}>
-          <div className="absolute -right-8 -top-10 h-44 w-44 rounded-full bg-white/90 blur-3xl" />
-          <div className="absolute -bottom-12 -left-8 h-48 w-48 rounded-full bg-white/75 blur-3xl" />
+      <div className={`group relative h-[200px] overflow-hidden rounded-3xl bg-gradient-to-br ${style.gradient} shadow-xl`}>
+        <div className={`absolute inset-0 transition-opacity duration-500 ${isExpanded ? "opacity-20" : "opacity-10"}`}>
+          <div className="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-white blur-3xl" />
+          <div className="absolute -bottom-10 -left-10 h-56 w-56 rounded-full bg-white blur-3xl" />
         </div>
-        <div className="absolute inset-0 bg-gradient-to-b from-white/22 via-transparent to-black/10" />
-        <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/80 to-transparent" />
-        <div className="absolute inset-0 bg-white/0 transition-colors duration-300 group-hover:bg-white/6" />
-        <div className="absolute inset-0 rounded-3xl shadow-[inset_0_1px_0_rgba(255,255,255,0.34),inset_0_-1px_0_rgba(15,23,42,0.12)]" />
+        <div className="absolute inset-0 bg-white/0 transition-colors duration-300 group-hover:bg-white/5" />
 
         <div className="relative flex h-full flex-col justify-between p-6">
           <div className="flex items-center justify-between">
@@ -153,7 +147,7 @@ export function BlockchainCard({ card, index = 0, total = 1, isExpanded = true, 
               <div className={`text-sm opacity-80 ${style.textColor}`}>Web3ID</div>
               <div className={`mt-1 text-lg font-semibold ${style.textColor}`}>{networkName}</div>
             </div>
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/32 bg-white/18 shadow-[0_14px_28px_rgba(15,23,42,0.16)] backdrop-blur-md">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg backdrop-blur-md">
               <div className="h-10 w-10">
                 <BlockchainLogo network={card.network} />
               </div>
@@ -161,7 +155,7 @@ export function BlockchainCard({ card, index = 0, total = 1, isExpanded = true, 
           </div>
 
           <div className="flex items-center justify-between">
-            <div className="flex h-10 w-12 items-center justify-center rounded-lg border border-yellow-200/70 bg-gradient-to-br from-yellow-200/96 to-yellow-400/90 shadow-[0_10px_24px_rgba(250,204,21,0.24)]">
+            <div className="flex h-10 w-12 items-center justify-center rounded-lg border border-yellow-400/50 bg-gradient-to-br from-yellow-300/90 to-yellow-500/90 shadow-md">
               <div className="grid grid-cols-3 gap-0.5">
                 {Array.from({ length: 9 }).map((_, itemIndex) => (
                   <div key={itemIndex} className="h-1 w-1 rounded-full bg-yellow-700/80" />
@@ -170,7 +164,7 @@ export function BlockchainCard({ card, index = 0, total = 1, isExpanded = true, 
             </div>
 
             {isExpanded ? (
-              <motion.div animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2 rounded-xl border border-white/34 bg-white/20 px-3 py-1.5 shadow-[0_10px_22px_rgba(15,23,42,0.12)] backdrop-blur-md" initial={{ opacity: 0, x: 20 }} transition={reduceMotion ? { duration: 0.14 } : cardSpring}>
+              <motion.div animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2 rounded-xl border border-white/30 bg-white/20 px-3 py-1.5 shadow-sm backdrop-blur-md" initial={{ opacity: 0, x: 20 }}>
                 <div className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
                 <span className="text-[10px] font-bold uppercase tracking-tight text-white">Compliance Active</span>
               </motion.div>
