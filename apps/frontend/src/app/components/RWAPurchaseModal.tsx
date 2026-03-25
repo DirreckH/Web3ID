@@ -1,11 +1,11 @@
 import { AnimatePresence, motion } from "motion/react";
 import { CheckCircle2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { MarketToken } from "../data/demoData";
+import type { TradeInstrument } from "../lib/dataGateway";
 import { formatCurrency, formatQuantity, formatTokenPrice } from "../lib/format";
 
 interface RWAPurchaseModalProps {
-  asset: MarketToken | null;
+  asset: TradeInstrument | null;
   isOpen: boolean;
   onClose: () => void;
   side?: "buy" | "sell";

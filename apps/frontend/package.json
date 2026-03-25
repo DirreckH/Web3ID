@@ -4,12 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "dev": "vite",
+    "build": "pnpm check:env:prod && vite build",
+    "dev": "pnpm check:env && vite",
+    "check:env": "node ./scripts/check-env.mjs",
+    "check:env:prod": "node ./scripts/check-env.mjs production",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "e2e": "node ./scripts/run-e2e.mjs",
-    "e2e:stage3": "node ./scripts/run-stage3-e2e.mjs"
+    "e2e:stage3": "node ./scripts/run-stage3-e2e.mjs",
+    "verify:quality": "pnpm lint && pnpm test && pnpm e2e:stage3"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.12",

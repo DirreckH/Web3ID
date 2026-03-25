@@ -1,18 +1,34 @@
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { useEffect, useState } from "react";
 import { LiquidGlassCard } from "../components/LiquidGlassButton";
-import { portfolioPositions } from "../data/demoData";
 import { useLanguage } from "../contexts/LanguageContext";
+import { listPortfolioPositions, type PortfolioHolding } from "../lib/dataGateway";
 import { getAssetMeta } from "../lib/assetMeta";
 import { formatCurrency, formatPercent, formatQuantity } from "../lib/format";
 
 export function Portfolio() {
   const { t } = useLanguage();
+  const [positions, setPositions] = useState<PortfolioHolding[]>([]);
 
-  const totalValue = portfolioPositions.reduce((sum, position) => sum + position.totalValue, 0);
-  const totalPnl = portfolioPositions.reduce((sum, position) => sum + position.pnl, 0);
+  useEffect(() => {
+    let active = true;
+
+    void listPortfolioPositions().then((entries) => {
+      if (active) {
+        setPositions(entries);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const totalValue = positions.reduce((sum, position) => sum + position.totalValue, 0);
+  const totalPnl = positions.reduce((sum, position) => sum + position.pnl, 0);
 
   const grouped = new Map<string, number>();
-  for (const position of portfolioPositions) {
+  for (const position of positions) {
     grouped.set(position.type, (grouped.get(position.type) ?? 0) + position.totalValue);
   }
 
@@ -42,7 +58,7 @@ export function Portfolio() {
         </LiquidGlassCard>
         <LiquidGlassCard className="p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Holdings</p>
-          <p className="mt-3 text-3xl font-semibold text-slate-950">{portfolioPositions.length}</p>
+          <p className="mt-3 text-3xl font-semibold text-slate-950">{positions.length}</p>
         </LiquidGlassCard>
       </div>
 
@@ -85,7 +101,7 @@ export function Portfolio() {
 
           <div className="h-[280px]">
             <ResponsiveContainer height="100%" width="100%">
-              <BarChart data={portfolioPositions}>
+              <BarChart data={positions}>
                 <CartesianGrid stroke="rgba(148,163,184,0.15)" vertical={false} />
                 <XAxis dataKey="symbol" tick={{ fill: "#64748b", fontSize: 12 }} tickLine={false} axisLine={false} />
                 <Tooltip formatter={(value: number) => formatCurrency(value)} />
@@ -95,7 +111,7 @@ export function Portfolio() {
           </div>
 
           <div className="mt-5 space-y-3">
-            {portfolioPositions.map((position) => {
+            {positions.map((position) => {
               const meta = getAssetMeta(position.type);
               return (
                 <div key={position.id} className="rounded-[28px] bg-white/72 px-5 py-4">

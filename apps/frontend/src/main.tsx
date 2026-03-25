@@ -5,6 +5,7 @@ import { WagmiProvider, createConfig, http } from "wagmi";
 import { foundry } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 import { App } from "./App";
+import { appEnvConfig } from "./app/config/env";
 import "./styles/index.css";
 
 const queryClient = new QueryClient();
@@ -13,7 +14,7 @@ const config = createConfig({
   chains: [foundry],
   connectors: [injected()],
   transports: {
-    [foundry.id]: http(import.meta.env.VITE_ANVIL_RPC_URL ?? "http://127.0.0.1:8545"),
+    [foundry.id]: http(appEnvConfig.anvilRpcUrl),
   },
 });
 

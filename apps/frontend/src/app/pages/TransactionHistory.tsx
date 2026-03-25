@@ -1,8 +1,8 @@
 import { Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LiquidGlassCard } from "../components/LiquidGlassButton";
-import { transactionRecords } from "../data/demoData";
 import { useLanguage } from "../contexts/LanguageContext";
+import { listTransactionHistory, type HistoryRecord } from "../lib/dataGateway";
 import { getAssetMeta } from "../lib/assetMeta";
 import { formatCompactNumber, formatCurrency, formatQuantity } from "../lib/format";
 
@@ -12,16 +12,31 @@ export function TransactionHistory() {
   const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<(typeof statusFilters)[number]>("all");
+  const [records, setRecords] = useState<HistoryRecord[]>([]);
 
-  const visibleTransactions = transactionRecords.filter((record) => {
+  useEffect(() => {
+    let active = true;
+
+    void listTransactionHistory().then((entries) => {
+      if (active) {
+        setRecords(entries);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const visibleTransactions = records.filter((record) => {
     const matchesStatus = status === "all" ? true : record.status === status;
     const haystack = `${record.assetName} ${record.assetSymbol} ${record.txHash}`.toLowerCase();
     const matchesQuery = haystack.includes(query.trim().toLowerCase());
     return matchesStatus && matchesQuery;
   });
 
-  const completedCount = transactionRecords.filter((entry) => entry.status === "completed").length;
-  const totalNotional = transactionRecords.reduce((sum, entry) => sum + entry.total, 0);
+  const completedCount = records.filter((entry) => entry.status === "completed").length;
+  const totalNotional = records.reduce((sum, entry) => sum + entry.total, 0);
 
   return (
     <section className="space-y-6 lg:space-y-8" data-testid="history-page">
@@ -34,7 +49,7 @@ export function TransactionHistory() {
       <div className="grid gap-4 lg:grid-cols-3">
         <LiquidGlassCard className="p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Transactions</p>
-          <p className="mt-3 text-3xl font-semibold text-slate-950">{transactionRecords.length}</p>
+          <p className="mt-3 text-3xl font-semibold text-slate-950">{records.length}</p>
         </LiquidGlassCard>
         <LiquidGlassCard className="p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Completed</p>

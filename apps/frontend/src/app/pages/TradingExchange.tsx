@@ -1,37 +1,17 @@
 import { AnimatePresence, motion } from "motion/react";
 import { Activity, ArrowLeft, ArrowUpDown, BarChart3, Building2, Clock, FileText, Filter, Package, Search, Sparkles, Star, TrendingDown, TrendingUp, Wallet } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { RWAPurchaseModal } from "../components/RWAPurchaseModal";
+import { listTradeInstruments, type TradeInstrument } from "../lib/dataGateway";
 
-type AssetType = "real-estate" | "art" | "bonds" | "commodities";
 type ViewMode = "trade" | "positions";
 type OrderType = "limit" | "market";
 type Side = "buy" | "sell";
 type Timeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
 
-interface Token {
-  id: string;
-  symbol: string;
-  name: string;
-  price: number;
-  change24h: number;
-  volume24h: number;
-  marketCap: number;
-  leverage: string;
-  type: AssetType;
-}
-
-const TOKENS: Token[] = [
-  { id: "nyc", symbol: "NYC", name: "\u7ebd\u7ea6\u623f\u5730\u4ea7", price: 0.04461, change24h: 8.46, volume24h: 142330000, marketCap: 450000000, leverage: "5x", type: "real-estate" },
-  { id: "art", symbol: "ART", name: "\u827a\u672f\u54c1\u6307\u6570", price: 0.05328, change24h: 8.01, volume24h: 11507500, marketCap: 230000000, leverage: "5x", type: "art" },
-  { id: "bond", symbol: "BOND", name: "\u7f8e\u56fd\u56fd\u503a", price: 0.2323, change24h: 8.4, volume24h: 7967600, marketCap: 1200000000, leverage: "5x", type: "bonds" },
-  { id: "gold", symbol: "GOLD", name: "\u9ec4\u91d1\u4efd\u989d", price: 33.99, change24h: 7.87, volume24h: 6581400, marketCap: 890000000, leverage: "10x", type: "commodities" },
-  { id: "silver", symbol: "SILVER", name: "\u767d\u94f6\u4efd\u989d", price: 0.3846, change24h: 6.95, volume24h: 1118300, marketCap: 120000000, leverage: "5x", type: "commodities" },
-];
-
-const iconFor = (type: AssetType) => {
+const iconFor = (type: TradeInstrument["type"]) => {
   switch (type) {
     case "real-estate":
       return <Building2 className="h-5 w-5" />;
@@ -72,7 +52,8 @@ const makeTrades = () =>
 export function TradingExchange() {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>("trade");
-  const [selected, setSelected] = useState<Token | null>(null);
+  const [selected, setSelected] = useState<TradeInstrument | null>(null);
+  const [allTokens, setAllTokens] = useState<TradeInstrument[]>([]);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<"\u5168\u90e8" | "\u623f\u5730\u4ea7" | "\u827a\u672f\u6536\u85cf" | "\u503a\u5238" | "\u5927\u5b97\u5546\u54c1">("\u5168\u90e8");
   const [category, setCategory] = useState<"\u73b0\u8d27" | "\u671f\u8d27" | "\u6307\u6570" | "ETF">("\u73b0\u8d27");
@@ -85,9 +66,23 @@ export function TradingExchange() {
   const [orderOpen, setOrderOpen] = useState(false);
   const [favorite, setFavorite] = useState(false);
 
+  useEffect(() => {
+    let active = true;
+
+    void listTradeInstruments().then((entries) => {
+      if (active) {
+        setAllTokens(entries);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const tokens = useMemo(
     () =>
-      TOKENS.filter((token) => {
+      allTokens.filter((token) => {
         const matchesQuery = query === "" || `${token.symbol} ${token.name}`.toLowerCase().includes(query.toLowerCase());
         const matchesTab =
           tab === "\u5168\u90e8" ||
@@ -97,10 +92,10 @@ export function TradingExchange() {
           (tab === "\u5927\u5b97\u5546\u54c1" && token.type === "commodities");
         return matchesQuery && matchesTab;
       }),
-    [query, tab],
+    [allTokens, query, tab],
   );
 
-  const positions = TOKENS.slice(0, 3).map((token, index) => {
+  const positions = allTokens.slice(0, 3).map((token, index) => {
     const amountHeld = (index + 1) * 1000;
     const avgPrice = token.price * (1 - (index === 1 ? -0.1 : 0.05));
     const currentValue = amountHeld * token.price;
