@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { TrendingUp, User, Wallet } from "lucide-react";
+import { PieChart, TrendingUp, User, Wallet } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useLanguage } from "../contexts/LanguageContext";
 
@@ -11,6 +11,7 @@ export function BottomNav() {
   const tabs = [
     { path: "/", label: t("nav.wallet"), icon: Wallet, testId: "mobile-nav-wallet" },
     { path: "/mall", label: t("nav.trade"), icon: TrendingUp, testId: "mobile-nav-trade" },
+    { path: "/portfolio", label: t("nav.portfolio"), icon: PieChart, testId: "mobile-nav-portfolio" },
     { path: "/profile", label: t("nav.me"), icon: User, testId: "mobile-nav-profile" },
   ];
 
@@ -22,7 +23,7 @@ export function BottomNav() {
         initial={{ y: 100, opacity: 0 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
       >
-        <div className="relative flex items-center justify-around px-2 py-3">
+        <div className="relative flex items-center justify-around px-1 py-3">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = location.pathname === tab.path;
@@ -30,7 +31,7 @@ export function BottomNav() {
             return (
               <motion.button
                 key={tab.path}
-                className="relative z-10 flex flex-col items-center gap-1.5 px-6 py-2"
+                className="relative z-10 flex flex-col items-center gap-1.5 px-4 py-2"
                 data-testid={tab.testId}
                 onClick={() => navigate(tab.path)}
                 type="button"

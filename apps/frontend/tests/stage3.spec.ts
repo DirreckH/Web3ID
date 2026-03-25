@@ -26,6 +26,11 @@ test("desktop routes, trade flow, market purchase, and language persistence work
 
   await page.goto("/");
   await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
+  await expect(page.getByTestId("mobile-nav-portfolio")).toBeVisible();
+  await page.getByTestId("mobile-nav-portfolio").click();
+  await expect(page.getByTestId("portfolio-page")).toBeVisible();
+  await page.getByTestId("mobile-nav-wallet").click();
+  await expect(page.getByTestId("wallet-page")).toBeVisible();
 
   await page.getByTestId("wallet-add-card").click();
   await page.getByRole("button", { name: "Ethereum Mainnet" }).click();
