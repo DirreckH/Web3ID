@@ -17,12 +17,6 @@ Web3ID is a Web3 identity baseline built for real systems. It brings programmabl
 
 It is not a wallet-login demo, nor a sample project that loosely stitches together signatures, credentials, risk controls, audit, and operator panels. This repository is about how system boundaries are made real: how identity is anchored, how state evolves, how policy constrains behavior, how audit forms a closed loop, and how AI is kept inside an advisory boundary.
 
-## 📸 Demo Preview
-
-![Wallet overview](./screenshots/01-wallet-overview.png)
-
-![Identity tree](./screenshots/02-identity-tree.png)
-
 ## ✨ Features
 
 ### Identity And Control
