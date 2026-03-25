@@ -20,19 +20,6 @@ export interface TradeAssetQuote {
   status: CatalogAsset["status"];
 }
 
-export interface MarketToken {
-  id: string;
-  symbol: string;
-  name: string;
-  type: Extract<AssetType, "real-estate" | "art" | "bonds" | "commodities">;
-  price: number;
-  change24h: number;
-  volume24h: number;
-  marketCap: number;
-  leverage: string;
-  description: string;
-}
-
 export type TradeProductType = "spot" | "futures" | "index" | "etf";
 
 export interface TradeInstrument extends TradeAssetQuote {
@@ -84,81 +71,6 @@ export interface CatalogAsset {
   status: "active" | "sold-out" | "coming-soon";
   description: string;
 }
-
-export const marketTokens: MarketToken[] = [
-  {
-    id: "nyc",
-    symbol: "NYC",
-    name: "SoHo Residential Trust",
-    type: "real-estate",
-    price: 0.04461,
-    change24h: 8.46,
-    volume24h: 142_330_000,
-    marketCap: 450_000_000,
-    leverage: "5x",
-    description: "Fractional ownership of premium Manhattan apartments with stable rental cash flow.",
-  },
-  {
-    id: "gold",
-    symbol: "GOLD",
-    name: "Vaulted Gold Reserve",
-    type: "commodities",
-    price: 33.99,
-    change24h: 7.87,
-    volume24h: 6_581_400,
-    marketCap: 890_000_000,
-    leverage: "10x",
-    description: "Swiss-custodied gold reserve exposure for inflation hedge strategies.",
-  },
-  {
-    id: "bond",
-    symbol: "BOND",
-    name: "US Treasury Note",
-    type: "bonds",
-    price: 0.2323,
-    change24h: 8.4,
-    volume24h: 7_967_600,
-    marketCap: 1_200_000_000,
-    leverage: "3x",
-    description: "Short-duration treasury allocation for conservative yield-focused positioning.",
-  },
-  {
-    id: "art",
-    symbol: "ART",
-    name: "Blue Chip Art Index",
-    type: "art",
-    price: 0.05328,
-    change24h: 8.01,
-    volume24h: 11_507_500,
-    marketCap: 230_000_000,
-    leverage: "5x",
-    description: "Basket of museum-grade art assets sourced from leading auction houses.",
-  },
-  {
-    id: "silver",
-    symbol: "SILVER",
-    name: "Strategic Silver Basket",
-    type: "commodities",
-    price: 0.3846,
-    change24h: 6.95,
-    volume24h: 1_118_300,
-    marketCap: 120_000_000,
-    leverage: "5x",
-    description: "High-liquidity silver allocation with lower ticket access for diversified commodity exposure.",
-  },
-  {
-    id: "wine",
-    symbol: "WINE",
-    name: "Bordeaux Collection",
-    type: "art",
-    price: 0.0017,
-    change24h: 5.59,
-    volume24h: 373_938,
-    marketCap: 45_000_000,
-    leverage: "2x",
-    description: "Fine wine cellar fractions combining collectible upside with stable demand.",
-  },
-];
 
 type TradeUniverseAssetType = Extract<
   AssetType,

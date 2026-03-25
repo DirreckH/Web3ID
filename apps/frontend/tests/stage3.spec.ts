@@ -66,6 +66,9 @@ test("desktop routes, trade flow, redirects, and language persistence work", asy
   expect(tradeShell).not.toBeNull();
   expect(tradeShell!.width).toBeLessThan(1400);
   await expect(page.getByTestId("trade-asset-type-restricted")).toBeVisible();
+  await page.getByTestId("trade-asset-type-private-credit").click();
+  await expect(page.getByTestId("trade-token-credit")).toBeVisible();
+  await page.getByTestId("trade-asset-type-all").click();
   await expect(page.getByTestId("trade-product-etf")).toBeVisible();
   await page.getByTestId("trade-product-etf").click();
   await expect(page.getByTestId("trade-token-nyc-etf")).toBeVisible();

@@ -1,7 +1,7 @@
 ﻿import { appEnvConfig, type DataSourceMode } from "../config/env";
 import {
   catalogAssets,
-  marketTokens,
+
   portfolioPositions,
   tradeInstruments,
   transactionRecords,
@@ -105,8 +105,7 @@ const mockGateway: AppDataGateway = {
   async getPurchaseStatus(assetId) {
     const catalog = catalogAssets.find((entry) => entry.id === assetId);
     const tradeAsset = tradeInstruments.find((entry) => entry.id === assetId) ?? tradeInstruments.find((entry) => entry.underlyingId === assetId);
-    const legacyToken = marketTokens.find((entry) => entry.id === assetId);
-    const assetType = catalog?.type ?? tradeAsset?.type ?? legacyToken?.type ?? "restricted";
+    const assetType = tradeAsset?.type ?? catalog?.type ?? "restricted";
 
     return resolvePurchaseStatusByType(assetType);
   },
@@ -196,3 +195,4 @@ export function getPurchaseStatus(assetId: string) {
 export function submitPurchase(request: PurchaseRequest) {
   return dataGateway.submitPurchase(request);
 }
+
