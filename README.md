@@ -11,6 +11,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-D22128?style=flat-square)](./LICENSE)
 
 演示入口: [中文 Demo](./DEMO.md) | [English Demo](./DEMO_EN.md)
+演示材料: [中文 PDF](./docs/presentation/Web3ID-identity-new-order-zh.pdf)
 
 Web3ID 是一套面向真实系统运行的 Web3 身份基线，用来把 programmable identity、proof-aware access、auditability 和 governed risk 放进同一条可解释、可验证、可治理的系统主链路里。
 

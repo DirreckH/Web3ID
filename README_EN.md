@@ -11,6 +11,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-D22128?style=flat-square)](./LICENSE)
 
 Demo entry: [中文 Demo](./DEMO.md) | [English Demo](./DEMO_EN.md)
+Presentation: [Chinese PDF deck](./docs/presentation/Web3ID-identity-new-order-zh.pdf)
 
 Web3ID is a Web3 identity baseline built for real systems. It brings programmable identity, proof-aware access, auditability, and governed risk into a single system chain that is explainable, verifiable, and governable.
 

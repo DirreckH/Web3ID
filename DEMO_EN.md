@@ -12,6 +12,8 @@ pnpm proof:setup
 pnpm demo:platform
 ```
 
+Presentation deck: [Chinese PDF](./docs/presentation/Web3ID-identity-new-order-zh.pdf)
+
 ## 1. Narrative Mapping
 
 | Narrative Segment | What To Say | Demo Evidence In The Repo |
@@ -214,6 +216,7 @@ When you decide to record video later, we can compress Section 4 into a voiceove
 ## 9. Further Reading
 
 - [`README_EN.md`](./README_EN.md)
+- [`docs/presentation/Web3ID-identity-new-order-zh.pdf`](./docs/presentation/Web3ID-identity-new-order-zh.pdf)
 - [`docs/DEMO_MATRIX.md`](./docs/DEMO_MATRIX.md)
 - [`docs/SYSTEM_MODEL.md`](./docs/SYSTEM_MODEL.md)
 - [`docs/SYSTEM_ACCEPTANCE.md`](./docs/SYSTEM_ACCEPTANCE.md)
