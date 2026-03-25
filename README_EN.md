@@ -51,16 +51,10 @@ It is not a wallet-login demo, nor a sample project that loosely stitches togeth
 
 ## 🏗️ Technical Architecture
 
-```mermaid
-flowchart LR
-  A["Proof & Credential Inputs"] --> B["issuer-service"]
-  A --> C["Core Packages"]
-  B --> D["analyzer-service"]
-  C --> D
-  D --> E["policy-api"]
-  D --> F["Audit & Replay"]
-  E --> G["frontend"]
-  E --> H["contracts"]
+```text
+Proof & Credential Inputs --> issuer-service --> analyzer-service --> policy-api --> frontend
+Proof & Credential Inputs --> Core Packages  --> analyzer-service --> Audit & Replay
+policy-api --> contracts
 ```
 
 - Frontend: `React 19`, `Vite 6`, `React Router 7`, `React Query`, `Tailwind CSS 4`, `Recharts`, `wagmi`, `viem`

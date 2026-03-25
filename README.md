@@ -51,16 +51,10 @@ Web3ID 是一套面向真实系统运行的 Web3 身份基线，用来把 progra
 
 ## 🏗️ 技术架构
 
-```mermaid
-flowchart LR
-  A["Proof & Credential Inputs"] --> B["issuer-service"]
-  A --> C["Core Packages"]
-  B --> D["analyzer-service"]
-  C --> D
-  D --> E["policy-api"]
-  D --> F["Audit & Replay"]
-  E --> G["frontend"]
-  E --> H["contracts"]
+```text
+Proof & Credential Inputs --> issuer-service --> analyzer-service --> policy-api --> frontend
+Proof & Credential Inputs --> Core Packages  --> analyzer-service --> Audit & Replay
+policy-api --> contracts
 ```
 
 - Frontend: `React 19`, `Vite 6`, `React Router 7`, `React Query`, `Tailwind CSS 4`, `Recharts`, `wagmi`, `viem`
