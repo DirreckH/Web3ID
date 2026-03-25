@@ -1,20 +1,21 @@
-import { appEnvConfig, type DataSourceMode } from "../config/env";
+﻿import { appEnvConfig, type DataSourceMode } from "../config/env";
 import {
   catalogAssets,
   marketTokens,
   portfolioPositions,
+  tradeInstruments,
   transactionRecords,
   type CatalogAsset,
-  type MarketToken,
   type PortfolioPosition,
+  type TradeInstrument,
   type TransactionRecord,
 } from "../data/demoData";
 import { apiClient } from "./apiClient";
 
-export type TradeInstrument = MarketToken;
 export type PortfolioHolding = PortfolioPosition;
 export type HistoryRecord = TransactionRecord;
 export type CatalogAssetView = CatalogAsset;
+export type { TradeInstrument };
 
 export interface PurchaseStatus {
   verdict: "approved" | "review" | "restricted";
@@ -34,8 +35,8 @@ export interface PurchaseResponse {
 }
 
 export interface TradeDataGateway {
-  listTradeInstruments(): Promise<MarketToken[]>;
-  getTradeInstrument(id: string): Promise<MarketToken | null>;
+  listTradeInstruments(): Promise<TradeInstrument[]>;
+  getTradeInstrument(id: string): Promise<TradeInstrument | null>;
   listCatalogAssets(): Promise<CatalogAsset[]>;
   getCatalogAsset(id: string): Promise<CatalogAsset | null>;
   getPurchaseStatus(assetId: string): Promise<PurchaseStatus>;
@@ -82,10 +83,10 @@ function resolvePurchaseStatusByType(type: string): PurchaseStatus {
 
 const mockGateway: AppDataGateway = {
   async listTradeInstruments() {
-    return cloneArray(marketTokens);
+    return cloneArray(tradeInstruments);
   },
   async getTradeInstrument(id) {
-    const instrument = marketTokens.find((entry) => entry.id === id);
+    const instrument = tradeInstruments.find((entry) => entry.id === id);
     return instrument ? { ...instrument } : null;
   },
   async listCatalogAssets() {
@@ -103,8 +104,9 @@ const mockGateway: AppDataGateway = {
   },
   async getPurchaseStatus(assetId) {
     const catalog = catalogAssets.find((entry) => entry.id === assetId);
-    const tradeAsset = marketTokens.find((entry) => entry.id === assetId);
-    const assetType = catalog?.type ?? tradeAsset?.type ?? "restricted";
+    const tradeAsset = tradeInstruments.find((entry) => entry.id === assetId) ?? tradeInstruments.find((entry) => entry.underlyingId === assetId);
+    const legacyToken = marketTokens.find((entry) => entry.id === assetId);
+    const assetType = catalog?.type ?? tradeAsset?.type ?? legacyToken?.type ?? "restricted";
 
     return resolvePurchaseStatusByType(assetType);
   },
@@ -127,10 +129,10 @@ const mockGateway: AppDataGateway = {
 
 const apiGateway: AppDataGateway = {
   async listTradeInstruments() {
-    return apiClient.get<MarketToken[]>("/trade/assets");
+    return apiClient.get<TradeInstrument[]>("/trade/assets");
   },
   async getTradeInstrument(id) {
-    return apiClient.get<MarketToken | null>(`/trade/assets/${id}`);
+    return apiClient.get<TradeInstrument | null>(`/trade/assets/${id}`);
   },
   async listCatalogAssets() {
     return apiClient.get<CatalogAsset[]>("/assets");

@@ -65,12 +65,18 @@ test("desktop routes, trade flow, redirects, and language persistence work", asy
   const tradeShell = await page.getByTestId("desktop-core-shell").boundingBox();
   expect(tradeShell).not.toBeNull();
   expect(tradeShell!.width).toBeLessThan(1400);
+  await expect(page.getByTestId("trade-asset-type-restricted")).toBeVisible();
+  await expect(page.getByTestId("trade-product-etf")).toBeVisible();
+  await page.getByTestId("trade-product-etf").click();
+  await expect(page.getByTestId("trade-token-nyc-etf")).toBeVisible();
+  await page.getByTestId("trade-product-spot").click();
   await page.getByTestId("trade-token-nyc").click();
   await page.getByTestId("trade-timeframe-4h").click();
   await page.getByTestId("trade-buy-button").click();
   await expect(page.getByTestId("trade-order-modal")).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Confirm" }).click();
+  await expect(page.getByTestId("trade-order-processing")).toBeVisible();
   await expect(page.getByRole("button", { name: "Close" })).toBeVisible({ timeout: 15000 });
   await page.getByRole("button", { name: "Close" }).click();
 
