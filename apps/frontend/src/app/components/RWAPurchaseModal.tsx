@@ -1,11 +1,13 @@
 import { AnimatePresence, motion } from "motion/react";
 import { CheckCircle2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { MarketToken } from "../data/demoData";
+import type { TradeInstrument } from "../data/demoData";
 import { formatCurrency, formatQuantity, formatTokenPrice } from "../lib/format";
+import { chromeSpring, modalRevealMotion, pressDown } from "../lib/uiPresets";
+import { AssetDetailModal } from "./AssetDetailModal";
 
 interface RWAPurchaseModalProps {
-  asset: MarketToken | null;
+  asset: TradeInstrument | null;
   isOpen: boolean;
   onClose: () => void;
   side?: "buy" | "sell";
@@ -28,6 +30,18 @@ export function RWAPurchaseModal({ asset, isOpen, onClose, side = "buy" }: RWAPu
     return null;
   }
 
+  if (side === "buy") {
+    return (
+      <AssetDetailModal
+        asset={asset}
+        flowOnly
+        isOpen={isOpen}
+        onClose={onClose}
+        onPurchaseComplete={() => undefined}
+      />
+    );
+  }
+
   const numericQuantity = Number(quantity) || 0;
   const estimatedTotal = numericQuantity * asset.price;
 
@@ -35,23 +49,23 @@ export function RWAPurchaseModal({ asset, isOpen, onClose, side = "buy" }: RWAPu
     <AnimatePresence>
       {isOpen ? (
         <>
-          <motion.div animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-slate-950/55 backdrop-blur-sm" exit={{ opacity: 0 }} initial={{ opacity: 0 }} onClick={onClose} />
+          <motion.div animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-[rgba(15,23,42,0.28)] backdrop-blur-md" exit={{ opacity: 0 }} initial={{ opacity: 0 }} onClick={onClose} />
           <motion.div
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-md overflow-hidden rounded-[30px] bg-white shadow-[0_32px_90px_rgba(15,23,42,0.22)]"
+            animate={modalRevealMotion.animate}
+            className="elevated-panel fixed inset-x-4 bottom-4 z-50 mx-auto max-w-md overflow-hidden rounded-[30px]"
             data-testid="trade-order-modal"
-            exit={{ opacity: 0, y: 24, scale: 0.98 }}
-            initial={{ opacity: 0, y: 24, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 320, damping: 28 }}
+            exit={modalRevealMotion.exit}
+            initial={modalRevealMotion.initial}
+            transition={chromeSpring}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+            <div className="spotlight-bg flex items-center justify-between border-b stage-divider px-6 py-5">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{side} ticket</p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-950">
+                <p className="stage-eyebrow text-xs font-semibold uppercase">{side} ticket</p>
+                <h2 className="stage-title mt-1 text-xl font-semibold text-slate-950">
                   {asset.name} ({asset.symbol})
                 </h2>
               </div>
-              <button className="rounded-full bg-slate-100 p-2 text-slate-500 transition hover:bg-slate-200" onClick={onClose} type="button">
+              <button className="glass-button rounded-full p-2 text-slate-500 transition hover:bg-white/80" onClick={onClose} type="button">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -59,7 +73,7 @@ export function RWAPurchaseModal({ asset, isOpen, onClose, side = "buy" }: RWAPu
             <div className="space-y-5 px-6 py-6">
               {step === "ticket" ? (
                 <>
-                  <div className="rounded-3xl bg-slate-50 p-5">
+                  <div className="soft-panel rounded-3xl p-5">
                     <div className="flex items-center justify-between text-sm text-slate-500">
                       <span>Mark price</span>
                       <span className="font-semibold text-slate-900">${formatTokenPrice(asset.price)}</span>
@@ -77,7 +91,7 @@ export function RWAPurchaseModal({ asset, isOpen, onClose, side = "buy" }: RWAPu
                       <span className="font-semibold text-slate-900">{formatCurrency(estimatedTotal)}</span>
                     </div>
                   </div>
-                  <button className="w-full rounded-2xl bg-slate-950 px-4 py-4 font-semibold text-white transition hover:bg-slate-800" onClick={() => setStep("review")} type="button">
+                  <button className="accent-action w-full rounded-2xl px-4 py-4 font-semibold text-white transition" onClick={() => setStep("review")} type="button">
                     Continue
                   </button>
                 </>
@@ -85,7 +99,7 @@ export function RWAPurchaseModal({ asset, isOpen, onClose, side = "buy" }: RWAPu
 
               {step === "review" ? (
                 <>
-                  <div className="rounded-3xl border border-blue-100 bg-blue-50 p-5 text-sm text-slate-700">
+                  <div className="rounded-3xl border border-blue-100 bg-blue-50/78 p-5 text-sm text-slate-700">
                     <p className="font-semibold text-slate-950">Review order ticket</p>
                     <div className="mt-4 space-y-3">
                       <div className="flex items-center justify-between">
@@ -107,10 +121,10 @@ export function RWAPurchaseModal({ asset, isOpen, onClose, side = "buy" }: RWAPu
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <button className="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-200" onClick={() => setStep("ticket")} type="button">
+                    <button className="glass-button rounded-2xl px-4 py-3 font-semibold text-slate-700 transition hover:bg-white/80" onClick={() => setStep("ticket")} type="button">
                       Edit
                     </button>
-                    <button className="rounded-2xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700" onClick={() => setStep("success")} type="button">
+                    <button className="accent-action rounded-2xl px-4 py-3 font-semibold text-white transition" onClick={() => setStep("success")} type="button">
                       Confirm
                     </button>
                   </div>
@@ -128,9 +142,9 @@ export function RWAPurchaseModal({ asset, isOpen, onClose, side = "buy" }: RWAPu
                       Your {side} order for {asset.symbol} was added to the demo activity feed.
                     </p>
                   </div>
-                  <button className="w-full rounded-2xl bg-slate-950 px-4 py-3 font-semibold text-white transition hover:bg-slate-800" onClick={onClose} type="button">
+                  <motion.button className="accent-action w-full rounded-2xl px-4 py-3 font-semibold text-white transition" onClick={onClose} type="button" whileTap={pressDown}>
                     Close
-                  </button>
+                  </motion.button>
                 </div>
               ) : null}
             </div>

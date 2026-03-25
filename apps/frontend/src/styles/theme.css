@@ -24,6 +24,23 @@
   --switch-background: #cbced4;
   --ring: rgba(113, 113, 130, 0.45);
   --radius: 0.625rem;
+  --stage-background: linear-gradient(180deg, #fbfcff 0%, #f4f7fb 42%, #f7f9fc 100%);
+  --stage-spotlight-primary: rgba(131, 175, 255, 0.18);
+  --stage-spotlight-secondary: rgba(255, 255, 255, 0.78);
+  --stage-spotlight-tertiary: rgba(194, 220, 255, 0.12);
+  --surface-base: rgba(255, 255, 255, 0.82);
+  --surface-soft: rgba(255, 255, 255, 0.72);
+  --surface-elevated: rgba(255, 255, 255, 0.9);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --stroke-soft: rgba(255, 255, 255, 0.62);
+  --stroke-default: rgba(148, 163, 184, 0.14);
+  --stroke-strong: rgba(148, 163, 184, 0.24);
+  --shadow-soft: 0 16px 40px rgba(15, 23, 42, 0.04), 0 2px 8px rgba(15, 23, 42, 0.03);
+  --shadow-panel: 0 24px 70px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.04);
+  --shadow-nav: 0 26px 70px rgba(15, 23, 42, 0.08), 0 10px 28px rgba(15, 23, 42, 0.05);
+  --shadow-modal: 0 36px 110px rgba(15, 23, 42, 0.14), 0 18px 46px rgba(15, 23, 42, 0.08);
+  --accent-blue-soft: #2f6cf3;
+  --accent-blue-strong: #1e56e6;
 }
 
 @theme inline {
@@ -71,6 +88,12 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background:
+      radial-gradient(circle at top center, var(--stage-spotlight-secondary) 0%, transparent 28%),
+      radial-gradient(circle at 12% 10%, var(--stage-spotlight-primary) 0%, transparent 28%),
+      radial-gradient(circle at 88% 0%, var(--stage-spotlight-tertiary) 0%, transparent 24%),
+      var(--stage-background);
+    background-attachment: fixed;
   }
 
   body,
@@ -106,7 +129,135 @@
   }
 
   .glass-surface {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(20px);
+    background: var(--surface-soft);
+    border: 1px solid var(--stroke-soft);
+    box-shadow: var(--shadow-panel);
+    backdrop-filter: blur(24px) saturate(150%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+  }
+
+  .stage-shell {
+    position: relative;
+    background:
+      radial-gradient(circle at top center, rgba(255, 255, 255, 0.9) 0%, transparent 24%),
+      radial-gradient(circle at 14% 8%, rgba(131, 175, 255, 0.16) 0%, transparent 24%),
+      radial-gradient(circle at 84% 0%, rgba(255, 255, 255, 0.58) 0%, transparent 26%),
+      var(--stage-background);
+  }
+
+  .spotlight-bg {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .spotlight-bg::before,
+  .spotlight-bg::after {
+    content: "";
+    position: absolute;
+    inset: auto;
+    border-radius: 999px;
+    filter: blur(48px);
+    pointer-events: none;
+  }
+
+  .spotlight-bg::before {
+    top: -4rem;
+    left: 10%;
+    width: 14rem;
+    height: 14rem;
+    background: rgba(131, 175, 255, 0.16);
+  }
+
+  .spotlight-bg::after {
+    top: -5rem;
+    right: 12%;
+    width: 12rem;
+    height: 12rem;
+    background: rgba(255, 255, 255, 0.62);
+  }
+
+  .stage-surface {
+    background: var(--surface-elevated);
+    border: 1px solid var(--stroke-default);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .soft-panel {
+    background: var(--surface-base);
+    border: 1px solid var(--stroke-default);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .elevated-panel {
+    background: var(--surface-strong);
+    border: 1px solid var(--stroke-soft);
+    box-shadow: var(--shadow-modal);
+  }
+
+  .glass-nav {
+    background: rgba(255, 255, 255, 0.84);
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    box-shadow: var(--shadow-nav);
+    backdrop-filter: blur(26px) saturate(160%);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+  }
+
+  .panel-hover {
+    transition:
+      transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .panel-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 28px 78px rgba(15, 23, 42, 0.09), 0 10px 28px rgba(15, 23, 42, 0.05);
+    border-color: var(--stroke-strong);
+  }
+
+  .glass-button {
+    background: rgba(255, 255, 255, 0.74);
+    border: 1px solid rgba(255, 255, 255, 0.74);
+    box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+  }
+
+  .stage-title {
+    letter-spacing: -0.035em;
+  }
+
+  .stage-eyebrow {
+    color: #8c95a5;
+    letter-spacing: 0.28em;
+  }
+
+  .accent-action {
+    background: linear-gradient(180deg, rgba(73, 122, 245, 0.96) 0%, rgba(43, 96, 236, 0.96) 100%);
+    box-shadow: 0 18px 40px rgba(47, 108, 243, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  }
+
+  .accent-action:hover {
+    background: linear-gradient(180deg, rgba(66, 115, 240, 0.98) 0%, rgba(31, 87, 225, 0.98) 100%);
+  }
+
+  .stage-divider {
+    border-color: rgba(148, 163, 184, 0.12);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0ms !important;
+    }
   }
 }

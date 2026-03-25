@@ -24,10 +24,10 @@ export function TransactionHistory() {
   const totalNotional = transactionRecords.reduce((sum, entry) => sum + entry.total, 0);
 
   return (
-    <section className="space-y-6 lg:space-y-8" data-testid="history-page">
+    <section className="spotlight-bg space-y-6 lg:space-y-8" data-testid="history-page">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-400">Activity ledger</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">{t("history.title")}</h1>
+        <p className="stage-eyebrow text-xs font-semibold uppercase">Activity ledger</p>
+        <h1 className="stage-title mt-3 text-4xl font-semibold tracking-tight text-slate-950">{t("history.title")}</h1>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">{t("history.subtitle")}</p>
       </div>
 

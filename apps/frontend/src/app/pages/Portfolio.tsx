@@ -24,10 +24,10 @@ export function Portfolio() {
   }));
 
   return (
-    <section className="space-y-6 lg:space-y-8" data-testid="portfolio-page">
+    <section className="spotlight-bg space-y-6 lg:space-y-8" data-testid="portfolio-page">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-400">Portfolio analytics</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">{t("portfolio.title")}</h1>
+        <p className="stage-eyebrow text-xs font-semibold uppercase">Portfolio analytics</p>
+        <h1 className="stage-title mt-3 text-4xl font-semibold tracking-tight text-slate-950">{t("portfolio.title")}</h1>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">{t("portfolio.subtitle")}</p>
       </div>
 

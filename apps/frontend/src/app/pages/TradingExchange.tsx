@@ -1,82 +1,152 @@
-import { AnimatePresence, motion } from "motion/react";
-import { Activity, ArrowLeft, ArrowUpDown, BarChart3, Building2, Clock, FileText, Filter, Package, Search, Sparkles, Star, TrendingDown, TrendingUp, Wallet } from "lucide-react";
+﻿import { motion } from "motion/react";
+import {
+  Activity,
+  ArrowLeft,
+  ArrowUpDown,
+  BarChart3,
+  Clock,
+  Filter,
+  Search,
+  Star,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { RWAPurchaseModal } from "../components/RWAPurchaseModal";
+import {
+  createOrderBook,
+  createPriceSeries,
+  createRecentTrades,
+  tradeInstruments,
+  type ChartTimeframe,
+  type TradeInstrument,
+  type TradeProductType,
+} from "../data/demoData";
+import { getAssetMeta, type AssetType } from "../lib/assetMeta";
+import { formatCompactNumber, formatPercent, formatTokenPrice } from "../lib/format";
+import { getPurchaseEligibility } from "../lib/purchaseNarrative";
 
-type AssetType = "real-estate" | "art" | "bonds" | "commodities";
+type TradeAssetFilter =
+  | "all"
+  | Extract<
+      AssetType,
+      | "real-estate"
+      | "bonds"
+      | "commodities"
+      | "equity"
+      | "private-credit"
+      | "carbon-assets"
+      | "infrastructure"
+      | "precious-metals"
+      | "art"
+      | "ip-royalties"
+      | "luxury-goods"
+      | "restricted"
+    >;
 type ViewMode = "trade" | "positions";
 type OrderType = "limit" | "market";
 type Side = "buy" | "sell";
-type Timeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
 
-interface Token {
-  id: string;
-  symbol: string;
-  name: string;
-  price: number;
-  change24h: number;
-  volume24h: number;
-  marketCap: number;
-  leverage: string;
-  type: AssetType;
-}
-
-const TOKENS: Token[] = [
-  { id: "nyc", symbol: "NYC", name: "\u7ebd\u7ea6\u623f\u5730\u4ea7", price: 0.04461, change24h: 8.46, volume24h: 142330000, marketCap: 450000000, leverage: "5x", type: "real-estate" },
-  { id: "art", symbol: "ART", name: "\u827a\u672f\u54c1\u6307\u6570", price: 0.05328, change24h: 8.01, volume24h: 11507500, marketCap: 230000000, leverage: "5x", type: "art" },
-  { id: "bond", symbol: "BOND", name: "\u7f8e\u56fd\u56fd\u503a", price: 0.2323, change24h: 8.4, volume24h: 7967600, marketCap: 1200000000, leverage: "5x", type: "bonds" },
-  { id: "gold", symbol: "GOLD", name: "\u9ec4\u91d1\u4efd\u989d", price: 33.99, change24h: 7.87, volume24h: 6581400, marketCap: 890000000, leverage: "10x", type: "commodities" },
-  { id: "silver", symbol: "SILVER", name: "\u767d\u94f6\u4efd\u989d", price: 0.3846, change24h: 6.95, volume24h: 1118300, marketCap: 120000000, leverage: "5x", type: "commodities" },
+const assetTabs: ReadonlyArray<{ id: TradeAssetFilter; label: string }> = [
+  { id: "all", label: "全部" },
+  { id: "restricted", label: "受限资产" },
+  { id: "real-estate", label: "REITs/房地产" },
+  { id: "bonds", label: "国债债券" },
+  { id: "commodities", label: "大宗商品" },
+  { id: "equity", label: "股权" },
+  { id: "private-credit", label: "私募信贷" },
+  { id: "carbon-assets", label: "碳资产" },
+  { id: "infrastructure", label: "基础设施" },
+  { id: "precious-metals", label: "贵金属" },
+  { id: "art", label: "艺术品" },
+  { id: "ip-royalties", label: "IP版权" },
+  { id: "luxury-goods", label: "奢侈品" },
 ];
 
-const iconFor = (type: AssetType) => {
-  switch (type) {
-    case "real-estate":
-      return <Building2 className="h-5 w-5" />;
-    case "art":
-      return <Sparkles className="h-5 w-5" />;
-    case "bonds":
-      return <FileText className="h-5 w-5" />;
-    case "commodities":
-      return <Package className="h-5 w-5" />;
-  }
+const productTabs: ReadonlyArray<{ id: TradeProductType; label: string }> = [
+  { id: "spot", label: "现货" },
+  { id: "futures", label: "期货" },
+  { id: "index", label: "指数" },
+  { id: "etf", label: "ETF" },
+];
+
+const productLabels: Record<TradeProductType, string> = {
+  spot: "现货",
+  futures: "期货",
+  index: "指数",
+  etf: "ETF",
 };
 
-const makeSeries = (seed: string, timeframe: Timeframe) =>
-  Array.from({ length: 36 }, (_, index) => {
-    const base = seed.length * 13 + index * 7 + timeframe.length * 11;
+function matchesAssetFilter(filter: TradeAssetFilter, type: AssetType) {
+  if (filter === "all") return true;
+  if (filter === "carbon-assets") return type === "carbon-assets" || type === "carbon-credits";
+  return type === filter;
+}
+
+function getAssetTabStateClasses(entryId: TradeAssetFilter, activeFilter: TradeAssetFilter) {
+  const isActive = activeFilter === entryId;
+  const isRestricted = entryId === "restricted";
+
+  if (isRestricted) {
+    return isActive ? "text-red-600" : "text-red-400";
+  }
+
+  return isActive ? "text-gray-900" : "text-gray-400";
+}
+
+function getEligibilityClasses(tone: "emerald" | "amber" | "red") {
+  if (tone === "emerald") {
     return {
-      id: `${seed}-${timeframe}-${index}`,
-      time: `${index}`,
-      close: 2200 + Math.sin(base / 8) * 80 + index * 2.5,
-      volume: 120000 + (index % 7) * 28000 + base * 13,
+      badge: "bg-emerald-50 text-emerald-700",
+      panel: "border-emerald-100 bg-emerald-50/80",
+      title: "text-emerald-800",
+      detail: "text-emerald-700",
+      accent: "text-emerald-600",
     };
-  });
+  }
 
-const makeBook = (price: number) => ({
-  asks: Array.from({ length: 5 }, (_, index) => ({ price: price + (index + 1) * 0.5, amount: 1.4 + index * 0.9, total: (price + (index + 1) * 0.5) * (1.4 + index * 0.9) })),
-  bids: Array.from({ length: 5 }, (_, index) => ({ price: price - (index + 1) * 0.5, amount: 1.8 + index * 0.7, total: (price - (index + 1) * 0.5) * (1.8 + index * 0.7) })),
-});
+  if (tone === "amber") {
+    return {
+      badge: "bg-amber-50 text-amber-700",
+      panel: "border-amber-100 bg-amber-50/80",
+      title: "text-amber-800",
+      detail: "text-amber-700",
+      accent: "text-amber-600",
+    };
+  }
 
-const makeTrades = () =>
-  Array.from({ length: 8 }, (_, index) => ({
-    id: `trade-${index}`,
-    price: 2456.78 + (index % 2 === 0 ? 1 : -1) * (index + 1),
-    amount: 0.6 + index * 0.22,
-    time: `09:${String(index * 3).padStart(2, "0")}:12`,
-    side: index % 2 === 0 ? "buy" : "sell",
-  }));
+  return {
+    badge: "bg-red-50 text-red-700",
+    panel: "border-red-100 bg-red-50/80",
+    title: "text-red-800",
+    detail: "text-red-700",
+    accent: "text-red-600",
+  };
+}
+
+function createTradePositions() {
+  return tradeInstruments
+    .filter((instrument) => instrument.productType === "spot")
+    .slice(0, 4)
+    .map((instrument, index) => {
+      const amountHeld = (index + 1) * 900;
+      const avgPrice = instrument.price * (1 - (index === 1 ? -0.08 : 0.05));
+      const currentValue = amountHeld * instrument.price;
+      const pnl = currentValue - amountHeld * avgPrice;
+      const pnlPercent = (pnl / (amountHeld * avgPrice)) * 100;
+      return { ...instrument, amountHeld, avgPrice, currentValue, pnl, pnlPercent };
+    });
+}
 
 export function TradingExchange() {
-  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>("trade");
-  const [selected, setSelected] = useState<Token | null>(null);
+  const [selected, setSelected] = useState<TradeInstrument | null>(null);
   const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<"\u5168\u90e8" | "\u623f\u5730\u4ea7" | "\u827a\u672f\u6536\u85cf" | "\u503a\u5238" | "\u5927\u5b97\u5546\u54c1">("\u5168\u90e8");
-  const [category, setCategory] = useState<"\u73b0\u8d27" | "\u671f\u8d27" | "\u6307\u6570" | "ETF">("\u73b0\u8d27");
-  const [timeframe, setTimeframe] = useState<Timeframe>("15m");
+  const [assetFilter, setAssetFilter] = useState<TradeAssetFilter>("all");
+  const [productType, setProductType] = useState<TradeProductType>("spot");
+  const [timeframe, setTimeframe] = useState<ChartTimeframe>("15m");
   const [chartType, setChartType] = useState<"line" | "candlestick">("line");
   const [side, setSide] = useState<Side>("buy");
   const [orderType, setOrderType] = useState<OrderType>("limit");
@@ -85,45 +155,42 @@ export function TradingExchange() {
   const [orderOpen, setOrderOpen] = useState(false);
   const [favorite, setFavorite] = useState(false);
 
-  const tokens = useMemo(
+  const instruments = useMemo(
     () =>
-      TOKENS.filter((token) => {
-        const matchesQuery = query === "" || `${token.symbol} ${token.name}`.toLowerCase().includes(query.toLowerCase());
-        const matchesTab =
-          tab === "\u5168\u90e8" ||
-          (tab === "\u623f\u5730\u4ea7" && token.type === "real-estate") ||
-          (tab === "\u827a\u672f\u6536\u85cf" && token.type === "art") ||
-          (tab === "\u503a\u5238" && token.type === "bonds") ||
-          (tab === "\u5927\u5b97\u5546\u54c1" && token.type === "commodities");
-        return matchesQuery && matchesTab;
+      tradeInstruments.filter((instrument) => {
+        const matchesQuery =
+          query === "" ||
+          `${instrument.symbol} ${instrument.name} ${instrument.description}`.toLowerCase().includes(query.toLowerCase());
+        const matchesAsset = matchesAssetFilter(assetFilter, instrument.type);
+        return matchesQuery && matchesAsset && instrument.productType === productType;
       }),
-    [query, tab],
+    [assetFilter, productType, query],
   );
 
-  const positions = TOKENS.slice(0, 3).map((token, index) => {
-    const amountHeld = (index + 1) * 1000;
-    const avgPrice = token.price * (1 - (index === 1 ? -0.1 : 0.05));
-    const currentValue = amountHeld * token.price;
-    const pnl = currentValue - amountHeld * avgPrice;
-    const pnlPercent = (pnl / (amountHeld * avgPrice)) * 100;
-    return { ...token, amountHeld, avgPrice, currentValue, pnl, pnlPercent };
-  });
-
+  const positions = useMemo(() => createTradePositions(), []);
   const totalCurrent = positions.reduce((sum, position) => sum + position.currentValue, 0);
   const totalCost = positions.reduce((sum, position) => sum + position.amountHeld * position.avgPrice, 0);
   const totalPnl = totalCurrent - totalCost;
-  const totalPnlPercent = (totalPnl / totalCost) * 100;
+  const totalPnlPercent = totalCost === 0 ? 0 : (totalPnl / totalCost) * 100;
 
   if (!selected) {
     return (
-      <div className="min-h-full bg-gray-50 pb-24" data-testid="trade-page">
-        <div className="relative z-10 rounded-b-3xl bg-white px-6 pb-6 pt-12 shadow-sm">
+      <div className="spotlight-bg min-h-full pb-24" data-testid="trade-page">
+        <div className="relative z-10 rounded-b-3xl bg-white/78 px-6 pb-6 pt-12 shadow-[var(--shadow-panel)] backdrop-blur-xl">
           <div className="mb-6 flex justify-center">
             <div className="flex gap-1 rounded-full bg-gray-100 p-1.5 shadow-inner">
-              <button className={`rounded-full px-8 py-2.5 text-sm font-bold ${viewMode === "trade" ? "bg-white text-gray-900 shadow-md" : "text-gray-500"}`} onClick={() => setViewMode("trade")} type="button">
+              <button
+                className={`rounded-full px-8 py-2.5 text-sm font-bold ${viewMode === "trade" ? "bg-white text-gray-900 shadow-md" : "text-gray-500"}`}
+                onClick={() => setViewMode("trade")}
+                type="button"
+              >
                 Trade
               </button>
-              <button className={`rounded-full px-8 py-2.5 text-sm font-bold ${viewMode === "positions" ? "bg-white text-gray-900 shadow-md" : "text-gray-500"}`} onClick={() => setViewMode("positions")} type="button">
+              <button
+                className={`rounded-full px-8 py-2.5 text-sm font-bold ${viewMode === "positions" ? "bg-white text-gray-900 shadow-md" : "text-gray-500"}`}
+                onClick={() => setViewMode("positions")}
+                type="button"
+              >
                 Positions
               </button>
             </div>
@@ -134,26 +201,50 @@ export function TradingExchange() {
               <div className="mb-6 flex items-center gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-                  <input className="w-full rounded-2xl border border-gray-200 bg-gray-50 py-3.5 pl-12 pr-4 text-sm outline-none focus:border-blue-500 focus:bg-white" onChange={(event) => setQuery(event.target.value)} placeholder="\u641c\u7d22 RWA \u8d44\u4ea7..." type="text" value={query} />
+                  <input
+                    className="w-full rounded-2xl border border-white/70 bg-white/72 py-3.5 pl-12 pr-4 text-sm outline-none backdrop-blur-xl focus:border-[var(--accent-blue-soft)] focus:bg-white"
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="搜索 RWA 资产..."
+                    type="text"
+                    value={query}
+                  />
                 </div>
-                <motion.button className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gray-200 bg-gray-50" type="button" whileTap={{ scale: 0.95 }}>
+                <motion.button className="glass-button flex h-12 w-12 items-center justify-center rounded-2xl" type="button" whileTap={{ scale: 0.95 }}>
                   <Filter className="h-5 w-5 text-gray-600" />
                 </motion.button>
               </div>
 
               <div className="scrollbar-hide mb-6 flex items-center gap-6 overflow-x-auto pb-2">
-                {(["\u5168\u90e8", "\u623f\u5730\u4ea7", "\u827a\u672f\u6536\u85cf", "\u503a\u5238", "\u5927\u5b97\u5546\u54c1"] as const).map((entry) => (
-                  <button key={entry} className={`relative whitespace-nowrap pb-2 text-sm font-semibold ${tab === entry ? "text-gray-900" : "text-gray-400"}`} onClick={() => setTab(entry)} type="button">
-                    {entry}
-                    {tab === entry ? <motion.div className="absolute bottom-0 left-0 right-0 h-1 rounded-full bg-blue-600" layoutId="tradeTab" /> : null}
+                {assetTabs.map((entry) => (
+                  <button
+                    key={entry.id}
+                    className={`relative whitespace-nowrap pb-2 text-sm font-semibold transition-colors ${getAssetTabStateClasses(entry.id, assetFilter)}`}
+                    data-accent={entry.id === "restricted" ? "danger" : "default"}
+                    data-testid={`trade-asset-type-${entry.id}`}
+                    onClick={() => setAssetFilter(entry.id)}
+                    type="button"
+                  >
+                    {entry.label}
+                    {assetFilter === entry.id ? (
+                      <motion.div
+                        className={`absolute bottom-0 left-0 right-0 h-1 rounded-full ${entry.id === "restricted" ? "bg-red-500" : "bg-blue-600"}`}
+                        layoutId="tradeTab"
+                      />
+                    ) : null}
                   </button>
                 ))}
               </div>
 
               <div className="mb-2 flex items-center gap-2">
-                {(["\u73b0\u8d27", "\u671f\u8d27", "\u6307\u6570", "ETF"] as const).map((entry) => (
-                  <button key={entry} className={`rounded-full px-4 py-2 text-xs font-medium ${category === entry ? "bg-gray-900 text-white shadow-lg shadow-gray-900/20" : "bg-gray-100 text-gray-600"}`} onClick={() => setCategory(entry)} type="button">
-                    {entry}
+                {productTabs.map((entry) => (
+                  <button
+                    key={entry.id}
+                    className={`rounded-full px-4 py-2 text-xs font-medium ${productType === entry.id ? "bg-gray-900 text-white shadow-lg shadow-gray-900/20" : "bg-gray-100 text-gray-600"}`}
+                    data-testid={`trade-product-${entry.id}`}
+                    onClick={() => setProductType(entry.id)}
+                    type="button"
+                  >
+                    {entry.label}
                   </button>
                 ))}
               </div>
@@ -191,116 +282,200 @@ export function TradingExchange() {
 
         {viewMode === "trade" ? (
           <div className="mt-4 space-y-2 px-6">
-            {tokens.map((token, index) => (
-              <motion.button
-                key={token.id}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full rounded-2xl border border-gray-100 bg-white px-4 py-3 text-left shadow-sm"
-                data-testid={`trade-token-${token.id}`}
-                initial={{ opacity: 0, y: 20 }}
-                onClick={() => setSelected(token)}
-                type="button"
-                transition={{ delay: index * 0.05 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="mb-1 flex items-center gap-2">
-                      <span className="text-base font-bold text-gray-900">{token.symbol}</span>
-                      <span className="text-xs text-gray-400">/USDT</span>
-                      <span className="rounded bg-gradient-to-r from-blue-500 to-purple-500 px-1.5 py-0.5 text-[9px] font-bold text-white">{token.leverage}</span>
+            {instruments.length > 0 ? (
+              instruments.map((instrument, index) => {
+                const eligibility = getPurchaseEligibility(instrument);
+                const eligibilityClasses = getEligibilityClasses(eligibility.tone);
+
+                return (
+                  <motion.button
+                    key={instrument.id}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="stage-surface panel-hover w-full rounded-2xl px-4 py-3 text-left"
+                    data-testid={`trade-token-${instrument.id}`}
+                    initial={{ opacity: 0, y: 20 }}
+                    onClick={() => {
+                      setSelected(instrument);
+                      setPrice("");
+                      setAmount("");
+                      setOrderOpen(false);
+                    }}
+                    transition={{ delay: index * 0.05 }}
+                    type="button"
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="mb-1 flex items-center gap-2">
+                          <span className="text-base font-bold text-gray-900">{instrument.symbol}</span>
+                          <span className="text-xs text-gray-400">/USDT</span>
+                          <span className="rounded bg-gradient-to-r from-blue-500 to-purple-500 px-1.5 py-0.5 text-[9px] font-bold text-white">{instrument.leverage}</span>
+                        </div>
+                        <div className="mb-1 text-xs font-medium text-gray-400">{instrument.name}</div>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${eligibilityClasses.badge}`}
+                            data-testid={`trade-eligibility-badge-${instrument.id}`}
+                          >
+                            {eligibility.badgeLabel}
+                          </span>
+                          <span
+                            className="text-[11px] font-medium text-gray-500"
+                            data-testid={`trade-eligibility-reason-${instrument.id}`}
+                          >
+                            {eligibility.listSummary}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-3">
+                          <div className="text-lg font-bold text-gray-900">${formatTokenPrice(instrument.price)}</div>
+                          <div className="text-[10px] font-medium text-gray-400">Vol ${formatCompactNumber(instrument.volume24h)}</div>
+                        </div>
+                      </div>
+                      <div className={`rounded-xl px-3 py-1.5 text-sm font-bold ${instrument.change24h >= 0 ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"}`}>
+                        {formatPercent(instrument.change24h)}
+                      </div>
                     </div>
-                    <div className="mb-1.5 text-xs font-medium text-gray-400">{token.name}</div>
-                    <div className="flex items-baseline gap-3">
-                      <div className="text-lg font-bold text-gray-900">${token.price.toFixed(token.price < 1 ? 5 : 2)}</div>
-                      <div className="text-[10px] font-medium text-gray-400">Vol ${(token.volume24h / 1000000).toFixed(2)}M</div>
-                    </div>
-                  </div>
-                  <div className={`rounded-xl px-3 py-1.5 text-sm font-bold ${token.change24h >= 0 ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"}`}>
-                    +{token.change24h.toFixed(2)}%
-                  </div>
-                </div>
-              </motion.button>
-            ))}
+                  </motion.button>
+                );
+              })
+            ) : (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-5 py-10 text-center shadow-sm">
+                <p className="text-sm font-semibold text-gray-900">当前筛选下暂无资产</p>
+                <p className="mt-1 text-xs text-gray-500">试试切换产品分类或修改搜索关键词。</p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="mt-6 space-y-4 px-6">
-            {positions.map((position, index) => (
-              <motion.div key={position.id} animate={{ opacity: 1, y: 0 }} className="rounded-3xl border border-gray-100 bg-white p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.1)]" initial={{ opacity: 0, y: 20 }} transition={{ delay: index * 0.1 }}>
-                <div className="mb-4 flex items-center justify-between border-b border-gray-50 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 text-gray-600">{iconFor(position.type)}</div>
-                    <div>
-                      <div className="mb-0.5 flex items-center gap-2">
-                        <span className="text-lg font-bold text-gray-900">{position.symbol}</span>
-                        <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">{position.leverage}</span>
+            {positions.map((position, index) => {
+              const meta = getAssetMeta(position.type);
+              const Icon = meta.Icon;
+
+              return (
+                <motion.div
+                  key={position.id}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="stage-surface panel-hover rounded-3xl p-5"
+                  initial={{ opacity: 0, y: 20 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <div className="mb-4 flex items-center justify-between border-b border-gray-50 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 text-gray-600">
+                        <Icon className="h-5 w-5" />
                       </div>
-                      <div className="text-xs text-gray-500">{position.name}</div>
+                      <div>
+                        <div className="mb-0.5 flex items-center gap-2">
+                          <span className="text-lg font-bold text-gray-900">{position.symbol}</span>
+                          <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">{position.leverage}</span>
+                        </div>
+                        <div className="text-xs text-gray-500">{position.name}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-gray-900">${position.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div className="mt-0.5 text-xs text-gray-500">{position.amountHeld.toLocaleString()} {position.symbol}</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-gray-900">${position.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                    <div className="mt-0.5 text-xs text-gray-500">{position.amountHeld.toLocaleString()} {position.symbol}</div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="mb-1 text-[10px] uppercase text-gray-400">Avg / Current Price</div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        ${formatTokenPrice(position.avgPrice)} <span className="mx-1 text-gray-300">-&gt;</span> ${formatTokenPrice(position.price)}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="mb-1 text-[10px] uppercase text-gray-400">Unrealized PnL</div>
+                      <div className={`text-sm font-bold ${position.pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {position.pnl.toFixed(2)} ({position.pnlPercent.toFixed(2)}%)
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="mb-1 text-[10px] uppercase text-gray-400">Avg / Current Price</div>
-                    <div className="text-sm font-semibold text-gray-900">${position.avgPrice.toFixed(4)} <span className="mx-1 text-gray-300">→</span> ${position.price.toFixed(4)}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="mb-1 text-[10px] uppercase text-gray-400">Unrealized PnL</div>
-                    <div className={`text-sm font-bold ${position.pnl >= 0 ? "text-green-600" : "text-red-600"}`}>{position.pnl.toFixed(2)} ({position.pnlPercent.toFixed(2)}%)</div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>
     );
   }
 
-  const series = makeSeries(selected.id, timeframe);
-  const orderBook = makeBook(selected.price);
-  const recentTrades = makeTrades();
+  const series = createPriceSeries(selected, timeframe);
+  const orderBook = createOrderBook(selected);
+  const recentTrades = createRecentTrades(selected);
+  const selectedEligibility = getPurchaseEligibility(selected);
+  const selectedEligibilityClasses = getEligibilityClasses(selectedEligibility.tone);
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-gray-50 to-white pb-24" data-testid="trade-page">
-      <motion.div animate={{ opacity: 1, y: 0 }} className="sticky top-0 z-20 border-b border-gray-100/50 bg-white/90 px-6 pb-4 pt-12 backdrop-blur-xl" initial={{ opacity: 0, y: -20 }}>
+    <div className="spotlight-bg min-h-full pb-24" data-testid="trade-page">
+      <motion.div animate={{ opacity: 1, y: 0 }} className="sticky top-0 z-20 border-b stage-divider bg-white/86 px-6 pb-4 pt-12 backdrop-blur-xl" initial={{ opacity: 0, y: -20 }}>
         <div className="flex items-center justify-between">
-          <motion.button className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100" onClick={() => setSelected(null)} type="button" whileTap={{ scale: 0.9 }}>
+          <motion.button className="glass-button flex h-10 w-10 items-center justify-center rounded-full" onClick={() => setSelected(null)} type="button" whileTap={{ scale: 0.9 }}>
             <ArrowLeft className="h-5 w-5 text-gray-700" />
           </motion.button>
           <div className="flex-1 text-center">
             <h1 className="text-xl font-bold text-gray-900">{selected.name}</h1>
             <div className="mt-1 flex items-center justify-center gap-2">
               <span className="text-xs text-gray-500">{selected.symbol}</span>
-              <span className="text-xs text-gray-300">•</span>
-              <span className="text-xs text-gray-500">24h\u91cf ${(selected.volume24h / 1000000).toFixed(1)}M</span>
+              <span className="text-xs text-gray-300">|</span>
+              <span className="text-xs text-gray-500">{productLabels[selected.productType]}</span>
+              <span className="text-xs text-gray-300">|</span>
+              <span className="text-xs text-gray-500">24h Vol ${formatCompactNumber(selected.volume24h)}</span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-2 text-[11px] text-gray-500">
+              {selected.location ? (
+                <>
+                  <span>{selected.location}</span>
+                  <span className="text-gray-300">|</span>
+                </>
+              ) : null}
+              <span>APY {selected.apy}%</span>
+              <span className="text-gray-300">|</span>
+              <span>可购 {selected.available} 份</span>
+            </div>
+            <div
+              className={`mx-auto mt-3 max-w-xl rounded-2xl border px-4 py-3 text-left shadow-sm ${selectedEligibilityClasses.panel}`}
+              data-testid="trade-eligibility-summary"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${selectedEligibilityClasses.badge}`}>
+                  {selectedEligibility.badgeLabel}
+                </span>
+                <span className={`text-xs font-semibold ${selectedEligibilityClasses.title}`}>准入结论</span>
+              </div>
+              <div className="mt-2 text-sm font-semibold text-gray-900">{selectedEligibility.reason}</div>
+              <div className={`mt-1 text-[11px] ${selectedEligibilityClasses.detail}`}>
+                还差哪一步: {selectedEligibility.missingStep ?? "当前无需补充步骤"}
+              </div>
             </div>
           </div>
-          <motion.button className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100" onClick={() => setFavorite(!favorite)} type="button" whileTap={{ scale: 0.9 }}>
+          <motion.button className="glass-button flex h-10 w-10 items-center justify-center rounded-full" onClick={() => setFavorite(!favorite)} type="button" whileTap={{ scale: 0.9 }}>
             <Star className={`h-5 w-5 ${favorite ? "fill-yellow-500 text-yellow-500" : "text-gray-400"}`} />
           </motion.button>
         </div>
       </motion.div>
 
       <div className="mb-4 px-6">
-        <div className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+        <div className="stage-surface overflow-hidden rounded-3xl">
+          <div className="flex items-center justify-between border-b stage-divider px-5 py-4">
             <div className="scrollbar-hide flex items-center gap-2 overflow-x-auto">
               {(["1m", "5m", "15m", "1h", "4h", "1d"] as const).map((entry) => (
-                <button key={entry} className={`rounded-xl px-4 py-2 text-xs font-semibold ${timeframe === entry ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-gray-500 hover:bg-gray-100"}`} data-testid={`trade-timeframe-${entry}`} onClick={() => setTimeframe(entry)} type="button">
+                <button
+                  key={entry}
+                    className={`rounded-xl px-4 py-2 text-xs font-semibold ${timeframe === entry ? "accent-action text-white" : "glass-button text-gray-500 hover:bg-white/82"}`}
+                  data-testid={`trade-timeframe-${entry}`}
+                  onClick={() => setTimeframe(entry)}
+                  type="button"
+                >
                   {entry}
                 </button>
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <button className={`rounded-xl p-2.5 ${chartType === "line" ? "bg-gray-100 text-gray-900" : "text-gray-400"}`} onClick={() => setChartType("line")} type="button">
+              <button className={`rounded-xl p-2.5 ${chartType === "line" ? "glass-button text-gray-900" : "text-gray-400"}`} onClick={() => setChartType("line")} type="button">
                 <Activity className="h-4 w-4" />
               </button>
-              <button className={`rounded-xl p-2.5 ${chartType === "candlestick" ? "bg-gray-100 text-gray-900" : "text-gray-400"}`} onClick={() => setChartType("candlestick")} type="button">
+              <button className={`rounded-xl p-2.5 ${chartType === "candlestick" ? "glass-button text-gray-900" : "text-gray-400"}`} onClick={() => setChartType("candlestick")} type="button">
                 <BarChart3 className="h-4 w-4" />
               </button>
             </div>
@@ -337,23 +512,23 @@ export function TradingExchange() {
       </div>
 
       <div className="mb-4 space-y-4 px-6">
-        <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="stage-surface rounded-3xl p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-gray-900">{"\u8ba2\u5355\u7c3f"}</h3>
+            <h3 className="text-sm font-bold text-gray-900">订单簿</h3>
             <ArrowUpDown className="h-4 w-4 text-gray-400" />
           </div>
           <div className="space-y-1 text-xs">
             {orderBook.asks.map((ask, index) => (
               <div key={`ask-${index}`} className="grid grid-cols-3 gap-3 rounded-xl py-2">
-                <div className="font-bold text-red-600">{ask.price.toFixed(2)}</div>
+                <div className="font-bold text-red-600">{formatTokenPrice(ask.price)}</div>
                 <div className="text-right font-semibold text-gray-700">{ask.amount.toFixed(4)}</div>
                 <div className="text-right font-medium text-gray-500">{ask.total.toFixed(0)}</div>
               </div>
             ))}
-            <div className={`my-3 rounded-xl px-4 py-3 text-center text-base font-bold ${selected.change24h >= 0 ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"}`}>{selected.price.toFixed(selected.price < 1 ? 5 : 2)}</div>
+            <div className={`my-3 rounded-xl px-4 py-3 text-center text-base font-bold ${selected.change24h >= 0 ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"}`}>{formatTokenPrice(selected.price)}</div>
             {orderBook.bids.map((bid, index) => (
               <div key={`bid-${index}`} className="grid grid-cols-3 gap-3 rounded-xl py-2">
-                <div className="font-bold text-green-600">{bid.price.toFixed(2)}</div>
+                <div className="font-bold text-green-600">{formatTokenPrice(bid.price)}</div>
                 <div className="text-right font-semibold text-gray-700">{bid.amount.toFixed(4)}</div>
                 <div className="text-right font-medium text-gray-500">{bid.total.toFixed(0)}</div>
               </div>
@@ -361,15 +536,15 @@ export function TradingExchange() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="stage-surface rounded-3xl p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-gray-900">{"\u6700\u8fd1\u6210\u4ea4"}</h3>
+            <h3 className="text-sm font-bold text-gray-900">最近成交</h3>
             <Clock className="h-4 w-4 text-gray-400" />
           </div>
           <div className="space-y-1 text-xs">
             {recentTrades.map((trade) => (
               <div key={trade.id} className="grid grid-cols-3 gap-3 rounded-xl py-2">
-                <div className={`font-bold ${trade.side === "buy" ? "text-green-600" : "text-red-600"}`}>{trade.price.toFixed(2)}</div>
+                <div className={`font-bold ${trade.side === "buy" ? "text-green-600" : "text-red-600"}`}>{formatTokenPrice(trade.price)}</div>
                 <div className="text-right font-semibold text-gray-700">{trade.amount.toFixed(4)}</div>
                 <div className="text-right font-medium text-gray-500">{trade.time}</div>
               </div>
@@ -379,81 +554,107 @@ export function TradingExchange() {
       </div>
 
       <div className="px-6">
-        <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div className="stage-surface rounded-3xl p-6">
           <div className="mb-5 grid grid-cols-2 gap-3">
-            <motion.button className={`rounded-2xl py-4 text-base font-bold ${side === "buy" ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/30" : "bg-gray-100 text-gray-600"}`} onClick={() => setSide("buy")} type="button" whileTap={{ scale: 0.98 }}>
-              {"\u4e70\u5165"}
+            <motion.button className={`rounded-2xl py-4 text-base font-bold ${side === "buy" ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/30" : "bg-gray-100 text-gray-600"}`} data-testid="trade-side-buy" onClick={() => setSide("buy")} type="button" whileTap={{ scale: 0.98 }}>
+              买入
             </motion.button>
-            <motion.button className={`rounded-2xl py-4 text-base font-bold ${side === "sell" ? "bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/30" : "bg-gray-100 text-gray-600"}`} onClick={() => setSide("sell")} type="button" whileTap={{ scale: 0.98 }}>
-              {"\u5356\u51fa"}
+            <motion.button className={`rounded-2xl py-4 text-base font-bold ${side === "sell" ? "bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/30" : "bg-gray-100 text-gray-600"}`} data-testid="trade-side-sell" onClick={() => setSide("sell")} type="button" whileTap={{ scale: 0.98 }}>
+              卖出
             </motion.button>
           </div>
 
+          {side === "buy" ? (
+            <div
+              className={`mb-5 rounded-2xl border px-4 py-4 shadow-sm ${selectedEligibilityClasses.panel}`}
+              data-testid="trade-buy-eligibility-card"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className={`text-xs font-semibold uppercase tracking-[0.18em] ${selectedEligibilityClasses.accent}`}>购买资格</div>
+                  <div className="mt-1 text-sm font-semibold text-gray-900">{selectedEligibility.summary}</div>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${selectedEligibilityClasses.badge}`}>
+                  {selectedEligibility.badgeLabel}
+                </span>
+              </div>
+              <div className="mt-2 text-xs text-gray-600">{selectedEligibility.reason}</div>
+              <div className={`mt-2 text-[11px] ${selectedEligibilityClasses.detail}`}>
+                下一步: {selectedEligibility.nextAction}
+              </div>
+            </div>
+          ) : null}
+
           <div className="mb-5 flex gap-2 rounded-2xl bg-gray-100 p-1">
-            <button className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-bold ${orderType === "limit" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`} onClick={() => setOrderType("limit")} type="button">
-              {"\u9650\u4ef7\u5355"}
-            </button>
-            <button className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-bold ${orderType === "market" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`} onClick={() => setOrderType("market")} type="button">
-              {"\u5e02\u4ef7\u5355"}
-            </button>
+            <button className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-bold ${orderType === "limit" ? "bg-white text-gray-900 shadow-[var(--shadow-soft)]" : "text-gray-500"}`} onClick={() => setOrderType("limit")} type="button">
+              限价单            </button>
+            <button className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-bold ${orderType === "market" ? "bg-white text-gray-900 shadow-[var(--shadow-soft)]" : "text-gray-500"}`} onClick={() => setOrderType("market")} type="button">
+              市价单            </button>
           </div>
 
           <div className="mb-5 space-y-4">
             {orderType === "limit" ? (
               <div>
-                <div className="mb-2 text-xs font-bold text-gray-500">{"\u4ef7\u683c"}</div>
+                <div className="mb-2 text-xs font-bold text-gray-500">价格</div>
                 <div className="relative">
-                  <input className="w-full rounded-2xl border-2 border-gray-200 bg-gray-50 px-4 py-4 text-sm font-semibold outline-none focus:border-blue-500 focus:bg-white" onChange={(event) => setPrice(event.target.value)} placeholder={selected.price.toFixed(selected.price < 1 ? 5 : 2)} type="number" value={price} />
+                  <input
+                    className="w-full rounded-2xl border border-white/70 bg-white/74 px-4 py-4 text-sm font-semibold outline-none backdrop-blur-xl focus:border-[var(--accent-blue-soft)] focus:bg-white"
+                    onChange={(event) => setPrice(event.target.value)}
+                    placeholder={formatTokenPrice(selected.price)}
+                    type="number"
+                    value={price}
+                  />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">USDT</span>
                 </div>
               </div>
             ) : null}
             <div>
-              <div className="mb-2 text-xs font-bold text-gray-500">{"\u6570\u91cf"}</div>
+              <div className="mb-2 text-xs font-bold text-gray-500">数量</div>
               <div className="relative">
-                <input className="w-full rounded-2xl border-2 border-gray-200 bg-gray-50 px-4 py-4 text-sm font-semibold outline-none focus:border-blue-500 focus:bg-white" onChange={(event) => setAmount(event.target.value)} placeholder="0.00" type="number" value={amount} />
+                <input
+                  className="w-full rounded-2xl border border-white/70 bg-white/74 px-4 py-4 text-sm font-semibold outline-none backdrop-blur-xl focus:border-[var(--accent-blue-soft)] focus:bg-white"
+                  onChange={(event) => setAmount(event.target.value)}
+                  placeholder="0.00"
+                  type="number"
+                  value={amount}
+                />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">{selected.symbol}</span>
               </div>
             </div>
           </div>
 
-          <div className="mb-5 flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 text-xs">
+          <div className="soft-panel mb-5 flex items-center justify-between rounded-2xl px-5 py-4 text-xs">
             <div className="flex items-center gap-2 text-gray-500">
               <Wallet className="h-4 w-4" />
-              <span className="font-bold">{"\u53ef\u7528\u4f59\u989d"}</span>
+              <div>
+                <div className="font-bold">可用余额</div>
+                <div className="mt-1 text-[11px] text-gray-400">
+                  APY {selected.apy}% · 可购 {selected.available} 份
+                </div>
+              </div>
             </div>
-            <span className="text-sm font-bold text-gray-900">10,000.00 USDT</span>
+            <div className="text-right">
+              <div className="text-sm font-bold text-gray-900">10,000.00 USDT</div>
+              {selected.location ? <div className="mt-1 text-[11px] text-gray-400">{selected.location}</div> : null}
+            </div>
           </div>
 
           <motion.button
             className={`w-full rounded-2xl py-5 text-base font-bold text-white shadow-lg ${side === "buy" ? "bg-gradient-to-r from-green-500 to-emerald-500 shadow-green-500/30" : "bg-gradient-to-r from-red-500 to-rose-500 shadow-red-500/30"}`}
             data-testid="trade-buy-button"
-            onClick={() => side === "buy" && setOrderOpen(true)}
+            onClick={() => setOrderOpen(true)}
             type="button"
             whileTap={{ scale: 0.98 }}
           >
-            {side === "buy" ? "\u4e70\u5165" : "\u5356\u51fa"} {selected.symbol}
+            {side === "buy" ? selectedEligibility.ctaLabel : "卖出"} {selected.symbol}
           </motion.button>
         </div>
       </div>
 
-      <RWAPurchaseModal
-        asset={{
-          id: selected.id,
-          symbol: selected.symbol,
-          name: selected.name,
-          type: selected.type,
-          price: selected.price,
-          change24h: selected.change24h,
-          volume24h: selected.volume24h,
-          marketCap: selected.marketCap,
-          leverage: selected.leverage,
-          description: `${selected.name} RWA asset`,
-        }}
-        isOpen={orderOpen}
-        onClose={() => setOrderOpen(false)}
-        side={side}
-      />
+      <RWAPurchaseModal asset={selected} isOpen={orderOpen} onClose={() => setOrderOpen(false)} side={side} />
     </div>
   );
 }
+
+
+

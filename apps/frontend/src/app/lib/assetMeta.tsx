@@ -17,6 +17,10 @@ export type AssetType =
   | "bonds"
   | "commodities"
   | "equity"
+  | "private-credit"
+  | "carbon-assets"
+  | "infrastructure"
+  | "precious-metals"
   | "ip-royalties"
   | "carbon-credits"
   | "luxury-goods"
@@ -65,6 +69,34 @@ const assetMeta: Record<AssetType, AssetMeta> = {
     chipClass: "bg-indigo-50 text-indigo-700",
     iconWrapClass: "bg-indigo-100 text-indigo-700",
     accentColor: "#4f46e5",
+  },
+  "private-credit": {
+    label: "Private Credit",
+    Icon: FileBarChart2,
+    chipClass: "bg-cyan-50 text-cyan-700",
+    iconWrapClass: "bg-cyan-100 text-cyan-700",
+    accentColor: "#0891b2",
+  },
+  "carbon-assets": {
+    label: "Carbon Assets",
+    Icon: Leaf,
+    chipClass: "bg-lime-50 text-lime-700",
+    iconWrapClass: "bg-lime-100 text-lime-700",
+    accentColor: "#65a30d",
+  },
+  infrastructure: {
+    label: "Infrastructure",
+    Icon: Building2,
+    chipClass: "bg-sky-50 text-sky-700",
+    iconWrapClass: "bg-sky-100 text-sky-700",
+    accentColor: "#0284c7",
+  },
+  "precious-metals": {
+    label: "Precious Metals",
+    Icon: Gem,
+    chipClass: "bg-yellow-50 text-yellow-700",
+    iconWrapClass: "bg-yellow-100 text-yellow-700",
+    accentColor: "#ca8a04",
   },
   "ip-royalties": {
     label: "IP Royalties",

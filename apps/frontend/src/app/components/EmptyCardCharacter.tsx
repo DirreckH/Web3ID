@@ -7,8 +7,14 @@ interface EmptyCardCharacterProps {
 
 export function EmptyCardCharacter({ onAddCard }: EmptyCardCharacterProps) {
   return (
-    <motion.div animate={{ opacity: 1 }} className="flex flex-col items-center justify-center px-6 py-20" initial={{ opacity: 0 }} transition={{ duration: 0.8 }}>
-      <div className="relative mb-12">
+    <motion.div
+      animate={{ opacity: 1 }}
+      className="flex w-full flex-col items-center justify-center px-6 py-12 md:py-14"
+      data-testid="wallet-empty-state"
+      initial={{ opacity: 0 }}
+      transition={{ duration: 0.8 }}
+    >
+      <div className="relative mb-10 w-full max-w-[420px]" data-testid="wallet-empty-hero">
         <motion.div animate={{ opacity: 1, scale: 1 }} className="absolute inset-0 flex items-center justify-center" initial={{ opacity: 0, scale: 0.8 }} transition={{ delay: 0.1, duration: 1 }}>
           <motion.div
             animate={{ opacity: [0.3, 0.5, 0.3], scale: [1, 1.15, 1] }}
@@ -112,6 +118,7 @@ export function EmptyCardCharacter({ onAddCard }: EmptyCardCharacterProps) {
         className="group relative flex items-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-b from-blue-600 to-blue-700 px-8 py-4 font-semibold text-white shadow-lg shadow-blue-500/25 transition-all"
         initial={{ opacity: 0, y: 20 }}
         onClick={onAddCard}
+        data-testid="wallet-empty-cta"
         transition={{ delay: 1.5, duration: 0.6 }}
         whileHover={{ boxShadow: "0 20px 40px rgba(59, 130, 246, 0.3)", scale: 1.02 }}
         whileTap={{ scale: 0.98 }}

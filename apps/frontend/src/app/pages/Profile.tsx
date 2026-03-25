@@ -63,16 +63,16 @@ export function Profile() {
   ];
 
   return (
-    <div className="min-h-full bg-gray-50 pb-24 font-sans" data-testid="profile-page">
-      <div className="border-b border-gray-100 bg-white px-6 pb-6 pt-12">
+    <div className="spotlight-bg min-h-full pb-24 font-sans" data-testid="profile-page">
+      <div className="border-b stage-divider bg-white/76 px-6 pb-6 pt-12 backdrop-blur-xl">
         <div className="flex items-center justify-between">
-          <motion.button className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 transition-colors hover:bg-gray-200" type="button" whileTap={{ scale: 0.95 }}>
+          <motion.button className="glass-button flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-white/80" type="button" whileTap={{ scale: 0.95 }}>
             <QrCode className="h-5 w-5 text-gray-700" strokeWidth={2} />
           </motion.button>
 
-          <h1 className="text-lg font-bold tracking-tight text-gray-900">{t("profile.title")}</h1>
+          <h1 className="stage-title text-lg font-bold tracking-tight text-gray-900">{t("profile.title")}</h1>
 
-          <motion.button className="h-10 rounded-xl bg-gray-900 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-gray-800" type="button" whileTap={{ scale: 0.95 }}>
+          <motion.button className="accent-action h-10 rounded-xl px-4 text-sm font-semibold text-white transition-colors" type="button" whileTap={{ scale: 0.95 }}>
             {t("profile.edit")}
           </motion.button>
         </div>
@@ -103,11 +103,11 @@ export function Profile() {
       </div>
 
       <div className="mb-8 grid grid-cols-2 gap-4 px-6">
-        <motion.button className="flex flex-col items-center gap-2 rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm transition-all hover:bg-gray-50" type="button" whileTap={{ scale: 0.98 }}>
+        <motion.button className="soft-panel panel-hover flex flex-col items-center gap-2 rounded-2xl px-4 py-4 transition-all" type="button" whileTap={{ scale: 0.98 }}>
           <Camera className="h-6 w-6 text-blue-500" strokeWidth={2} />
           <span className="text-xs font-bold text-gray-900">{t("profile.updateAvatar")}</span>
         </motion.button>
-        <motion.button className="flex flex-col items-center gap-2 rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm transition-all hover:bg-gray-50" type="button" whileTap={{ scale: 0.98 }}>
+        <motion.button className="soft-panel panel-hover flex flex-col items-center gap-2 rounded-2xl px-4 py-4 transition-all" type="button" whileTap={{ scale: 0.98 }}>
           <ShieldCheck className="h-6 w-6 text-emerald-500" strokeWidth={2} />
           <span className="text-xs font-bold text-gray-900">{t("profile.verifyKYC")}</span>
         </motion.button>
@@ -117,13 +117,13 @@ export function Profile() {
         {menuSections.map((section) => (
           <div key={section.id}>
             <h3 className="mb-3 ml-2 text-xs font-bold uppercase tracking-widest text-gray-400">{section.title}</h3>
-            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+            <div className="stage-surface overflow-hidden rounded-2xl">
               {section.items.map((item, index) => {
                 const Icon = item.icon;
                 return (
                   <motion.button
                     key={item.label}
-                    className={`flex w-full items-center gap-4 px-5 py-4 transition-colors hover:bg-gray-50 ${index !== section.items.length - 1 ? "border-b border-gray-50" : ""}`}
+                    className={`flex w-full items-center gap-4 px-5 py-4 transition-colors hover:bg-white/72 ${index !== section.items.length - 1 ? "border-b stage-divider" : ""}`}
                     data-testid={item.testId}
                     onClick={item.onClick}
                     type="button"
@@ -150,7 +150,7 @@ export function Profile() {
       </div>
 
       <div className="px-6 pb-12 pt-10">
-        <motion.button className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-100 bg-white py-4 text-sm font-bold text-red-500 shadow-sm transition-colors hover:bg-red-50" type="button" whileTap={{ scale: 0.98 }}>
+        <motion.button className="soft-panel panel-hover flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-red-500 transition-colors hover:bg-red-50/80" type="button" whileTap={{ scale: 0.98 }}>
           <LogOut className="h-5 w-5" strokeWidth={2} />
           {t("profile.disconnectWallet")}
         </motion.button>
