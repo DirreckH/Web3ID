@@ -42,6 +42,7 @@ packages/proof/tools/circom.exe
 .env.local
 .env.*.local
 .web3id/
+/.codex-*
 tmp-*.json
 tmp-demo-stage2*
 pnpm-install.log

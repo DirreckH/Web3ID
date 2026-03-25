@@ -477,6 +477,11 @@ The README establishes the main narrative. The following documents define the mo
 - [VERSIONING_AND_REPLAY](./docs/VERSIONING_AND_REPLAY.md)
 - [DEMO_MATRIX](./docs/DEMO_MATRIX.md)
 
+### Phase History
+
+- [PHASE3_REPORT](./docs/phases/PHASE3_REPORT.md)
+- [README_PHASE3](./docs/phases/README_PHASE3.md)
+
 ## 📄 License
 
 Web3ID is licensed under the [Apache License 2.0](./LICENSE).
