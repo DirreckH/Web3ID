@@ -19,7 +19,7 @@ export function CardWallet() {
   const [showMessages, setShowMessages] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showEmptyHero, setShowEmptyHero] = useState(false);
+  const [replayId, setReplayId] = useState(0);
 
   const handleAddCard = (card: CardData) => {
     setCards([card, ...cards]);
@@ -29,17 +29,15 @@ export function CardWallet() {
   const hasCards = cards.length > 0;
 
   useEffect(() => {
-    if (hasCards) {
-      setShowEmptyHero(false);
-      return;
+    if (!hasCards) {
+      // Ensure the empty hero is in view before replaying animations.
+      window.scrollTo(0, 0);
+      const raf = window.requestAnimationFrame(() => {
+        setReplayId((prev) => prev + 1);
+      });
+      return () => window.cancelAnimationFrame(raf);
     }
-
-    setShowEmptyHero(false);
-    const timeout = window.setTimeout(() => {
-      setShowEmptyHero(true);
-    }, 140);
-
-    return () => window.clearTimeout(timeout);
+    setReplayId(0);
   }, [hasCards, location.key]);
 
   if (showMessages) {
@@ -163,7 +161,7 @@ export function CardWallet() {
         {!hasCards ? (
           <div className="flex min-h-[calc(100dvh-15rem)] items-center justify-center md:min-h-[calc(100dvh-17rem)]">
             <AnimatePresence mode="wait">
-              {showEmptyHero ? <EmptyCardCharacter key={location.key} onAddCard={() => setIsAddModalOpen(true)} /> : null}
+              <EmptyCardCharacter key={`empty-${replayId}`} onAddCard={() => setIsAddModalOpen(true)} replayKey={replayId} />
             </AnimatePresence>
           </div>
         ) : (

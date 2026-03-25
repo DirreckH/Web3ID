@@ -30,6 +30,7 @@ test("bottom navigation stays unified across breakpoints and wallet empty hero r
   await page.goto("/");
   await expect(page.getByTestId("wallet-page")).toBeVisible();
   await expect(page.getByTestId("wallet-empty-hero")).toBeVisible();
+  const firstReplay = await page.getByTestId("wallet-empty-state").getAttribute("data-replay");
   await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
   await expect(page.getByTestId("mobile-nav-portfolio")).toBeVisible();
 
@@ -38,6 +39,9 @@ test("bottom navigation stays unified across breakpoints and wallet empty hero r
   await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
   await page.getByTestId("mobile-nav-wallet").click();
   await expect(page.getByTestId("wallet-empty-hero")).toBeVisible();
+  await expect
+    .poll(async () => page.getByTestId("wallet-empty-state").getAttribute("data-replay"))
+    .not.toEqual(firstReplay);
 
   await page.goto("/profile");
   await expect(page.getByTestId("profile-page")).toBeVisible();

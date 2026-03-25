@@ -3,13 +3,15 @@ import { Fingerprint, Plus, Shield, Wallet } from "lucide-react";
 
 interface EmptyCardCharacterProps {
   onAddCard: () => void;
+  replayKey?: number;
 }
 
-export function EmptyCardCharacter({ onAddCard }: EmptyCardCharacterProps) {
+export function EmptyCardCharacter({ onAddCard, replayKey }: EmptyCardCharacterProps) {
   return (
     <motion.div
       animate={{ opacity: 1 }}
       className="flex w-full flex-col items-center justify-center px-6 py-12 md:py-14"
+      data-replay={replayKey}
       data-testid="wallet-empty-state"
       initial={{ opacity: 0 }}
       transition={{ duration: 0.8 }}
@@ -93,9 +95,18 @@ export function EmptyCardCharacter({ onAddCard }: EmptyCardCharacterProps) {
 
         <motion.div animate={{ opacity: 1, scaleX: 1 }} className="absolute -bottom-2 left-1/2 h-4 w-72 -translate-x-1/2 rounded-full bg-black/20 blur-xl" initial={{ opacity: 0, scaleX: 0.8 }} transition={{ delay: 0.4, duration: 0.8 }} />
 
-        <motion.div animate={{ opacity: 1, scale: 1 }} className="absolute -right-6 -top-6" initial={{ opacity: 0, scale: 0 }} transition={{ delay: 1.1, type: "spring" }}>
-          <motion.div animate={{ rotate: [0, 5, 0], y: [0, -8, 0] }} className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg" transition={{ duration: 3, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY }}>
-            <Wallet className="h-6 w-6 text-white" strokeWidth={2} />
+        <motion.div
+          animate={{ opacity: 1, scale: 1 }}
+          className="absolute right-5 top-5"
+          initial={{ opacity: 0, scale: 0 }}
+          transition={{ delay: 0.9, type: "spring", stiffness: 180, damping: 16 }}
+        >
+          <motion.div
+            animate={{ rotate: [0, 3, 0], y: [0, -3, 0] }}
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-[0_8px_18px_rgba(88,109,255,0.35),inset_0_1px_0_rgba(255,255,255,0.28)]"
+            transition={{ duration: 3.2, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY }}
+          >
+            <Wallet className="h-4 w-4 text-white" strokeWidth={2} />
           </motion.div>
         </motion.div>
 
