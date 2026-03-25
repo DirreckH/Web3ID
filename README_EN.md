@@ -50,20 +50,21 @@ It is not a wallet-login demo, nor a sample project that loosely stitches togeth
 
 ```mermaid
 flowchart LR
-  A["Controller Proof / Credential / Challenge"] --> B["issuer-service"]
-  A --> C["packages/* core model"]
+  A["Proof & Credential Inputs"] --> B["issuer-service"]
+  A --> C["Core Packages"]
   B --> D["analyzer-service"]
   C --> D
   D --> E["policy-api"]
-  D --> F["audit / replay / governance"]
-  E --> G["frontend / demo flows"]
-  E --> H["contracts / verifier / gates"]
+  D --> F["Audit & Replay"]
+  E --> G["frontend"]
+  E --> H["contracts"]
 ```
 
 - Frontend: `React 19`, `Vite 6`, `React Router 7`, `React Query`, `Tailwind CSS 4`, `Recharts`, `wagmi`, `viem`
 - Services: `Express`, `TypeScript`, `zod`
 - Core packages: `credential`, `identity`, `policy`, `proof`, `risk`, `sdk`, `state`
-- Contracts: the Foundry contract workspace lives in [`contracts/`](./contracts)
+- `Audit & Replay`: covers the audit, replay, and governance-oriented system paths
+- Contracts: the Foundry contract workspace lives in [`contracts/`](./contracts) and carries verifier / gate / registry semantics
 - Verification: `Vitest`, system acceptance gates, and Foundry contract tests
 
 ## 🔀 Runtime Modes

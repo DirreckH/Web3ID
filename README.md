@@ -50,20 +50,21 @@ Web3ID 是一套面向真实系统运行的 Web3 身份基线，用来把 progra
 
 ```mermaid
 flowchart LR
-  A["Controller Proof / Credential / Challenge"] --> B["issuer-service"]
-  A --> C["packages/* core model"]
+  A["Proof & Credential Inputs"] --> B["issuer-service"]
+  A --> C["Core Packages"]
   B --> D["analyzer-service"]
   C --> D
   D --> E["policy-api"]
-  D --> F["audit / replay / governance"]
-  E --> G["frontend / demo flows"]
-  E --> H["contracts / verifier / gates"]
+  D --> F["Audit & Replay"]
+  E --> G["frontend"]
+  E --> H["contracts"]
 ```
 
 - Frontend: `React 19`, `Vite 6`, `React Router 7`, `React Query`, `Tailwind CSS 4`, `Recharts`, `wagmi`, `viem`
 - Services: `Express`, `TypeScript`, `zod`
 - Core packages: `credential`, `identity`, `policy`, `proof`, `risk`, `sdk`, `state`
-- Contracts: `Foundry` 合约工程位于 [`contracts/`](./contracts)
+- `Audit & Replay`: 覆盖 audit、replay 与 governance 相关系统链路
+- Contracts: `Foundry` 合约工程位于 [`contracts/`](./contracts)，承载 verifier / gate / registry 相关语义
 - Verification: `Vitest`、system acceptance gates、Foundry contract tests
 
 ## 🔀 运行模式
