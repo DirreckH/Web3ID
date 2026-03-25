@@ -175,6 +175,32 @@ AI can detect patterns, generate risk hints, and assist explanation. It cannot d
 5. Portfolio or history page
 6. Profile page with identity / compliance grouping
 
+### Prepared Screenshots
+
+#### Wallet Home Overview
+
+![Wallet overview](./screenshots/01-wallet-overview.png)
+
+#### Expanded Identity Tree
+
+![Identity tree](./screenshots/02-identity-tree.png)
+
+#### Market Asset List
+
+![Market overview](./screenshots/03-market-overview.png)
+
+#### Purchase Modal / Result
+
+![Purchase flow](./screenshots/04-purchase-gating.png)
+
+#### History Page
+
+![History page](./screenshots/05-history-or-portfolio.png)
+
+#### Profile Identity / Compliance Grouping
+
+![Profile compliance](./screenshots/06-profile-compliance.png)
+
 ## 8. Video Script Foundation
 
 This document is already a usable base for the later demo video:

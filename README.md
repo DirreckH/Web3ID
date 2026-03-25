@@ -16,6 +16,12 @@ Web3ID 是一套面向真实系统运行的 Web3 身份基线，用来把 progra
 
 它不是 wallet-login demo，也不是把签名、凭证、风控、审计和运营面板临时拼起来的样例工程。这个仓库关注的是系统边界如何成立: 身份如何锚定、状态如何演化、策略如何约束、审计如何闭环、AI 如何被限制在 advisory 边界内。
 
+## 📸 Demo Preview
+
+![Wallet overview](./screenshots/01-wallet-overview.png)
+
+![Identity tree](./screenshots/02-identity-tree.png)
+
 ## ✨ 功能特性
 
 ### 身份与控制权
