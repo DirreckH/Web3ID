@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1024 });
 });
 
-test("desktop routes, trade flow, market purchase, and language persistence work", async ({ page }) => {
+test("desktop routes, trade flow, redirects, and language persistence work", async ({ page }) => {
   const errors = trackPageErrors(page);
 
   await page.goto("/");
@@ -34,8 +34,10 @@ test("desktop routes, trade flow, market purchase, and language persistence work
   expect(walletShell!.width).toBeLessThan(1400);
   expect(walletShell!.x).toBeGreaterThan(0);
   expect(navBox!.width).toBeLessThan(900);
+
   await page.getByTestId("mobile-nav-portfolio").click();
   await expect(page.getByTestId("portfolio-page")).toBeVisible();
+
   await page.getByTestId("mobile-nav-wallet").click();
   await expect(page.getByTestId("wallet-page")).toBeVisible();
 
@@ -73,16 +75,12 @@ test("desktop routes, trade flow, market purchase, and language persistence work
   await page.getByRole("button", { name: "Close" }).click();
 
   await page.goto("/market");
-  await expect(page.getByTestId("market-page")).toBeVisible();
-  await page.getByTestId("market-filter-real-estate").click();
-  await page.getByTestId("market-card-1").click();
-  await expect(page.getByTestId("asset-detail-modal")).toBeVisible();
-  await page.getByRole("button", { name: "立即购买" }).click();
-  await page.getByRole("button", { name: "下一步" }).click();
-  await page.getByRole("button", { name: "确认并支付" }).click();
-  await expect(page.getByRole("button", { name: "完成" })).toBeVisible({ timeout: 15000 });
-  await page.getByRole("button", { name: "完成" }).click();
-  await expect(page.getByTestId("asset-detail-modal")).toBeHidden();
+  await expect(page).toHaveURL(/\/mall\/?$/);
+  await expect(page.getByTestId("trade-page")).toBeVisible();
+
+  await page.goto("/assets");
+  await expect(page).toHaveURL(/\/mall\/?$/);
+  await expect(page.getByTestId("trade-page")).toBeVisible();
 
   await page.goto("/portfolio");
   await expect(page.getByTestId("portfolio-page")).toBeVisible();

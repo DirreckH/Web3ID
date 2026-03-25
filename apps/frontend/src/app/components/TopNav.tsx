@@ -1,11 +1,10 @@
-import { BarChart3, History, LayoutGrid, Store, User, Wallet } from "lucide-react";
+import { BarChart3, History, LayoutGrid, User, Wallet } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useLanguage } from "../contexts/LanguageContext";
 
 const items = [
   { key: "wallet", path: "/", icon: Wallet },
   { key: "trade", path: "/trade", icon: BarChart3 },
-  { key: "market", path: "/market", icon: Store },
   { key: "portfolio", path: "/portfolio", icon: LayoutGrid },
   { key: "history", path: "/history", icon: History },
   { key: "profile", path: "/profile", icon: User },

@@ -17,7 +17,7 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 const translations: Record<Language, TranslationTree> = {
   en: {
-    nav: { wallet: "Wallet", trade: "Trade", market: "Market", portfolio: "Portfolio", history: "History", profile: "Profile", me: "Me" },
+    nav: { wallet: "Wallet", trade: "Trade", portfolio: "Portfolio", history: "History", profile: "Profile", me: "Me" },
     common: { add: "Add", search: "Search", confirm: "Confirm", cancel: "Cancel", close: "Close", complete: "Complete", back: "Back", buyNow: "Buy now", viewAll: "View all" },
     wallet: { title: "Wallet", subtitle: "Manage your identity cards and Web3 access points.", inbox: "Inbox", addCard: "Add card", searchPlaceholder: "Search cards or addresses...", emptyTitle: "Start with your first identity card", emptyDescription: "Add an address to visualize your Web3ID wallet.", kycVerified: "KYC L2 Verified", stack: "Stacked", expanded: "Expanded" },
     cardWallet: { title: "Wallet", inbox: "Inbox", searchPlaceholder: "Search cards or addresses...", kycVerified: "KYC L2 Verified" },
@@ -48,7 +48,6 @@ const translations: Record<Language, TranslationTree> = {
       },
     },
     trade: { title: "Trade", subtitle: "Browse compliant tokenized assets and simulated order flow.", searchPlaceholder: "Search RWA assets...", buy: "Buy", sell: "Sell", orderBook: "Order book", recentTrades: "Recent trades" },
-    market: { title: "Market", subtitle: "Explore tokenized real-world asset opportunities.", searchPlaceholder: "Search assets, locations, or descriptions..." },
     profile: {
       title: "Profile",
       subtitle: "Identity, compliance, wallets, and language settings.",
@@ -96,7 +95,7 @@ const translations: Record<Language, TranslationTree> = {
     portfolio: { title: "Portfolio", subtitle: "Track allocations, returns, and sector exposure." },
   },
   "zh-CN": {
-    nav: { wallet: "\u94b1\u5305", trade: "\u4ea4\u6613", market: "\u5546\u57ce", portfolio: "\u7ec4\u5408", history: "\u5386\u53f2", profile: "\u6211\u7684", me: "\u6211\u7684" },
+    nav: { wallet: "\u94b1\u5305", trade: "\u4ea4\u6613", portfolio: "\u7ec4\u5408", history: "\u5386\u53f2", profile: "\u6211\u7684", me: "\u6211\u7684" },
     common: { add: "\u6dfb\u52a0", search: "\u641c\u7d22", confirm: "\u786e\u8ba4", cancel: "\u53d6\u6d88", close: "\u5173\u95ed", complete: "\u5b8c\u6210", back: "\u8fd4\u56de", buyNow: "\u7acb\u5373\u8d2d\u4e70", viewAll: "\u67e5\u770b\u5168\u90e8" },
     wallet: { title: "\u94b1\u5305", subtitle: "\u7ba1\u7406\u4f60\u7684 Web3ID \u5361\u7247\u4e0e\u8bbf\u95ee\u5165\u53e3\u3002", inbox: "\u6536\u4ef6\u7bb1", addCard: "\u6dfb\u52a0\u5361\u7247", searchPlaceholder: "\u641c\u7d22\u5361\u7247\u6216\u5730\u5740...", emptyTitle: "\u4ece\u7b2c\u4e00\u5f20\u8eab\u4efd\u5361\u5f00\u59cb", emptyDescription: "\u6dfb\u52a0\u4e00\u4e2a\u5730\u5740\uff0c\u751f\u6210\u4f60\u7684 Web3ID \u94b1\u5305\u89c6\u56fe\u3002", kycVerified: "KYC L2 \u5df2\u9a8c\u8bc1", stack: "\u5806\u53e0", expanded: "\u5c55\u5f00" },
     cardWallet: { title: "\u94b1\u5305", inbox: "\u6536\u4ef6\u7bb1", searchPlaceholder: "\u641c\u7d22\u5361\u7247\u6216\u5730\u5740...", kycVerified: "KYC L2 \u5df2\u9a8c\u8bc1" },
@@ -127,7 +126,6 @@ const translations: Record<Language, TranslationTree> = {
       },
     },
     trade: { title: "\u4ea4\u6613", subtitle: "\u6d4f\u89c8\u5408\u89c4\u4ee3\u5e01\u5316\u8d44\u4ea7\u4e0e\u6a21\u62df\u4ea4\u6613\u6d41\u3002", searchPlaceholder: "\u641c\u7d22 RWA \u8d44\u4ea7...", buy: "\u4e70\u5165", sell: "\u5356\u51fa", orderBook: "\u8ba2\u5355\u7c3f", recentTrades: "\u6700\u8fd1\u6210\u4ea4" },
-    market: { title: "\u5546\u57ce", subtitle: "\u63a2\u7d22\u5168\u7403 RWA \u4ee3\u5e01\u5316\u673a\u4f1a\u3002", searchPlaceholder: "\u641c\u7d22\u8d44\u4ea7\u3001\u5730\u70b9\u6216\u63cf\u8ff0..." },
     profile: {
       title: "\u6211\u7684",
       subtitle: "\u8eab\u4efd\u3001\u5408\u89c4\u3001\u94b1\u5305\u548c\u8bed\u8a00\u8bbe\u7f6e\u3002",
@@ -175,7 +173,7 @@ const translations: Record<Language, TranslationTree> = {
     portfolio: { title: "\u8d44\u4ea7\u7ec4\u5408", subtitle: "\u8ddf\u8e2a\u6301\u4ed3\u3001\u6536\u76ca\u548c\u914d\u7f6e\u66b4\u9732\u3002" },
   },
   "zh-TW": {
-    nav: { wallet: "\u9322\u5305", trade: "\u4ea4\u6613", market: "\u5546\u57ce", portfolio: "\u7d44\u5408", history: "\u6b77\u53f2", profile: "\u6211\u7684", me: "\u6211\u7684" },
+    nav: { wallet: "\u9322\u5305", trade: "\u4ea4\u6613", portfolio: "\u7d44\u5408", history: "\u6b77\u53f2", profile: "\u6211\u7684", me: "\u6211\u7684" },
     common: { add: "\u65b0\u589e", search: "\u641c\u5c0b", confirm: "\u78ba\u8a8d", cancel: "\u53d6\u6d88", close: "\u95dc\u9589", complete: "\u5b8c\u6210", back: "\u8fd4\u56de", buyNow: "\u7acb\u5373\u8cfc\u8cb7", viewAll: "\u67e5\u770b\u5168\u90e8" },
     wallet: { title: "\u9322\u5305", subtitle: "\u7ba1\u7406\u4f60\u7684 Web3ID \u5361\u7247\u8207\u5b58\u53d6\u5165\u53e3\u3002", inbox: "\u6536\u4ef6\u7bb1", addCard: "\u65b0\u589e\u5361\u7247", searchPlaceholder: "\u641c\u5c0b\u5361\u7247\u6216\u5730\u5740...", emptyTitle: "\u5f9e\u7b2c\u4e00\u5f35\u8eab\u4efd\u5361\u958b\u59cb", emptyDescription: "\u65b0\u589e\u4e00\u500b\u5730\u5740\uff0c\u5efa\u7acb\u4f60\u7684 Web3ID \u9322\u5305\u8996\u5716\u3002", kycVerified: "KYC L2 \u5df2\u9a57\u8b49", stack: "\u5806\u758a", expanded: "\u5c55\u958b" },
     cardWallet: { title: "\u9322\u5305", inbox: "\u6536\u4ef6\u7bb1", searchPlaceholder: "\u641c\u5c0b\u5361\u7247\u6216\u5730\u5740...", kycVerified: "KYC L2 \u5df2\u9a57\u8b49" },
@@ -206,7 +204,6 @@ const translations: Record<Language, TranslationTree> = {
       },
     },
     trade: { title: "\u4ea4\u6613", subtitle: "\u700f\u89bd\u5408\u898f\u4ee3\u5e63\u5316\u8cc7\u7522\u8207\u6a21\u64ec\u8a02\u55ae\u6d41\u3002", searchPlaceholder: "\u641c\u5c0b RWA \u8cc7\u7522...", buy: "\u8cb7\u5165", sell: "\u8ce3\u51fa", orderBook: "\u8a02\u55ae\u7c3f", recentTrades: "\u6700\u8fd1\u6210\u4ea4" },
-    market: { title: "\u5546\u57ce", subtitle: "\u63a2\u7d22\u5168\u7403 RWA \u4ee3\u5e63\u5316\u6a5f\u6703\u3002", searchPlaceholder: "\u641c\u5c0b\u8cc7\u7522\u3001\u5730\u9ede\u6216\u63cf\u8ff0..." },
     profile: {
       title: "\u6211\u7684",
       subtitle: "\u8eab\u4efd\u3001\u5408\u898f\u3001\u9322\u5305\u548c\u8a9e\u8a00\u8a2d\u5b9a\u3002",
