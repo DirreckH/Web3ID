@@ -1,0 +1,37 @@
+# Large or unrelated repo areas not needed for frontend mock deployment
+.git/
+.github/
+.web3id/
+broadcast/
+cache/
+contracts/
+docs/
+lib/
+out/
+screenshots/
+tests/
+scripts/
+
+# Root docs and local logs
+DEMO.md
+DEMO_EN.md
+README.md
+README_EN.md
+tmp-*.log
+tmp-*.err.log
+
+# Workspace apps not needed for this frontend-only deploy
+apps/analyzer-service/
+apps/issuer-service/
+apps/policy-api/
+
+# Frontend local artifacts
+apps/frontend/node_modules/
+apps/frontend/test-results/
+apps/frontend/tests/
+apps/frontend/tmp-*.log
+apps/frontend/tmp-*.err.log
+
+# Generic dependency folders
+node_modules/
+**/node_modules/

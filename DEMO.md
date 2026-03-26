@@ -13,6 +13,9 @@ pnpm demo:platform
 ```
 
 正式演示材料: [中文 PDF](./docs/presentation/Web3ID-identity-new-order-zh.pdf)
+线上 Demo: [Live Demo](https://web3id-demo.vercel.app)
+
+当前线上站点默认运行 `mock` 数据模式，用于公开展示，不依赖 `issuer-service / analyzer-service / policy-api` 在线服务。
 
 ## 1. 叙事映射
 

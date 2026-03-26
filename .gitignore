@@ -47,3 +47,5 @@ tmp-*.json
 tmp-demo-stage2*
 pnpm-install.log
 vendor-temp/
+
+.vercel
