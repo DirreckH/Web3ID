@@ -501,34 +501,54 @@ function buildTronDigest(message: string) {
   return keccak256(stringToHex(`${prefix}${message}`));
 }
 
+function normalizeTronRecoveryBit(value: number) {
+  const normalized = value >= 27 ? value - 27 : value;
+  return normalized === 0 || normalized === 1 ? normalized : null;
+}
+
 function verifyTronProof(input: { challenge: ControllerChallengeLike; proofEnvelope: ControllerProofEnvelope }) {
   const signatureBytes = decodeBinary(input.proofEnvelope.signature);
   if (signatureBytes.length !== 65) {
     throw new Error("TRON signatures must be 65 bytes long.");
   }
-  const compactSignature =
-    signatureBytes[0] <= 3 && signatureBytes[64] > 3
-      ? signatureBytes.slice(1)
-      : signatureBytes.slice(0, 64);
-  const recoveryByte = signatureBytes[0] <= 3 && signatureBytes[64] > 3 ? signatureBytes[0] : signatureBytes[64];
-  const recoveryBit = recoveryByte >= 27 ? recoveryByte - 27 : recoveryByte;
-  if (recoveryBit !== 0 && recoveryBit !== 1) {
+
+  const candidates = [
+    {
+      compactSignature: signatureBytes.slice(1),
+      recoveryBit: normalizeTronRecoveryBit(signatureBytes[0]),
+    },
+    {
+      compactSignature: signatureBytes.slice(0, 64),
+      recoveryBit: normalizeTronRecoveryBit(signatureBytes[64]),
+    },
+  ];
+
+  const validCandidates = candidates.filter((candidate) => candidate.recoveryBit !== null);
+  if (validCandidates.length === 0) {
     throw new Error("TRON signatures must carry a valid recovery bit.");
   }
+
   const digest = hexToBytes(buildTronDigest(input.challenge.challengeMessage));
-  const recovered = secp256k1.Signature.fromBytes(compactSignature, "compact")
-    .addRecoveryBit(recoveryBit)
-    .recoverPublicKey(digest)
-    .toBytes(false);
-  const normalizedSigner = tronAddressFromPublicKey(recovered);
-  if (normalizedSigner !== input.challenge.controllerRef.normalizedAddress) {
-    throw new Error("TRON controller signature does not match the normalized address.");
+  for (const candidate of validCandidates) {
+    try {
+      const recovered = secp256k1.Signature.fromBytes(candidate.compactSignature, "compact")
+        .addRecoveryBit(candidate.recoveryBit)
+        .recoverPublicKey(digest)
+        .toBytes(false);
+      const normalizedSigner = tronAddressFromPublicKey(recovered);
+      if (normalizedSigner === input.challenge.controllerRef.normalizedAddress) {
+        return {
+          normalizedSigner,
+          usedFallbackResolver: false,
+          evidenceRefs: [`signer:${normalizedSigner}`],
+        };
+      }
+    } catch {
+      // Keep trying remaining candidate layouts. Different wallets serialize recoverable signatures differently.
+    }
   }
-  return {
-    normalizedSigner,
-    usedFallbackResolver: false,
-    evidenceRefs: [`signer:${normalizedSigner}`],
-  };
+
+  throw new Error("TRON controller signature does not match the normalized address.");
 }
 
 function buildTonProofSigningMessage(input: { address: string; domain: string; timestamp: number; payload: string }) {
