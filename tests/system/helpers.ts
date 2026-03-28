@@ -6,7 +6,7 @@ export async function waitFor<T>(callback: () => Promise<T | null>, timeoutMs = 
 }
 
 export async function createSystemHarness(seedBase: number): Promise<ServiceHarness> {
-  const harness = await createServiceHarness(seedBase + (process.pid % 100));
+  const harness = await createServiceHarness(seedBase);
   await harness.registerTree();
   await harness.createBindings();
   return harness;

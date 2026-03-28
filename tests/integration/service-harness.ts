@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -137,10 +138,34 @@ function resolvePnpmCommand() {
 function createPorts(seed: number) {
   return {
     rpc: seed,
-    issuer: seed + 100,
-    analyzer: seed + 200,
-    policy: seed + 300,
+    issuer: seed + 1,
+    analyzer: seed + 2,
+    policy: seed + 3,
   };
+}
+
+async function canBindPort(port: number) {
+  return new Promise<boolean>((resolvePromise) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", () => resolvePromise(false));
+    server.listen(port, "127.0.0.1", () => {
+      server.close(() => resolvePromise(true));
+    });
+  });
+}
+
+async function resolvePortSeed(preferredSeed: number) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const candidateSeed = preferredSeed + attempt * 1_000;
+    const ports = Object.values(createPorts(candidateSeed));
+    const availability = await Promise.all(ports.map((port) => canBindPort(port)));
+    if (availability.every(Boolean)) {
+      return candidateSeed;
+    }
+  }
+
+  throw new Error(`Unable to allocate an available service port block starting from ${preferredSeed}.`);
 }
 
 function createUrls(ports: ReturnType<typeof createPorts>) {
@@ -409,7 +434,8 @@ function startService(name: string, cwd: string, env: NodeJS.ProcessEnv) {
 export async function createServiceHarness(portSeed = 13055): Promise<ServiceHarness> {
   const tempDir = await mkdtemp(join(tmpdir(), "web3id-service-integration-"));
   mkdirSync(dirname(resolve(tempDir, "issuer-store.json")), { recursive: true });
-  const ports = createPorts(portSeed);
+  const resolvedPortSeed = await resolvePortSeed(portSeed);
+  const ports = createPorts(resolvedPortSeed);
   const urls = createUrls(ports);
   const services: ServiceHandle[] = [];
 

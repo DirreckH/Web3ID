@@ -4,14 +4,14 @@ import { createSystemHarness } from "./helpers.js";
 import { createSubjectAggregateRecord, linkRootToAggregate, primaryAggregateAccount, secondaryAggregateAccount } from "./aggregate-helpers.js";
 
 describe.sequential("aggregate proof policy acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(14755);
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("keeps proof verification backward compatible while exposing aggregate-aware policy context", async () => {

@@ -4,14 +4,14 @@ import { DEMO_TARGETS, type ServiceHarness } from "../integration/service-harnes
 import { createSystemHarness, waitFor } from "./helpers.js";
 
 describe.sequential("system boundary acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(14155);
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("keeps AI advisory-only until human review confirms a manual signal", async () => {

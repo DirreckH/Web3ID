@@ -18,7 +18,7 @@ import { type ServiceHarness } from "../integration/service-harness.js";
 import { createSystemHarness } from "./helpers.js";
 
 describe.sequential("reserved safety acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(14355);
@@ -30,7 +30,7 @@ describe.sequential("reserved safety acceptance", () => {
 
   afterAll(async () => {
     clearRecoveryHooksForTests();
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("keeps cross-chain hooks read-only and outside policy fact sourcing", async () => {

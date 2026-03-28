@@ -4,14 +4,14 @@ import { DEMO_TARGETS, type ServiceHarness } from "../integration/service-harnes
 import { createSystemHarness, waitFor } from "./helpers.js";
 
 describe.sequential("phase4 recovery acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(14655);
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("runs a governed recovery closed loop without raw state rewrite", async () => {
