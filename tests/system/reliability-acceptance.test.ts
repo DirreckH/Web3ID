@@ -3,14 +3,14 @@ import { type ServiceHarness } from "../integration/service-harness.js";
 import { createSystemHarness } from "./helpers.js";
 
 describe.sequential("phase4 reliability acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(15155);
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("keeps idempotent operations stable and exposes runtime outbox metrics", async () => {

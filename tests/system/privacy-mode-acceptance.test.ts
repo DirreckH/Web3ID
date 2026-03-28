@@ -4,14 +4,14 @@ import { type ServiceHarness } from "../integration/service-harness.js";
 import { createSystemHarness } from "./helpers.js";
 
 describe.sequential("phase4 privacy acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(14855);
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("keeps public mode backward compatible and enforces disclosure profiles for compliance policies", async () => {

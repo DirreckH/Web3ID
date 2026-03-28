@@ -4,14 +4,14 @@ import { createSystemHarness } from "./helpers.js";
 import { createSubjectAggregateRecord, linkRootToAggregate, primaryAggregateAccount, secondaryAggregateAccount } from "./aggregate-helpers.js";
 
 describe.sequential("subject aggregate binding acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(14655);
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("does not merge roots silently and keeps duplicate aggregate links idempotent", async () => {

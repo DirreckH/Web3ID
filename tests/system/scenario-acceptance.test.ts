@@ -4,14 +4,14 @@ import { type ServiceHarness } from "../integration/service-harness.js";
 import { createSystemHarness } from "./helpers.js";
 
 describe.sequential("system scenario acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(14255);
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("keeps RWA on the compliance path and requires credential evidence", async () => {

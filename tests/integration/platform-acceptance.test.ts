@@ -14,7 +14,7 @@ function resolvePnpmCommand() {
 async function runAcceptance(stage: "stage1" | "platform") {
   const pnpm = resolvePnpmCommand();
   const basePort = stage === "stage1" ? 12055 : 12555;
-  const portSeed = String(basePort + (process.pid % 100));
+  const portSeed = String(basePort);
   return new Promise<any>((resolvePromise, reject) => {
     const child = spawn(
       pnpm.command,

@@ -17,7 +17,7 @@ describe.sequential("extended service integration", () => {
   let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
-    harness = await createServiceHarness(13555 + (process.pid % 100));
+    harness = await createServiceHarness(13555);
     await harness.registerTree();
     await harness.createBindings();
   }, 900_000);

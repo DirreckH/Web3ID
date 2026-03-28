@@ -4,14 +4,14 @@ import { DEMO_TARGETS, type ServiceHarness } from "../integration/service-harnes
 import { createSystemHarness, waitFor } from "./helpers.js";
 
 describe.sequential("system core acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(14055);
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("keeps the root/sub model and explanation chain aligned", async () => {

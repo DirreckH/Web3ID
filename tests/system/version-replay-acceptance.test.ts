@@ -4,14 +4,14 @@ import { DEMO_TARGETS, type ServiceHarness } from "../integration/service-harnes
 import { createSystemHarness, waitFor } from "./helpers.js";
 
 describe.sequential("phase4 versioning replay acceptance", () => {
-  let harness: ServiceHarness;
+  let harness: ServiceHarness | undefined;
 
   beforeAll(async () => {
     harness = await createSystemHarness(14955);
   }, 900_000);
 
   afterAll(async () => {
-    await harness.stop();
+    await harness?.stop();
   });
 
   it("replays and diffs state changes with version envelopes and explanation-first output", async () => {

@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -100,10 +101,34 @@ function resolvePnpmCommand() {
 function createPorts(seed: number) {
   return {
     rpc: seed,
-    issuer: seed + 100,
-    analyzer: seed + 200,
-    policy: seed + 300,
+    issuer: seed + 1,
+    analyzer: seed + 2,
+    policy: seed + 3,
   };
+}
+
+async function canBindPort(port: number) {
+  return new Promise<boolean>((resolvePromise) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", () => resolvePromise(false));
+    server.listen(port, "127.0.0.1", () => {
+      server.close(() => resolvePromise(true));
+    });
+  });
+}
+
+async function resolvePortSeed(preferredSeed: number) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const candidateSeed = preferredSeed + attempt * 1_000;
+    const ports = Object.values(createPorts(candidateSeed));
+    const availability = await Promise.all(ports.map((port) => canBindPort(port)));
+    if (availability.every(Boolean)) {
+      return candidateSeed;
+    }
+  }
+
+  throw new Error(`Unable to allocate an available acceptance port block starting from ${preferredSeed}.`);
 }
 
 function defaultRpcPortSeed(inputStage: AcceptanceStage) {
@@ -417,7 +442,7 @@ async function registerTreeWithAnalyzer(analyzerUrl: string) {
 async function createRootBinding(analyzerUrl: string) {
   const challenge = await postJson<{ challengeId: string; challengeMessage: string }>(`${analyzerUrl}/bindings/challenge`, {
     bindingType: "root_controller",
-    candidateAddress: rootIdentity.controllerAddress,
+    controllerRef: rootIdentity.primaryControllerRef,
     rootIdentityId: rootIdentity.identityId,
   });
   return postJson<any>(`${analyzerUrl}/bindings`, {
@@ -431,7 +456,7 @@ async function createSubBindings(analyzerUrl: string) {
   for (const subIdentity of subIdentities) {
     const challenge = await postJson<{ challengeId: string; challengeMessage: string }>(`${analyzerUrl}/bindings/challenge`, {
       bindingType: "sub_identity_link",
-      candidateAddress: rootIdentity.controllerAddress,
+      controllerRef: rootIdentity.primaryControllerRef,
       rootIdentityId: rootIdentity.identityId,
       subIdentityId: subIdentity.identityId,
     });
@@ -448,7 +473,7 @@ async function createSubBindings(analyzerUrl: string) {
 async function createSameRootBinding(analyzerUrl: string) {
   const challenge = await postJson<{ challengeId: string; challengeMessage: string; challengeHash: `0x${string}` }>(`${analyzerUrl}/bindings/challenge`, {
     bindingType: "same_root_extension",
-    candidateAddress: extensionAccount.address,
+    controllerRef: deriveRootIdentity(extensionAccount.address, 31337).primaryControllerRef,
     rootIdentityId: rootIdentity.identityId,
   });
   const authorizationMessage = [
@@ -814,7 +839,7 @@ async function runStage3Acceptance(input: {
   const missingSignature = await postRaw(`${input.urls.analyzer}/bindings`, { challengeId: "missing-signature" });
   const wrongSignerChallenge = await postJson<any>(`${input.urls.analyzer}/bindings/challenge`, {
     bindingType: "root_controller",
-    candidateAddress: deployer.address,
+    controllerRef: rootIdentity.primaryControllerRef,
     rootIdentityId: rootIdentity.identityId,
   });
   const wrongSigner = await postRaw(`${input.urls.analyzer}/bindings`, {
@@ -823,7 +848,7 @@ async function runStage3Acceptance(input: {
   });
   const sameRootChallenge = await postJson<any>(`${input.urls.analyzer}/bindings/challenge`, {
     bindingType: "same_root_extension",
-    candidateAddress: extensionAccount.address,
+    controllerRef: deriveRootIdentity(extensionAccount.address, 31337).primaryControllerRef,
     rootIdentityId: rootIdentity.identityId,
   });
   const sameRootNoAuthorizer = await postRaw(`${input.urls.analyzer}/bindings`, {
@@ -906,7 +931,9 @@ async function runStage3Acceptance(input: {
 async function main() {
   const tempDir = await mkdtemp(join(tmpdir(), `web3id-${stage}-acceptance-`));
   mkdirSync(dirname(resolve(tempDir, "issuer-store.json")), { recursive: true });
-  const ports = createPorts(Number(process.env.WEB3ID_ACCEPTANCE_RPC_PORT ?? defaultRpcPortSeed(stage)));
+  const preferredPortSeed = Number(process.env.WEB3ID_ACCEPTANCE_RPC_PORT ?? defaultRpcPortSeed(stage));
+  const resolvedPortSeed = await resolvePortSeed(preferredPortSeed);
+  const ports = createPorts(resolvedPortSeed);
   const urls = createUrls(ports);
   const services: ServiceHandle[] = [];
 
