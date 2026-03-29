@@ -14,6 +14,7 @@ pnpm demo:platform
 
 Presentation deck: [Chinese PDF](./docs/presentation/Web3ID-identity-new-order-zh.pdf)
 Live Demo: [web3id-demo.vercel.app](https://web3id-demo.vercel.app)
+Project intro video: [YouTube](https://youtu.be/WVd8Uq59klI?si=jzGVF9RF_bTfZXvm)
 
 The public site currently runs in `mock` data mode for a stable showcase and does not depend on live `issuer-service / analyzer-service / policy-api` backends.
 

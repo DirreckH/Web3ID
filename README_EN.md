@@ -12,6 +12,7 @@
 
 Demo entry: [中文 Demo](./DEMO.md) | [English Demo](./DEMO_EN.md) | [Live Demo](https://web3id-demo.vercel.app)
 Presentation: [Chinese PDF deck](./docs/presentation/Web3ID-identity-new-order-zh.pdf)
+Project intro video: [YouTube](https://youtu.be/WVd8Uq59klI?si=jzGVF9RF_bTfZXvm)
 
 Web3ID is a Web3 identity baseline built for real systems. It brings programmable identity, proof-aware access, auditability, and governed risk into a single system chain that is explainable, verifiable, and governable.
 
