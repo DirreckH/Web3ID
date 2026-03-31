@@ -30,7 +30,7 @@ It is not a wallet-login demo, nor a sample project that loosely stitches togeth
 
 ### Multi-Chain Controller Support
 
-- EVM controller support has been upgraded to a registry-based model covering `Ethereum Mainnet / Arbitrum One / Base / OP Mainnet`.
+- EVM controller support has been upgraded to a registry-based model covering `Ethereum Mainnet / BNB Chain / Arbitrum One / Base / OP Mainnet`.
 - non-EVM controller families already cover `Solana / Bitcoin / TRON / TON / Cosmos / Aptos / Sui`.
 - Multi-chain support consistently flows through the controller registry, `canonical challenge`, `proof envelope`, verifier dispatch, and the structured audit pipeline.
 - Multiple roots can be aggregated into the same `SubjectAggregate` through challenge + control proof + audit, but silent merge is never allowed.
@@ -46,6 +46,7 @@ It is not a wallet-login demo, nor a sample project that loosely stitches togeth
 ### Console And Demos
 
 - The frontend console includes wallet, trading, portfolio, history, and profile pages, along with identity graph, inbox, and purchase-flow UI.
+- The frontend EVM demo currently supports local Foundry / Anvil (`31337`) and `BNB Chain (56)` as runtime chain targets.
 - The frontend supports `zh-CN / zh-TW / en` language switching.
 - The frontend supports both `mock` and `api` data source modes for UI demos and external API integration.
 - The repository keeps `stage1 / stage2 / stage3 / platform` demo scripts as different observation surfaces over the same baseline system.
@@ -106,7 +107,10 @@ policy-api --> contracts
 | `MOCK_RWA_ASSET_ADDRESS` | Placeholder mock RWA asset contract address | Used by demo / contract paths |
 | `VITE_CHAIN_ID` | Frontend chain ID | `31337` |
 | `VITE_ANVIL_RPC_URL` | RPC URL used by the frontend | `http://127.0.0.1:8545` |
+| `VITE_BNB_RPC_URL` | RPC URL used by the frontend when `VITE_CHAIN_ID=56` | Required for BNB mainnet demos |
 | `VITE_ISSUER_API_URL` | `issuer-service` URL used by the frontend | `http://127.0.0.1:4100` |
+
+> Frontend runtime currently supports `31337` for local Foundry / Anvil development and `56` for BNB Chain mainnet demos. The default local flow remains `31337`.
 
 > `.env.example` still keeps `TRUST_REGISTRY_ADDRESS` as a placeholder variable for legacy contract-path compatibility, but the current core service configuration does not read it directly.
 
@@ -248,7 +252,7 @@ The following are not future plans. They are capabilities that already exist in 
 
 ### 🌐 Multi-Chain Controller Support
 
-- The legacy EVM path remains compatible and has been upgraded to registry-based support covering `Ethereum Mainnet / Arbitrum One / Base / OP Mainnet`.
+- The legacy EVM path remains compatible and has been upgraded to registry-based support covering `Ethereum Mainnet / BNB Chain / Arbitrum One / Base / OP Mainnet`.
 - non-EVM controller families already cover `Solana / Bitcoin / TRON / TON / Cosmos / Aptos / Sui`.
 - Multi-chain support consistently flows through the controller registry, `canonical challenge`, `proof envelope`, verifier dispatch, and the structured audit pipeline.
 - Multiple roots can be explicitly aggregated into the same `SubjectAggregate` through challenge + control proof + audit, but silent merge never exists.
@@ -281,10 +285,10 @@ Web3ID already has a registry-backed multi-chain controller identity foundation.
 
 The current support matrix is:
 
-- EVM presets: `Ethereum Mainnet`, `Arbitrum One`, `Base`, `OP Mainnet`
+- EVM presets: `Ethereum Mainnet`, `BNB Chain`, `Arbitrum One`, `Base`, `OP Mainnet`
 - non-EVM families: `Solana`, `Bitcoin`, `TRON`, `TON`, `Cosmos`, `Aptos`, `Sui`
 
-This wave of multi-chain capability mainly lands in the backend / SDK / analyzer / verifier / audit stack. It does not mean the frontend already provides complete wallet-connect and signing UI for every family. That boundary is intentional.
+This wave of multi-chain capability mainly lands in the backend / SDK / analyzer / verifier / audit stack. It does not mean the frontend already provides complete wallet-connect and signing UI for every family. What is already surfaced in the frontend EVM demo is local Foundry / Anvil (`31337`) plus `BNB Chain (56)`. That boundary is intentional.
 
 ## 🎯 Primary System Entry Points
 

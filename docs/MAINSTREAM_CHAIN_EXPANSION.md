@@ -15,6 +15,7 @@ Implemented in this phase:
 
 - EVM registry presets
   - Ethereum Mainnet
+  - BNB Chain
   - Arbitrum One
   - Base
   - OP Mainnet
@@ -122,7 +123,7 @@ Smoke merge gate:
 
 Coverage:
 
-- EVM registry compatibility baseline
+- EVM registry compatibility baseline, including `Ethereum Mainnet / BNB Chain / Arbitrum One / Base / OP Mainnet`
 - TRON baseline
 - TON baseline
 - Cosmos direct baseline

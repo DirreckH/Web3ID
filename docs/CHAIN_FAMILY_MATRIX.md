@@ -4,7 +4,7 @@
 
 | Family | Network baseline | Proof types | Address normalization | `didLikeId` pattern | Verifier kind | Offline-first |
 | --- | --- | --- | --- | --- | --- | --- |
-| `evm` | `1`, `42161`, `8453`, `10` | `eip191` | checksum hex address | `did:pkh:eip155:<chainId>:<checksumAddress>` | recovered ECDSA signer | yes |
+| `evm` | `1`, `56`, `42161`, `8453`, `10` | `eip191` | checksum hex address | `did:pkh:eip155:<chainId>:<checksumAddress>` | recovered ECDSA signer | yes |
 | `solana` | `mainnet-beta` | `solana_ed25519` | base58 pubkey address | existing Solana rule | Ed25519 detached message | yes |
 | `bitcoin` | `mainnet` | `bitcoin_bip322`, `bitcoin_legacy` | base58 or bech32 to canonical string | existing Bitcoin rule | BIP-322 or legacy message verify | yes |
 | `tron` | `mainnet` | `tron_signed_message_v2` | hex or base58 to canonical base58 | `did:pkh:tron:<networkId>:<normalizedAddress>` | recovered TIP-191 style signer | yes |
@@ -29,6 +29,7 @@
 | Network ref | Chain id | Label |
 | --- | --- | --- |
 | `eip155:1` | `1` | Ethereum Mainnet |
+| `eip155:56` | `56` | BNB Chain |
 | `eip155:42161` | `42161` | Arbitrum One |
 | `eip155:8453` | `8453` | Base |
 | `eip155:10` | `10` | OP Mainnet |
