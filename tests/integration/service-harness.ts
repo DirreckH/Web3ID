@@ -48,6 +48,7 @@ type ServiceHandle = {
   env: NodeJS.ProcessEnv;
   child: ChildProcessWithoutNullStreams;
   logs: string[];
+  detached: boolean;
 };
 
 const deployer = privateKeyToAccount(DEPLOYER_PRIVATE_KEY);
@@ -135,6 +136,30 @@ function resolvePnpmCommand() {
   return { command: "pnpm", args: [] };
 }
 
+function quoteWindowsArg(value: string) {
+  if (!/[\s"]/u.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function resolveWorkspaceBinary(name: string) {
+  const extension = process.platform === "win32" ? ".CMD" : "";
+  const candidate = resolve(ROOT, "node_modules", ".bin", `${name}${extension}`);
+  return existsSync(candidate) ? candidate : name;
+}
+
+function resolveTsxCommand(scriptPath: string) {
+  const binary = resolveWorkspaceBinary("tsx");
+  if (process.platform === "win32") {
+    return {
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", [quoteWindowsArg(binary), quoteWindowsArg(scriptPath)].join(" ")],
+    };
+  }
+  return { command: binary, args: [scriptPath] };
+}
+
 function createPorts(seed: number) {
   return {
     rpc: seed,
@@ -178,34 +203,99 @@ function createUrls(ports: ReturnType<typeof createPorts>) {
 }
 
 function startTrackedProcess(name: string, cwd: string, command: string, args: string[], env: NodeJS.ProcessEnv) {
+  const detached = process.platform !== "win32";
   const child = spawn(command, args, {
     cwd,
     env,
     stdio: ["ignore", "pipe", "pipe"],
     shell: false,
+    detached,
   });
-  const handle: ServiceHandle = { name, cwd, env, child, logs: [] };
+  const handle: ServiceHandle = { name, cwd, env, child, logs: [], detached };
+  trimLogs(handle.logs, `[${name}] spawn cwd=${cwd}`);
+  trimLogs(handle.logs, `[${name}] spawn command=${command} ${args.join(" ")}`);
   child.stdout.on("data", (chunk) => trimLogs(handle.logs, chunk.toString()));
   child.stderr.on("data", (chunk) => trimLogs(handle.logs, chunk.toString()));
+  child.on("error", (error) => trimLogs(handle.logs, `[${name}] spawn error: ${error.message}`));
+  child.on("exit", (code, signal) => {
+    trimLogs(handle.logs, `[${name}] exit code=${code ?? "null"} signal=${signal ?? "null"}`);
+  });
   return handle;
 }
 
+function hasTrackedProcessExited(handle: ServiceHandle) {
+  return handle.child.exitCode !== null || handle.child.signalCode !== null;
+}
+
+function formatTrackedProcessLogs(handle: ServiceHandle) {
+  if (handle.logs.length === 0) {
+    return `${handle.name} recent logs: <no output captured>`;
+  }
+  return `${handle.name} recent logs:\n${handle.logs.join("\n")}`;
+}
+
+function describeTrackedProcessFailure(handle: ServiceHandle, context: string) {
+  return [
+    `${handle.name} ${context} (pid=${handle.child.pid ?? "unknown"}, exitCode=${handle.child.exitCode ?? "null"}, signal=${handle.child.signalCode ?? "null"}).`,
+    formatTrackedProcessLogs(handle),
+  ].join("\n");
+}
+
+function createHarnessStageError(stage: string, error: unknown, handles: ServiceHandle[] = []) {
+  const details = handles
+    .filter((handle) => handle.logs.length > 0 || hasTrackedProcessExited(handle))
+    .map((handle) => formatTrackedProcessLogs(handle))
+    .join("\n\n");
+  const message = [
+    `Failed to ${stage}.`,
+    error instanceof Error ? error.message : String(error),
+    details,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  return new Error(message);
+}
+
+async function waitForTrackedProcessExit(handle: ServiceHandle, timeoutMs: number) {
+  if (hasTrackedProcessExited(handle)) {
+    return true;
+  }
+  return Promise.race([
+    new Promise<boolean>((resolvePromise) => handle.child.once("exit", () => resolvePromise(true))),
+    delay(timeoutMs).then(() => false),
+  ]);
+}
+
+function sendTrackedProcessSignal(handle: ServiceHandle, signal: NodeJS.Signals) {
+  if (!handle.child.pid) {
+    return;
+  }
+  try {
+    if (process.platform !== "win32" && handle.detached) {
+      process.kill(-handle.child.pid, signal);
+      return;
+    }
+    handle.child.kill(signal);
+  } catch (error) {
+    if (!hasTrackedProcessExited(handle)) {
+      throw error;
+    }
+  }
+}
+
 async function stopTrackedProcess(handle: ServiceHandle | undefined) {
-  if (!handle || handle.child.exitCode !== null) {
+  if (!handle || hasTrackedProcessExited(handle)) {
     return;
   }
   if (process.platform === "win32" && handle.child.pid) {
     await runCommandCapture("taskkill", ["/PID", String(handle.child.pid), "/T", "/F"]).catch(() => undefined);
     return;
   }
-  handle.child.kill("SIGTERM");
-  const exited = await Promise.race([
-    new Promise<boolean>((resolvePromise) => handle.child.once("exit", () => resolvePromise(true))),
-    delay(5_000).then(() => false),
-  ]);
-  if (!exited && handle.child.exitCode === null) {
-    handle.child.kill("SIGKILL");
-    await new Promise((resolvePromise) => handle.child.once("exit", resolvePromise));
+  sendTrackedProcessSignal(handle, "SIGTERM");
+  const exited = await waitForTrackedProcessExit(handle, 5_000);
+  if (!exited && !hasTrackedProcessExited(handle)) {
+    sendTrackedProcessSignal(handle, "SIGKILL");
+    await waitForTrackedProcessExit(handle, 5_000);
   }
 }
 
@@ -225,11 +315,24 @@ async function runCommandCapture(command: string, args: string[], input: { cwd?:
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
-    child.on("exit", (code) => {
+    child.on("error", (error) => {
+      reject(new Error(`Failed to start command ${command} ${args.join(" ")}: ${error.message}`));
+    });
+    child.on("exit", (code, signal) => {
       if (code === 0) {
         resolvePromise(stdout);
       } else {
-        reject(new Error(stderr || stdout || `Command failed with code ${code}`));
+        reject(
+          new Error(
+            [
+              `Command failed: ${command} ${args.join(" ")}`,
+              `cwd: ${input.cwd ?? ROOT}`,
+              `exitCode: ${code ?? "null"}`,
+              `signal: ${signal ?? "null"}`,
+              stderr || stdout || "No command output captured.",
+            ].join("\n"),
+          ),
+        );
       }
     });
   });
@@ -255,17 +358,6 @@ async function isRpcReady(rpcUrl: string) {
   } catch {
     return false;
   }
-}
-
-async function waitForHealth(url: string, label: string, timeoutMs = 120_000) {
-  await waitFor(label, async () => {
-    try {
-      const response = await fetch(url);
-      return response.ok ? true : null;
-    } catch {
-      return null;
-    }
-  }, timeoutMs, 1_000);
 }
 
 async function getJson<T>(url: string): Promise<T> {
@@ -322,9 +414,19 @@ async function startAnvil(rpcUrl: string) {
   }
   const port = new URL(rpcUrl).port;
   const anvil = startTrackedProcess("anvil", ROOT, resolveFoundryExecutable("anvil"), ["-p", port], process.env);
-  await waitFor("anvil rpc", async () => (await isRpcReady(rpcUrl)) ? true : null, 60_000, 1_000);
-  await rpcRequest(rpcUrl, "anvil_reset");
-  return anvil;
+  try {
+    await waitFor("anvil rpc", async () => {
+      if (hasTrackedProcessExited(anvil)) {
+        throw new Error(describeTrackedProcessFailure(anvil, "exited before RPC became ready"));
+      }
+      return (await isRpcReady(rpcUrl)) ? true : null;
+    }, 60_000, 1_000);
+    await rpcRequest(rpcUrl, "anvil_reset");
+    return anvil;
+  } catch (error) {
+    await stopTrackedProcess(anvil).catch(() => undefined);
+    throw createHarnessStageError(`start anvil at ${rpcUrl}`, error, [anvil]);
+  }
 }
 
 async function deployContracts(rpcUrl: string) {
@@ -426,9 +528,35 @@ function buildSharedEnv(input: { urls: ReturnType<typeof createUrls>; tempDir: s
   };
 }
 
+async function waitForServiceHealth(url: string, label: string, handle: ServiceHandle, timeoutMs = 120_000) {
+  try {
+    await waitFor(`${label} health`, async () => {
+      if (hasTrackedProcessExited(handle)) {
+        throw new Error(describeTrackedProcessFailure(handle, "exited before reporting healthy"));
+      }
+      try {
+        const response = await fetch(url);
+        return response.ok ? true : null;
+      } catch {
+        return null;
+      }
+    }, timeoutMs, 1_000);
+  } catch (error) {
+    throw createHarnessStageError(`wait for ${label} health at ${url}`, error, [handle]);
+  }
+}
+
+async function runHarnessStage<T>(label: string, callback: () => Promise<T>, handles: ServiceHandle[] = []) {
+  try {
+    return await callback();
+  } catch (error) {
+    throw createHarnessStageError(label, error, handles);
+  }
+}
+
 function startService(name: string, cwd: string, env: NodeJS.ProcessEnv) {
-  const pnpm = resolvePnpmCommand();
-  return startTrackedProcess(name, cwd, pnpm.command, [...pnpm.args, "exec", "tsx", "src/server.ts"], env);
+  const tsx = resolveTsxCommand("src/server.ts");
+  return startTrackedProcess(name, cwd, tsx.command, tsx.args, env);
 }
 
 export async function createServiceHarness(portSeed = 13055): Promise<ServiceHarness> {
@@ -438,207 +566,218 @@ export async function createServiceHarness(portSeed = 13055): Promise<ServiceHar
   const ports = createPorts(resolvedPortSeed);
   const urls = createUrls(ports);
   const services: ServiceHandle[] = [];
+  try {
+    const anvil = await startAnvil(urls.rpc);
+    if (anvil) {
+      services.push(anvil);
+    }
+    await runHarnessStage("ensure proof artifacts", () => ensureProofArtifacts(), services);
+    const deployment = await runHarnessStage("deploy local contracts", () => deployContracts(urls.rpc), services);
+    await runHarnessStage(
+      `seed baseline identity state against ${deployment.stateRegistry}`,
+      () => seedIdentityState({ rpcUrl: urls.rpc, stateRegistryAddress: deployment.stateRegistry }),
+      services,
+    );
+    const env = buildSharedEnv({ urls, tempDir, deployment });
+    const issuerService = startService("issuer-service", resolve(ROOT, "apps/issuer-service"), env);
+    const analyzerService = startService("analyzer-service", resolve(ROOT, "apps/analyzer-service"), env);
+    const policyService = startService("policy-api", resolve(ROOT, "apps/policy-api"), env);
+    services.push(issuerService, analyzerService, policyService);
+    await waitForServiceHealth(`${urls.issuer}/health`, "issuer-service", issuerService);
+    await waitForServiceHealth(`${urls.analyzer}/health`, "analyzer-service", analyzerService);
+    await waitForServiceHealth(`${urls.policy}/health`, "policy-api", policyService);
 
-  const anvil = await startAnvil(urls.rpc);
-  if (anvil) {
-    services.push(anvil);
-  }
-  await ensureProofArtifacts();
-  const deployment = await deployContracts(urls.rpc);
-  await seedIdentityState({ rpcUrl: urls.rpc, stateRegistryAddress: deployment.stateRegistry });
-  const env = buildSharedEnv({ urls, tempDir, deployment });
-  const issuerService = startService("issuer-service", resolve(ROOT, "apps/issuer-service"), env);
-  const analyzerService = startService("analyzer-service", resolve(ROOT, "apps/analyzer-service"), env);
-  const policyService = startService("policy-api", resolve(ROOT, "apps/policy-api"), env);
-  services.push(issuerService, analyzerService, policyService);
-  await waitForHealth(`${urls.issuer}/health`, "issuer-service");
-  await waitForHealth(`${urls.analyzer}/health`, "analyzer-service");
-  await waitForHealth(`${urls.policy}/health`, "policy-api");
-
-  return {
-    tempDir,
-    urls,
-    deployment,
-    rootIdentity,
-    subIdentities,
-    rwaIdentity,
-    paymentsIdentity,
-    socialIdentity,
-    anonymousIdentity,
-    stop: async () => {
-      for (const service of [...services].reverse()) {
-        await stopTrackedProcess(service);
-      }
-      await rm(tempDir, { recursive: true, force: true });
-    },
-    registerTree: async () => {
-      await postJson(`${urls.issuer}/identities/register-tree`, { rootIdentity, subIdentities });
-      await postJson(`${urls.analyzer}/identities/register-tree`, { rootIdentity, subIdentities });
-    },
-    createBindings: async () => {
-      const rootChallenge = await postJson<{ challengeId: string; challengeMessage: string }>(`${urls.analyzer}/bindings/challenge`, {
-        bindingType: "root_controller",
-        controllerRef: rootIdentity.primaryControllerRef,
-        rootIdentityId: rootIdentity.identityId,
-      });
-      await postJson(`${urls.analyzer}/bindings`, {
-        challengeId: rootChallenge.challengeId,
-        candidateSignature: await deployer.signMessage({ message: rootChallenge.challengeMessage }),
-      });
-      for (const subIdentity of subIdentities) {
-        const challenge = await postJson<{ challengeId: string; challengeMessage: string }>(`${urls.analyzer}/bindings/challenge`, {
-          bindingType: "sub_identity_link",
+    return {
+      tempDir,
+      urls,
+      deployment,
+      rootIdentity,
+      subIdentities,
+      rwaIdentity,
+      paymentsIdentity,
+      socialIdentity,
+      anonymousIdentity,
+      stop: async () => {
+        for (const service of [...services].reverse()) {
+          await stopTrackedProcess(service);
+        }
+        await rm(tempDir, { recursive: true, force: true });
+      },
+      registerTree: async () => {
+        await postJson(`${urls.issuer}/identities/register-tree`, { rootIdentity, subIdentities });
+        await postJson(`${urls.analyzer}/identities/register-tree`, { rootIdentity, subIdentities });
+      },
+      createBindings: async () => {
+        const rootChallenge = await postJson<{ challengeId: string; challengeMessage: string }>(`${urls.analyzer}/bindings/challenge`, {
+          bindingType: "root_controller",
           controllerRef: rootIdentity.primaryControllerRef,
           rootIdentityId: rootIdentity.identityId,
-          subIdentityId: subIdentity.identityId,
         });
         await postJson(`${urls.analyzer}/bindings`, {
-          challengeId: challenge.challengeId,
-          candidateSignature: await deployer.signMessage({ message: challenge.challengeMessage }),
-          linkProof: createSubIdentityLinkProof(rootIdentity, subIdentity),
+          challengeId: rootChallenge.challengeId,
+          candidateSignature: await deployer.signMessage({ message: rootChallenge.challengeMessage }),
         });
-      }
-      const sameRootChallenge = await postJson<{ challengeId: string; challengeMessage: string; challengeHash: `0x${string}` }>(`${urls.analyzer}/bindings/challenge`, {
-        bindingType: "same_root_extension",
-        controllerRef: deriveRootIdentity(extensionAccount.address, 31337).primaryControllerRef,
-        rootIdentityId: rootIdentity.identityId,
-      });
-      const authorizationMessage = [
-        "Web3ID Same Root Authorization",
-        `challengeHash: ${sameRootChallenge.challengeHash}`,
-        `candidateAddress: ${extensionAccount.address}`,
-        `rootIdentityId: ${rootIdentity.identityId}`,
-        `authorizerAddress: ${deployer.address}`,
-      ].join("\n");
-      await postJson(`${urls.analyzer}/bindings`, {
-        challengeId: sameRootChallenge.challengeId,
-        candidateSignature: await extensionAccount.signMessage({ message: sameRootChallenge.challengeMessage }),
-        sameRootProof: createSameRootProof(rootIdentity, [rwaIdentity, paymentsIdentity]),
-        authorizerAddress: deployer.address,
-        authorizerSignature: await deployer.signMessage({ message: authorizationMessage }),
-      });
-    },
-    issueRwaBundleAndPayload: async () => {
-      const issued = await postJson<any>(`${urls.issuer}/credentials/issue`, {
-        holder: rootIdentity.didLikeId,
-        holderIdentityId: rwaIdentity.identityId,
-        subjectAddress: DEFAULT_HOLDER,
-        credentialKind: "kycAml",
-        claimSet: {
-          amlPassed: true,
-          nonUSResident: true,
-          accreditedInvestor: true,
-        },
-        policyHints: [POLICY_IDS.RWA_BUY_V2],
-        evidenceRef: "integration:rwa-bundle",
-      });
-      const bundle = issued.bundle ?? issued;
-      const proof = await generateSmokeProof(DEFAULT_HOLDER);
-      const payload = {
-        identityId: rwaIdentity.identityId,
-        credentialAttestations: [bundle.attestation],
-        zkProof: {
-          proofPoints: proof.proofPoints.map((value: bigint) => value.toString()),
-          publicSignals: proof.publicSignals.map((value: bigint) => value.toString()),
-        },
-        policyVersion: POLICY_DEFINITIONS.RWA_BUY_V2.policyVersion,
-        holderAuthorization: {
+        for (const subIdentity of subIdentities) {
+          const challenge = await postJson<{ challengeId: string; challengeMessage: string }>(`${urls.analyzer}/bindings/challenge`, {
+            bindingType: "sub_identity_link",
+            controllerRef: rootIdentity.primaryControllerRef,
+            rootIdentityId: rootIdentity.identityId,
+            subIdentityId: subIdentity.identityId,
+          });
+          await postJson(`${urls.analyzer}/bindings`, {
+            challengeId: challenge.challengeId,
+            candidateSignature: await deployer.signMessage({ message: challenge.challengeMessage }),
+            linkProof: createSubIdentityLinkProof(rootIdentity, subIdentity),
+          });
+        }
+        const sameRootChallenge = await postJson<{ challengeId: string; challengeMessage: string; challengeHash: `0x${string}` }>(`${urls.analyzer}/bindings/challenge`, {
+          bindingType: "same_root_extension",
+          controllerRef: deriveRootIdentity(extensionAccount.address, 31337).primaryControllerRef,
+          rootIdentityId: rootIdentity.identityId,
+        });
+        const authorizationMessage = [
+          "Web3ID Same Root Authorization",
+          `challengeHash: ${sameRootChallenge.challengeHash}`,
+          `candidateAddress: ${extensionAccount.address}`,
+          `rootIdentityId: ${rootIdentity.identityId}`,
+          `authorizerAddress: ${deployer.address}`,
+        ].join("\n");
+        await postJson(`${urls.analyzer}/bindings`, {
+          challengeId: sameRootChallenge.challengeId,
+          candidateSignature: await extensionAccount.signMessage({ message: sameRootChallenge.challengeMessage }),
+          sameRootProof: createSameRootProof(rootIdentity, [rwaIdentity, paymentsIdentity]),
+          authorizerAddress: deployer.address,
+          authorizerSignature: await deployer.signMessage({ message: authorizationMessage }),
+        });
+      },
+      issueRwaBundleAndPayload: async () => {
+        const issued = await postJson<any>(`${urls.issuer}/credentials/issue`, {
+          holder: rootIdentity.didLikeId,
+          holderIdentityId: rwaIdentity.identityId,
+          subjectAddress: DEFAULT_HOLDER,
+          credentialKind: "kycAml",
+          claimSet: {
+            amlPassed: true,
+            nonUSResident: true,
+            accreditedInvestor: true,
+          },
+          policyHints: [POLICY_IDS.RWA_BUY_V2],
+          evidenceRef: "integration:rwa-bundle",
+        });
+        const bundle = issued.bundle ?? issued;
+        const proof = await generateSmokeProof(DEFAULT_HOLDER);
+        const payload = {
           identityId: rwaIdentity.identityId,
-          subjectBinding: bundle.attestation.subjectBinding,
-          policyId: POLICY_IDS.RWA_BUY_V2,
-          requestHash: `0x${"11".repeat(32)}`,
-          chainId: 31337,
-          nonce: "1",
-          deadline: String(Math.floor(Date.now() / 1000) + 900),
-          signature: `0x${"22".repeat(65)}`,
-        },
-      };
-      return { bundle, payload, proof };
-    },
-    currentBlockNumber: async () => {
-      const blockNumber = await rpcRequest<string>(urls.rpc, "eth_blockNumber");
-      return BigInt(blockNumber);
-    },
-    sendTransaction: async (to, data = "0x", value = 1n) => {
-      const publicClient = createPublicClient({ chain: foundry, transport: http(urls.rpc) });
-      const walletClient = createWalletClient({ account: deployer, chain: foundry, transport: http(urls.rpc) });
-      const hash = await walletClient.sendTransaction({
-        account: deployer,
-        to,
-        data,
-        value,
-      });
-      await publicClient.waitForTransactionReceipt({ hash });
-      return hash;
-    },
-    backfillExact: async (identityId, fromBlock, toBlock) => {
-      return postJson(`${urls.analyzer}/scan/backfill`, {
-        identityId,
-        fromBlock: fromBlock.toString(),
-        toBlock: toBlock.toString(),
-      });
-    },
-    getJson,
-    postJson,
-    postRaw,
-    readOnchainSnapshot: async (identityId: Hex) => {
-      const publicClient = createPublicClient({ chain: foundry, transport: http(urls.rpc) });
-      const snapshot = await publicClient.readContract({
-        address: deployment.stateRegistry,
-        abi: stateRegistryAbi,
-        functionName: "getStateSnapshotV2",
-        args: [identityId],
-      });
-      return {
-        state: Number(snapshot[0]),
-        reasonCode: snapshot[1],
-        version: Number(snapshot[2]),
-        updatedAt: Number(snapshot[3]),
-        lastStateHash: snapshot[4],
-        lastEvidenceBundleHash: snapshot[5],
-      };
-    },
-    injectExpiredReview: async (identityId: Hex, rootIdentityId: Hex, subIdentityId?: Hex) => {
-      const analyzerDataFile = resolve(tempDir, "analyzer-store.json");
-      const raw = await readFile(analyzerDataFile, "utf8");
-      const parsed = JSON.parse(raw) as Record<string, any>;
-      parsed.aiSuggestions = parsed.aiSuggestions ?? {};
-      parsed.reviewQueue = parsed.reviewQueue ?? {};
-      parsed.aiSuggestions["expired-suggestion"] = {
-        id: "expired-suggestion",
-        identityId,
-        rootIdentityId,
-        subIdentityId,
-        kind: "risk_hint",
-        severity: "high",
-        summary: "Expired review item injected for integration coverage.",
-        evidenceRefs: ["integration:expired-review"],
-        recommendedAction: "review",
-        audit: {
-          provider: "deterministic",
-          model: "integration-fixture",
-          modelVersion: "fixture-v1",
-          promptVersion: "integration-expiry.v1",
-          inputHash: `0x${"33".repeat(32)}`,
+          credentialAttestations: [bundle.attestation],
+          zkProof: {
+            proofPoints: proof.proofPoints.map((value: bigint) => value.toString()),
+            publicSignals: proof.publicSignals.map((value: bigint) => value.toString()),
+          },
+          policyVersion: POLICY_DEFINITIONS.RWA_BUY_V2.policyVersion,
+          holderAuthorization: {
+            identityId: rwaIdentity.identityId,
+            subjectBinding: bundle.attestation.subjectBinding,
+            policyId: POLICY_IDS.RWA_BUY_V2,
+            requestHash: `0x${"11".repeat(32)}`,
+            chainId: 31337,
+            nonce: "1",
+            deadline: String(Math.floor(Date.now() / 1000) + 900),
+            signature: `0x${"22".repeat(65)}`,
+          },
+        };
+        return { bundle, payload, proof };
+      },
+      currentBlockNumber: async () => {
+        const blockNumber = await rpcRequest<string>(urls.rpc, "eth_blockNumber");
+        return BigInt(blockNumber);
+      },
+      sendTransaction: async (to, data = "0x", value = 1n) => {
+        const publicClient = createPublicClient({ chain: foundry, transport: http(urls.rpc) });
+        const walletClient = createWalletClient({ account: deployer, chain: foundry, transport: http(urls.rpc) });
+        const hash = await walletClient.sendTransaction({
+          account: deployer,
+          to,
+          data,
+          value,
+        });
+        await publicClient.waitForTransactionReceipt({ hash });
+        return hash;
+      },
+      backfillExact: async (identityId, fromBlock, toBlock) => {
+        return postJson(`${urls.analyzer}/scan/backfill`, {
+          identityId,
+          fromBlock: fromBlock.toString(),
+          toBlock: toBlock.toString(),
+        });
+      },
+      getJson,
+      postJson,
+      postRaw,
+      readOnchainSnapshot: async (identityId: Hex) => {
+        const publicClient = createPublicClient({ chain: foundry, transport: http(urls.rpc) });
+        const snapshot = await publicClient.readContract({
+          address: deployment.stateRegistry,
+          abi: stateRegistryAbi,
+          functionName: "getStateSnapshotV2",
+          args: [identityId],
+        });
+        return {
+          state: Number(snapshot[0]),
+          reasonCode: snapshot[1],
+          version: Number(snapshot[2]),
+          updatedAt: Number(snapshot[3]),
+          lastStateHash: snapshot[4],
+          lastEvidenceBundleHash: snapshot[5],
+        };
+      },
+      injectExpiredReview: async (identityId: Hex, rootIdentityId: Hex, subIdentityId?: Hex) => {
+        const analyzerDataFile = resolve(tempDir, "analyzer-store.json");
+        const raw = await readFile(analyzerDataFile, "utf8");
+        const parsed = JSON.parse(raw) as Record<string, any>;
+        parsed.aiSuggestions = parsed.aiSuggestions ?? {};
+        parsed.reviewQueue = parsed.reviewQueue ?? {};
+        parsed.aiSuggestions["expired-suggestion"] = {
+          id: "expired-suggestion",
+          identityId,
+          rootIdentityId,
+          subIdentityId,
+          kind: "risk_hint",
+          severity: "high",
+          summary: "Expired review item injected for integration coverage.",
           evidenceRefs: ["integration:expired-review"],
-          outputSummary: "Expired review item injected for integration coverage.",
-          confidence: 0.8,
           recommendedAction: "review",
-        },
-        createdAt: new Date("2026-03-01T00:00:00.000Z").toISOString(),
-      };
-      parsed.reviewQueue["expired-review"] = {
-        reviewItemId: "expired-review",
-        identityId,
-        rootIdentityId,
-        subIdentityId,
-        sourceSuggestionId: "expired-suggestion",
-        status: "PENDING_REVIEW",
-        createdAt: new Date("2026-03-01T00:00:00.000Z").toISOString(),
-        expiresAt: new Date("2026-03-02T00:00:00.000Z").toISOString(),
-        evidenceRefs: ["integration:expired-review"],
-      };
-      await writeFile(analyzerDataFile, JSON.stringify(parsed, null, 2) + "\n", "utf8");
-    },
-  };
+          audit: {
+            provider: "deterministic",
+            model: "integration-fixture",
+            modelVersion: "fixture-v1",
+            promptVersion: "integration-expiry.v1",
+            inputHash: `0x${"33".repeat(32)}`,
+            evidenceRefs: ["integration:expired-review"],
+            outputSummary: "Expired review item injected for integration coverage.",
+            confidence: 0.8,
+            recommendedAction: "review",
+          },
+          createdAt: new Date("2026-03-01T00:00:00.000Z").toISOString(),
+        };
+        parsed.reviewQueue["expired-review"] = {
+          reviewItemId: "expired-review",
+          identityId,
+          rootIdentityId,
+          subIdentityId,
+          sourceSuggestionId: "expired-suggestion",
+          status: "PENDING_REVIEW",
+          createdAt: new Date("2026-03-01T00:00:00.000Z").toISOString(),
+          expiresAt: new Date("2026-03-02T00:00:00.000Z").toISOString(),
+          evidenceRefs: ["integration:expired-review"],
+        };
+        await writeFile(analyzerDataFile, JSON.stringify(parsed, null, 2) + "\n", "utf8");
+      },
+    };
+  } catch (error) {
+    for (const service of [...services].reverse()) {
+      await stopTrackedProcess(service).catch(() => undefined);
+    }
+    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    throw createHarnessStageError(`create service harness for port seed ${resolvedPortSeed}`, error, services);
+  }
 }
