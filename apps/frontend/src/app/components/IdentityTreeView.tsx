@@ -23,6 +23,7 @@ interface IdentityLaneDefinition {
 
 const NETWORK_NAMES: Record<string, string> = {
   ethereum: "Ethereum",
+  bnb: "BNB Chain",
   arbitrum: "Arbitrum One",
   base: "Base",
   optimism: "OP Mainnet",
@@ -34,6 +35,7 @@ const NETWORK_NAMES: Record<string, string> = {
 
 const NETWORK_ACCENTS: Record<string, string> = {
   ethereum: "from-indigo-500/70 via-violet-500/55 to-fuchsia-500/55",
+  bnb: "from-amber-400/75 via-yellow-400/60 to-orange-400/50",
   arbitrum: "from-sky-500/70 via-blue-500/55 to-cyan-500/55",
   base: "from-blue-600/70 via-sky-500/60 to-cyan-400/50",
   optimism: "from-rose-500/70 via-red-500/55 to-orange-400/50",

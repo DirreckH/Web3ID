@@ -24,6 +24,15 @@ const BlockchainLogo = ({ network }: { network: string }) => {
         </g>
       </svg>
     ),
+    bnb: (
+      <svg className="h-full w-full" viewBox="0 0 32 32">
+        <path d="M16 5 L21 10 L16 15 L11 10 Z" fill="white" opacity="0.95" />
+        <path d="M9 12 L12 15 L9 18 L6 15 Z" fill="white" opacity="0.8" />
+        <path d="M23 12 L26 15 L23 18 L20 15 Z" fill="white" opacity="0.8" />
+        <path d="M16 15 L21 20 L16 25 L11 20 Z" fill="white" opacity="0.95" />
+        <path d="M16 11 L20 15 L16 19 L12 15 Z" fill="none" opacity="0.95" stroke="white" strokeWidth="2" />
+      </svg>
+    ),
     arbitrum: (
       <svg className="h-full w-full" viewBox="0 0 32 32">
         <path d="M16 4L6 16L10 20L16 12L22 20L26 16L16 4Z" fill="white" opacity="0.9" />
@@ -87,6 +96,7 @@ const BlockchainLogo = ({ network }: { network: string }) => {
 
 const BLOCKCHAIN_STYLES: Record<string, { gradient: string; textColor: string }> = {
   ethereum: { gradient: "from-indigo-500 via-purple-500 to-purple-600", textColor: "text-white" },
+  bnb: { gradient: "from-amber-300 via-yellow-400 to-orange-500", textColor: "text-white" },
   arbitrum: { gradient: "from-blue-500 via-blue-600 to-cyan-500", textColor: "text-white" },
   base: { gradient: "from-blue-600 via-blue-700 to-blue-800", textColor: "text-white" },
   optimism: { gradient: "from-red-500 via-red-600 to-pink-600", textColor: "text-white" },
@@ -98,6 +108,7 @@ const BLOCKCHAIN_STYLES: Record<string, { gradient: string; textColor: string }>
 
 const NETWORK_NAMES: Record<string, string> = {
   ethereum: "Ethereum",
+  bnb: "BNB Chain",
   arbitrum: "Arbitrum One",
   base: "Base",
   optimism: "OP Mainnet",

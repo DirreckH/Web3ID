@@ -29,12 +29,14 @@ test("mobile wallet shell, dialogs, and bottom navigation work", async ({ page }
   await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
 
   await page.getByTestId("wallet-add-card").click();
-  await expect(page.getByTestId("add-card-modal")).toBeVisible();
-  await page.getByRole("button", { name: "Ethereum Mainnet" }).click();
-  await page.getByPlaceholder("输入您的钱包地址").fill("0x1234567890abcdef1234567890abcdef12345678");
-  await page.getByRole("button", { name: "下一步" }).click();
-  await page.getByRole("button", { name: "签名确认" }).click();
+  const addCardModal = page.getByTestId("add-card-modal");
+  await expect(addCardModal).toBeVisible();
+  await addCardModal.getByRole("button", { name: "BNB Chain" }).click();
+  await addCardModal.getByRole("textbox").fill("0x1234567890abcdef1234567890abcdef12345678");
+  await addCardModal.locator("div.border-t button").click();
+  await addCardModal.locator("div.border-t button").click();
   await expect(page.getByText("0x1234...5678")).toBeVisible();
+  await expect(page.getByText("BNB Chain")).toBeVisible();
 
   await page.getByTestId("wallet-inbox-button").click();
   await expect(page.getByTestId("messages-inbox")).toBeVisible();
@@ -44,6 +46,7 @@ test("mobile wallet shell, dialogs, and bottom navigation work", async ({ page }
   await page.getByText("0x1234...5678").click();
   await expect(page.getByTestId("identity-tree-modal")).toBeVisible();
   await expect(page.getByTestId("identity-root-card")).toBeVisible();
+  await expect(page.getByText("BNB Chain Root")).toBeVisible();
   await page.getByTestId("identity-root-card").click({ force: true });
   await expect(page.getByTestId("identity-root-overview")).toBeVisible();
   await page.getByTestId("identity-lane-card-rwa").scrollIntoViewIfNeeded();

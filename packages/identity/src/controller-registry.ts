@@ -75,6 +75,7 @@ const DEFAULT_CAPABILITY_FLAGS: ControllerCapabilityFlags = {
 
 const EVM_NETWORKS: ControllerNetworkPreset[] = [
   { networkId: "1", label: "Ethereum Mainnet", networkRef: "eip155:1", mainnet: true },
+  { networkId: "56", label: "BNB Chain", networkRef: "eip155:56", mainnet: true },
   { networkId: "42161", label: "Arbitrum One", networkRef: "eip155:42161", mainnet: true },
   { networkId: "8453", label: "Base", networkRef: "eip155:8453", mainnet: true },
   { networkId: "10", label: "OP Mainnet", networkRef: "eip155:10", mainnet: true },
@@ -523,13 +524,12 @@ function verifyTronProof(input: { challenge: ControllerChallengeLike; proofEnvel
     },
   ];
 
-  const validCandidates = candidates.filter((candidate) => candidate.recoveryBit !== null);
-  if (validCandidates.length === 0) {
-    throw new Error("TRON signatures must carry a valid recovery bit.");
-  }
-
   const digest = hexToBytes(buildTronDigest(input.challenge.challengeMessage));
-  for (const candidate of validCandidates) {
+  for (const candidate of candidates) {
+    if (candidate.recoveryBit === null) {
+      continue;
+    }
+
     try {
       const recovered = secp256k1.Signature.fromBytes(candidate.compactSignature, "compact")
         .addRecoveryBit(candidate.recoveryBit)
@@ -546,6 +546,10 @@ function verifyTronProof(input: { challenge: ControllerChallengeLike; proofEnvel
     } catch {
       // Keep trying remaining candidate layouts. Different wallets serialize recoverable signatures differently.
     }
+  }
+
+  if (candidates.every((candidate) => candidate.recoveryBit === null)) {
+    throw new Error("TRON signatures must carry a valid recovery bit.");
   }
 
   throw new Error("TRON controller signature does not match the normalized address.");

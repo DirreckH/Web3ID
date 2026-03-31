@@ -26,6 +26,7 @@ const BLOCKCHAIN_NETWORKS = [
     category: "EVM",
     chains: [
       { id: "ethereum", name: "Ethereum Mainnet", chainId: "1" },
+      { id: "bnb", name: "BNB Chain", chainId: "56" },
       { id: "arbitrum", name: "Arbitrum One", chainId: "42161" },
       { id: "base", name: "Base", chainId: "8453" },
       { id: "optimism", name: "OP Mainnet", chainId: "10" },

@@ -6,6 +6,7 @@ export interface AppEnvConfig {
   dataSource: DataSourceMode;
   apiBaseUrl: string | null;
   anvilRpcUrl: string;
+  bnbRpcUrl: string | null;
   chainId: number;
   enableAnalytics: boolean;
 }
@@ -21,7 +22,8 @@ const APP_ENVS: readonly AppRuntimeEnv[] = ["development", "test", "production"]
 const DATA_SOURCES: readonly DataSourceMode[] = ["mock", "api"];
 
 const DEFAULT_ANVIL_RPC_URL = "http://127.0.0.1:8545";
-const DEFAULT_CHAIN_ID = 31337;
+export const DEFAULT_CHAIN_ID = 31337;
+export const BNB_MAINNET_CHAIN_ID = 56;
 
 function readString(raw: unknown) {
   if (typeof raw !== "string") {
@@ -95,11 +97,21 @@ function normalizeApiBaseUrl(rawEnv: EnvRecord) {
   return value.replace(/\/$/, "");
 }
 
+function normalizeRpcUrl(raw: unknown) {
+  const value = readString(raw);
+  if (value === "") {
+    return null;
+  }
+
+  return value.replace(/\/$/, "");
+}
+
 export function parseAppEnvConfig(rawEnv: EnvRecord, options: EnvValidationOptions = {}): AppEnvConfig {
   const appEnv = parseAppEnv(rawEnv);
   const dataSource = parseDataSource(rawEnv);
   const apiBaseUrl = normalizeApiBaseUrl(rawEnv);
   const anvilRpcUrl = readString(rawEnv.VITE_ANVIL_RPC_URL) || DEFAULT_ANVIL_RPC_URL;
+  const bnbRpcUrl = normalizeRpcUrl(rawEnv.VITE_BNB_RPC_URL);
   const chainId = parseChainId(rawEnv.VITE_CHAIN_ID);
   const enableAnalytics = parseBoolean(rawEnv.VITE_ENABLE_ANALYTICS, false);
 
@@ -111,6 +123,10 @@ export function parseAppEnvConfig(rawEnv: EnvRecord, options: EnvValidationOptio
 
   if (dataSource === "api" && apiBaseUrl === null) {
     issues.push("`VITE_API_BASE_URL` is required when `VITE_DATA_SOURCE=api`.");
+  }
+
+  if (chainId === BNB_MAINNET_CHAIN_ID && bnbRpcUrl === null) {
+    issues.push("`VITE_BNB_RPC_URL` is required when `VITE_CHAIN_ID=56`.");
   }
 
   const strict = options.strict ?? appEnv === "production";
@@ -130,6 +146,7 @@ export function parseAppEnvConfig(rawEnv: EnvRecord, options: EnvValidationOptio
     dataSource,
     apiBaseUrl,
     anvilRpcUrl,
+    bnbRpcUrl,
     chainId: chainId ?? DEFAULT_CHAIN_ID,
     enableAnalytics,
   };

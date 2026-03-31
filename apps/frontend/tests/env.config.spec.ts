@@ -8,6 +8,7 @@ describe("env config parser", () => {
     expect(config.appEnv).toBe("development");
     expect(config.dataSource).toBe("mock");
     expect(config.anvilRpcUrl).toBe("http://127.0.0.1:8545");
+    expect(config.bnbRpcUrl).toBeNull();
     expect(config.chainId).toBe(31337);
   });
 
@@ -39,6 +40,19 @@ describe("env config parser", () => {
     ).toThrow("VITE_API_BASE_URL");
   });
 
+  it("throws in strict mode when bnb rpc url is missing for bnb mainnet", () => {
+    expect(() =>
+      parseAppEnvConfig(
+        {
+          MODE: "production",
+          VITE_APP_ENV: "production",
+          VITE_CHAIN_ID: "56",
+        },
+        { strict: true },
+      ),
+    ).toThrow("VITE_BNB_RPC_URL");
+  });
+
   it("parses explicit values", () => {
     const config = parseAppEnvConfig({
       MODE: "test",
@@ -46,6 +60,7 @@ describe("env config parser", () => {
       VITE_DATA_SOURCE: "api",
       VITE_API_BASE_URL: "https://api.web3id.local/",
       VITE_ANVIL_RPC_URL: "https://rpc.web3id.local",
+      VITE_BNB_RPC_URL: "https://bsc-dataseed.binance.org/",
       VITE_CHAIN_ID: "8453",
       VITE_ENABLE_ANALYTICS: "true",
     });
@@ -54,6 +69,7 @@ describe("env config parser", () => {
     expect(config.dataSource).toBe("api");
     expect(config.apiBaseUrl).toBe("https://api.web3id.local");
     expect(config.anvilRpcUrl).toBe("https://rpc.web3id.local");
+    expect(config.bnbRpcUrl).toBe("https://bsc-dataseed.binance.org");
     expect(config.chainId).toBe(8453);
     expect(config.enableAnalytics).toBe(true);
   });
