@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Building2, Coins, Gamepad2, Shield, Users, X, type LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useLanguage } from "../contexts/LanguageContext";
+import { ArrowRight, Building2, Coins, Gamepad2, Shield, Users, X, type LucideIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLanguage, type Language } from "../contexts/LanguageContext";
 import { getHighestRegulatoryStatus, type IdentityLaneState, type RegulatoryConsequence, type RegulatoryEvent, type RegulatoryStatus, type RiskSignal } from "../lib/identityRegulation";
 import type { CardData } from "./AddCardModal";
 import { LiquidGlassButton } from "./LiquidGlassButton";
@@ -19,6 +19,27 @@ interface IdentityLaneDefinition {
   icon: LucideIcon;
   color: string;
   state: IdentityLaneState;
+}
+
+interface LaneDetailViewModel {
+  chainEvents: RecentChainEvent[];
+  keyFactors: RiskSignal[];
+  activeConsequences: RegulatoryConsequence[];
+  latestTransition: RegulatoryEvent | null;
+}
+
+interface RecentChainEvent extends RiskSignal {
+  behaviorSummary: string;
+  affectedActions: string[];
+  observationWindow: string;
+  impactNote: string;
+}
+
+interface RecentEventMeta {
+  behaviorSummary: string;
+  affectedActions: string[];
+  observationWindow: string;
+  impactNote: string;
 }
 
 const NETWORK_NAMES: Record<string, string> = {
@@ -68,6 +89,110 @@ const SIGNAL_SEVERITY_STYLES: Record<RiskSignal["severity"], string> = {
   high: "text-rose-600",
 };
 
+const SEVERITY_PRIORITY: Record<RiskSignal["severity"], number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+};
+
+const RECENT_EVENT_META: Record<string, RecentEventMeta> = {
+  "rwa-s1": {
+    behaviorSummary: "Settlement transfers accelerated across an unfamiliar collateral corridor.",
+    affectedActions: ["Large subscriptions", "Custody transfers", "Issuer settlement"],
+    observationWindow: "Past 45 minutes",
+    impactNote: "Raises review weight for issuer-linked settlement flows until transfer speed returns to baseline.",
+  },
+  "rwa-s3": {
+    behaviorSummary: "A redemption batch exited through a new omnibus wallet cluster before the standard cycle closed.",
+    affectedActions: ["Redemptions", "Custodian payouts", "Off-ramp approvals"],
+    observationWindow: "Past 2 hours",
+    impactNote: "Adds pressure to redemption-side monitoring because the payout route changed mid-cycle.",
+  },
+  "rwa-s4": {
+    behaviorSummary: "Issuer approvals and settlement confirmations compressed into one short release window.",
+    affectedActions: ["Mint approvals", "Settlement release", "Transfer authorization"],
+    observationWindow: "Past 90 minutes",
+    impactNote: "Signals a release cadence that is faster than the lane's usual regulated issuance pattern.",
+  },
+  "defi-s1": {
+    behaviorSummary: "Bridge proceeds moved into lending activity immediately after the unwind completed.",
+    affectedActions: ["Bridge transfers", "Borrow / repay", "Leverage rotation"],
+    observationWindow: "Past 30 minutes",
+    impactNote: "Keeps this lane under observation because the same capital rotated across venues too quickly.",
+  },
+  "defi-s3": {
+    behaviorSummary: "Collateral hopped between two lending markets before the previous health factor window settled.",
+    affectedActions: ["Collateral migration", "Market rotation", "Health factor updates"],
+    observationWindow: "Past 75 minutes",
+    impactNote: "Increases velocity sensitivity for subsequent borrowing and bridge actions.",
+  },
+  "defi-s4": {
+    behaviorSummary: "A bridged stablecoin position was repaid and reopened on a new venue within one monitoring cycle.",
+    affectedActions: ["Stablecoin bridge", "Debt repayment", "New position open"],
+    observationWindow: "Past 3 hours",
+    impactNote: "Suggests fast venue switching that matches prior bridge-and-borrow watch patterns.",
+  },
+  "social-s2": {
+    behaviorSummary: "Delegate rights were rebound to a new vault right before the governance checkpoint.",
+    affectedActions: ["Delegate rotation", "Voting power routing", "Vault binding"],
+    observationWindow: "Past voting epoch",
+    impactNote: "Changes how governance participation is attributed across the social identity lane.",
+  },
+  "social-s3": {
+    behaviorSummary: "Fresh reputation attestations were claimed and routed into a newly active social wallet.",
+    affectedActions: ["Attestation claims", "Reputation routing", "Profile wallet sync"],
+    observationWindow: "Past 24 hours",
+    impactNote: "Supports the lane's healthy posture while still surfacing a visible shift in social wallet usage.",
+  },
+  "social-s4": {
+    behaviorSummary: "A participation credential NFT was minted immediately after the latest delegate update.",
+    affectedActions: ["Credential mint", "Delegate-linked perks", "Governance participation proof"],
+    observationWindow: "Past 12 hours",
+    impactNote: "Confirms recent on-chain social activity without introducing elevated risk on its own.",
+  },
+  "gaming-s3": {
+    behaviorSummary: "Tournament reward claims settled through a newly observed payout wallet cluster.",
+    affectedActions: ["Reward claims", "Tournament payouts", "Treasury disbursement"],
+    observationWindow: "Past 50 minutes",
+    impactNote: "Raises payout scrutiny because the reward flow now touches wallets outside the usual tournament path.",
+  },
+  "gaming-s4": {
+    behaviorSummary: "Achievement tokens moved out of the arena vault in rapid succession after reward settlement.",
+    affectedActions: ["Achievement transfers", "Arena vault exits", "Credential portability"],
+    observationWindow: "Past 90 minutes",
+    impactNote: "Adds evidence that reward-linked assets are cycling faster than the lane's normal tournament cadence.",
+  },
+  "gaming-s5": {
+    behaviorSummary: "A loot bundle bridged into a new session wallet shortly before the item lock window expired.",
+    affectedActions: ["Loot bundle transfer", "Session wallet routing", "Game asset bridge"],
+    observationWindow: "Past 4 hours",
+    impactNote: "Keeps the lane in a high-alert posture because transferable assets are moving ahead of expected lock timing.",
+  },
+};
+
+function formatRecentEventCount(count: number, language: Language) {
+  if (language === "zh-CN") {
+    return `${count} 条近期链上行为`;
+  }
+
+  if (language === "zh-TW") {
+    return `${count} 條近期鏈上行為`;
+  }
+
+  return `${count} recent on-chain actions`;
+}
+
+function getRecentEventMeta(eventId: string): RecentEventMeta {
+  return (
+    RECENT_EVENT_META[eventId] ?? {
+      behaviorSummary: "Latest on-chain activity was captured for continued monitoring.",
+      affectedActions: ["Lane activity"],
+      observationWindow: "Current monitoring window",
+      impactNote: "This event remains visible while the lane continues scoring and review.",
+    }
+  );
+}
+
 function buildIdentityLanes(): IdentityLaneDefinition[] {
   return [
     {
@@ -85,7 +210,9 @@ function buildIdentityLanes(): IdentityLaneDefinition[] {
         trustScore: 62,
         riskSignals: [
           { id: "rwa-s1", source: "onchain", title: "Collateral routing velocity jumped across unfamiliar settlement clusters.", detail: "Transfers cleared faster than the lane's normal issuance rhythm.", severity: "high", timestamp: "02:14 UTC" },
+          { id: "rwa-s3", source: "onchain", title: "A redemption batch exited through a new omnibus wallet cluster before the usual close.", detail: "Redemption routing changed before the standard settlement cycle finished.", severity: "high", timestamp: "02:16 UTC" },
           { id: "rwa-s2", source: "sanctions", title: "A screening sync matched one recipient to a monitored behavior list.", detail: "Minting and large actions stay gated until issuer evidence is refreshed.", severity: "high", timestamp: "02:17 UTC" },
+          { id: "rwa-s4", source: "onchain", title: "Issuer approvals and settlement confirmations compressed into a single short release window.", detail: "Mint and transfer approvals landed faster than the lane's regulated release cadence.", severity: "medium", timestamp: "02:19 UTC" },
         ],
         evaluation: "Policy scoring combined the routing anomaly with watchlist-adjacent exposure and escalated the lane into a restricted mode.",
         stateTransitions: [{ id: "rwa-t1", from: "OBSERVED", to: "RESTRICTED", reason: "Counterparty overlap and exposure cap triggered enhanced review.", timestamp: "02:18 UTC", actor: "Policy Engine" }],
@@ -112,7 +239,9 @@ function buildIdentityLanes(): IdentityLaneDefinition[] {
         trustScore: 78,
         riskSignals: [
           { id: "defi-s1", source: "onchain", title: "Bridge volume spiked right after a lending position was unwound.", detail: "The change in velocity crossed the lane's observation threshold.", severity: "medium", timestamp: "01:41 UTC" },
+          { id: "defi-s3", source: "onchain", title: "Collateral rotated across two lending markets before the previous health factor window settled.", detail: "The same borrowing capacity moved through multiple venues inside one scoring cycle.", severity: "medium", timestamp: "01:43 UTC" },
           { id: "defi-s2", source: "advisor", title: "AI copilot suggested keeping leverage actions under observation.", detail: "The pattern resembles previously escalated bridge-and-borrow clusters.", severity: "medium", timestamp: "01:46 UTC" },
+          { id: "defi-s4", source: "onchain", title: "A bridged stablecoin position was repaid and reopened on a new venue within one cycle.", detail: "Debt closure and re-entry happened before the observation window cooled down.", severity: "medium", timestamp: "01:52 UTC" },
         ],
         evaluation: "Signals remain below the hard restriction threshold, so the lane stays open while scoring continues in observation mode.",
         stateTransitions: [{ id: "defi-t1", from: "NORMAL", to: "OBSERVED", reason: "Velocity anomaly on bridge and lending actions.", timestamp: "01:48 UTC", actor: "Risk Analyzer" }],
@@ -136,7 +265,12 @@ function buildIdentityLanes(): IdentityLaneDefinition[] {
         status: "NORMAL",
         summary: "Reputation flows remain stable, with only routine governance checks in the audit trail.",
         trustScore: 91,
-        riskSignals: [{ id: "social-s1", source: "governance", title: "Delegate activity matched the expected governance cadence.", detail: "Signals remain informational and support the lane's normal status.", severity: "low", timestamp: "00:32 UTC" }],
+        riskSignals: [
+          { id: "social-s2", source: "onchain", title: "Delegate rights were re-bound to a new vault before the weekly vote checkpoint.", detail: "Governance participation was rerouted without breaking the lane's expected cadence.", severity: "low", timestamp: "00:28 UTC" },
+          { id: "social-s1", source: "governance", title: "Delegate activity matched the expected governance cadence.", detail: "Signals remain informational and support the lane's normal status.", severity: "low", timestamp: "00:32 UTC" },
+          { id: "social-s3", source: "onchain", title: "Fresh reputation attestations were claimed and routed into a newly active social wallet.", detail: "The wallet receiving social proofs changed, but the claim pattern stayed consistent.", severity: "low", timestamp: "00:35 UTC" },
+          { id: "social-s4", source: "onchain", title: "A governance participation credential NFT was minted right after the latest delegate update.", detail: "The lane recorded a new proof of participation without any abnormal routing.", severity: "low", timestamp: "00:39 UTC" },
+        ],
         evaluation: "No compounded risk was detected, so the lane remains fully open and contributes positive trust to the root identity.",
         stateTransitions: [{ id: "social-t1", from: "NORMAL", to: "NORMAL", reason: "Routine review confirmed stable delegate and reputation patterns.", timestamp: "00:33 UTC", actor: "Governance Monitor" }],
         consequences: [{ id: "social-c1", type: "restore", title: "No active restriction is applied.", detail: "This lane stays fully enabled and helps restore overall trust.", active: true }],
@@ -157,8 +291,11 @@ function buildIdentityLanes(): IdentityLaneDefinition[] {
         summary: "Tournament payouts and governance overrides stacked into a high-risk posture that now needs human confirmation.",
         trustScore: 48,
         riskSignals: [
+          { id: "gaming-s3", source: "onchain", title: "Tournament reward claims settled through a fresh payout wallet cluster.", detail: "The reward path touched wallets not normally used for tournament settlement.", severity: "high", timestamp: "01:58 UTC" },
           { id: "gaming-s1", source: "governance", title: "Emergency governance overrides changed payout routing before the last competition closed.", detail: "Policy exceptions were issued outside the normal review window.", severity: "high", timestamp: "02:03 UTC" },
+          { id: "gaming-s4", source: "onchain", title: "Achievement tokens were transferred out of the arena vault in rapid succession.", detail: "Reward-linked assets moved before the usual cool-down between tournament milestones.", severity: "high", timestamp: "02:05 UTC" },
           { id: "gaming-s2", source: "advisor", title: "Manual and AI advice aligned on a temporary containment recommendation.", detail: "The pattern matches fast reward cycling and abrupt credential reassignments.", severity: "high", timestamp: "02:06 UTC" },
+          { id: "gaming-s5", source: "onchain", title: "A loot bundle bridged into a new session wallet shortly before lock expiry.", detail: "Transfer timing suggests accelerated movement of game assets around the reward window.", severity: "medium", timestamp: "02:07 UTC" },
         ],
         evaluation: "Because governance overrides and reward routing both escalated together, the lane moved past RESTRICTED into a high-risk state.",
         stateTransitions: [{ id: "gaming-t1", from: "RESTRICTED", to: "HIGH_RISK", reason: "Repeated override activity plus reward-cycling correlation.", timestamp: "02:08 UTC", actor: "Oversight Committee" }],
@@ -173,6 +310,25 @@ function buildIdentityLanes(): IdentityLaneDefinition[] {
   ];
 }
 
+function buildLaneDetailViewModel(state: IdentityLaneState): LaneDetailViewModel {
+  const rankedSignals = [...state.riskSignals].sort((left, right) => SEVERITY_PRIORITY[right.severity] - SEVERITY_PRIORITY[left.severity]);
+  const prioritizedFactors = [...rankedSignals.filter((signal) => signal.source !== "onchain"), ...rankedSignals].filter(
+    (signal, index, signals) => signals.findIndex((candidate) => candidate.id === signal.id) === index,
+  );
+
+  return {
+    chainEvents: state.riskSignals
+      .filter((signal) => signal.source === "onchain")
+      .map((signal) => ({
+        ...signal,
+        ...getRecentEventMeta(signal.id),
+      })),
+    keyFactors: prioritizedFactors.slice(0, 3),
+    activeConsequences: state.consequences.filter((consequence) => consequence.active),
+    latestTransition: state.stateTransitions[0] ?? null,
+  };
+}
+
 function StatusBadge({ status, testId }: { status: RegulatoryStatus; testId?: string }) {
   const { t } = useLanguage();
   const style = STATUS_STYLES[status];
@@ -185,10 +341,14 @@ function StatusBadge({ status, testId }: { status: RegulatoryStatus; testId?: st
   );
 }
 
-function SourceBadge({ source }: { source: RiskSignal["source"] }) {
+function SourceBadge({ source, testId }: { source: RiskSignal["source"]; testId?: string }) {
   const { t } = useLanguage();
 
-  return <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${SOURCE_STYLES[source]}`}>{t(`identityTree.sources.${source}`)}</span>;
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${SOURCE_STYLES[source]}`} data-source={source} data-testid={testId}>
+      {t(`identityTree.sources.${source}`)}
+    </span>
+  );
 }
 
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
@@ -200,12 +360,50 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
   );
 }
 
+function InsightSection({ title, description, children, testId, aside }: { title: string; description: string; children: ReactNode; testId?: string; aside?: ReactNode }) {
+  return (
+    <section className="rounded-[28px] border border-white/80 bg-white/78 p-5 shadow-[0_22px_46px_rgba(148,163,184,0.14)] backdrop-blur-2xl" data-testid={testId}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="max-w-2xl">
+          <h4 className="text-[15px] font-semibold text-slate-900">{title}</h4>
+          <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+        </div>
+        {aside ? <div className="shrink-0">{aside}</div> : null}
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function EventMetaBlock({ title, children, testId }: { title: string; children: ReactNode; testId?: string }) {
+  return (
+    <div className="rounded-[18px] border border-slate-200/75 bg-white/82 p-3" data-testid={testId}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{title}</p>
+      <div className="mt-2 text-sm leading-6 text-slate-700">{children}</div>
+    </div>
+  );
+}
+
 function ConsequenceRow({ consequence }: { consequence: RegulatoryConsequence }) {
   const { t } = useLanguage();
 
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-3">
       <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-semibold text-slate-900">{consequence.title}</span>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{t(`identityTree.consequences.${consequence.type}`)}</span>
+      </div>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{consequence.detail}</p>
+    </div>
+  );
+}
+
+function CompactConsequenceRow({ consequence }: { consequence: RegulatoryConsequence }) {
+  const { t } = useLanguage();
+
+  return (
+    <div className="rounded-[22px] border border-slate-200/75 bg-white/72 p-4">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-slate-900">{consequence.title}</span>
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{t(`identityTree.consequences.${consequence.type}`)}</span>
       </div>
@@ -231,9 +429,62 @@ function TransitionRow({ event }: { event: RegulatoryEvent }) {
   );
 }
 
-export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProps) {
+function SummaryMetric({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-[24px] border border-slate-200/75 bg-white/72 p-4 shadow-[0_12px_28px_rgba(148,163,184,0.08)]">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <div className="mt-3">{value}</div>
+    </div>
+  );
+}
+
+function RecentEventCard({ event, status }: { event: RecentChainEvent; status: RegulatoryStatus }) {
   const { t } = useLanguage();
+
+  return (
+    <div className="rounded-[24px] border border-slate-200/75 bg-white/74 p-4 shadow-[0_16px_30px_rgba(148,163,184,0.08)]" data-testid="identity-recent-event-card">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <SourceBadge source={event.source} testId="identity-recent-event-source" />
+          <span className={`text-xs font-semibold uppercase tracking-[0.14em] ${SIGNAL_SEVERITY_STYLES[event.severity]}`}>{event.timestamp}</span>
+        </div>
+        <span className="rounded-full border border-slate-200/80 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500">{t(`identityTree.statuses.${status}`)}</span>
+      </div>
+
+      <p className="mt-3 text-sm font-semibold text-slate-900">{event.title}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{event.detail}</p>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <EventMetaBlock testId="identity-recent-event-summary" title={t("identityTree.behaviorSummary")}>
+          {event.behaviorSummary}
+        </EventMetaBlock>
+
+        <EventMetaBlock testId="identity-recent-event-actions" title={t("identityTree.affectedActions")}>
+          <div className="flex flex-wrap gap-2">
+            {event.affectedActions.map((action) => (
+              <span className="rounded-full border border-slate-200/80 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600" key={action}>
+                {action}
+              </span>
+            ))}
+          </div>
+        </EventMetaBlock>
+
+        <EventMetaBlock testId="identity-recent-event-window" title={t("identityTree.observationWindow")}>
+          {event.observationWindow}
+        </EventMetaBlock>
+
+        <EventMetaBlock testId="identity-recent-event-impact" title={t("identityTree.impactNote")}>
+          {event.impactNote}
+        </EventMetaBlock>
+      </div>
+    </div>
+  );
+}
+
+export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProps) {
+  const { t, language } = useLanguage();
   const [activePanel, setActivePanel] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement | null>(null);
   const lanes = useMemo(() => buildIdentityLanes(), []);
 
   useEffect(() => {
@@ -281,6 +532,36 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
       recovery: "Clear active lane reviews, resolve the monitored counterparty, and attach reviewer notes so the aggregate identity can step back down.",
     };
   }, [lanes, rootSignals, t]);
+
+  const selectedLane = useMemo(() => {
+    if (!activePanel || activePanel === "root") {
+      return null;
+    }
+
+    return lanes.find((lane) => lane.id === activePanel) ?? null;
+  }, [activePanel, lanes]);
+
+  const selectedLaneDetail = useMemo(() => {
+    if (!selectedLane) {
+      return null;
+    }
+
+    return buildLaneDetailViewModel(selectedLane.state);
+  }, [selectedLane]);
+
+  useEffect(() => {
+    if (!selectedLane || !detailRef.current) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [selectedLane]);
 
   if (!card) {
     return null;
@@ -365,12 +646,27 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
 
                     <AnimatePresence initial={false}>
                       {activePanel === "root" ? (
-                        <motion.div animate={{ opacity: 1, height: "auto", y: 0 }} className="mt-4 w-full max-w-3xl overflow-hidden" data-testid="identity-root-overview" exit={{ opacity: 0, height: 0, y: -12 }} initial={{ opacity: 0, height: 0, y: -12 }} transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}>
+                        <motion.div
+                          animate={{ opacity: 1, height: "auto", y: 0 }}
+                          className="mt-4 w-full max-w-3xl overflow-hidden"
+                          data-testid="identity-root-overview"
+                          exit={{ opacity: 0, height: 0, y: -12 }}
+                          initial={{ opacity: 0, height: 0, y: -12 }}
+                          transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+                        >
                           <div className="rounded-[28px] border border-white/70 bg-white/70 p-4 shadow-[0_20px_40px_rgba(148,163,184,0.14)] backdrop-blur-2xl lg:p-5">
                             <div className="grid gap-3 lg:grid-cols-3">
-                              <DetailSection title={t("identityTree.currentAggregateStatus")}><div className="flex items-center gap-3"><StatusBadge status={rootState.status} /></div></DetailSection>
-                              <DetailSection title={t("identityTree.trustScore")}><p className="text-3xl font-semibold text-slate-900">{rootState.trustScore}</p></DetailSection>
-                              <DetailSection title={t("identityTree.latestTransition")}><TransitionRow event={rootState.stateTransitions[0]} /></DetailSection>
+                              <DetailSection title={t("identityTree.currentAggregateStatus")}>
+                                <div className="flex items-center gap-3">
+                                  <StatusBadge status={rootState.status} />
+                                </div>
+                              </DetailSection>
+                              <DetailSection title={t("identityTree.trustScore")}>
+                                <p className="text-3xl font-semibold text-slate-900">{rootState.trustScore}</p>
+                              </DetailSection>
+                              <DetailSection title={t("identityTree.latestTransition")}>
+                                <TransitionRow event={rootState.stateTransitions[0]} />
+                              </DetailSection>
                             </div>
 
                             <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -390,8 +686,16 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
                               </DetailSection>
 
                               <div className="grid gap-3">
-                                <DetailSection title={t("identityTree.activeConsequences")}><div className="space-y-3">{rootState.consequences.map((consequence) => <ConsequenceRow consequence={consequence} key={consequence.id} />)}</div></DetailSection>
-                                <DetailSection title={t("identityTree.recoveryPath")}><p className="text-sm leading-6 text-slate-600">{rootState.recovery}</p></DetailSection>
+                                <DetailSection title={t("identityTree.activeConsequences")}>
+                                  <div className="space-y-3">
+                                    {rootState.consequences.map((consequence) => (
+                                      <ConsequenceRow consequence={consequence} key={consequence.id} />
+                                    ))}
+                                  </div>
+                                </DetailSection>
+                                <DetailSection title={t("identityTree.recoveryPath")}>
+                                  <p className="text-sm leading-6 text-slate-600">{rootState.recovery}</p>
+                                </DetailSection>
                               </div>
                             </div>
                           </div>
@@ -405,46 +709,171 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {lanes.map(({ id, name, description, icon: Icon, color, state }) => (
-                      <motion.div className="flex flex-col" key={id} layout>
-                        <motion.button className="group relative overflow-hidden rounded-[28px] p-5 text-left text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]" data-testid={`identity-lane-card-${id}`} onClick={() => togglePanel(id)} type="button" whileTap={{ scale: 0.99 }}>
-                          <div className={`absolute inset-0 bg-gradient-to-br ${color}`} />
-                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.34),transparent_45%)] opacity-90" />
-                          <div className="absolute inset-0 bg-black/5 transition-colors duration-300 group-hover:bg-black/0" />
+                    {lanes.map(({ id, name, description, icon: Icon, color, state }) => {
+                      const isSelected = activePanel === id;
 
-                          <div className="relative">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/25 bg-white/18 backdrop-blur-md">
-                                <Icon className="h-6 w-6 text-white" />
+                      return (
+                        <motion.div className="flex flex-col" key={id} layout>
+                          <motion.button
+                            animate={{ scale: isSelected ? 1.02 : 1, y: isSelected ? -4 : 0 }}
+                            className={`group relative overflow-hidden rounded-[28px] p-5 text-left text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)] ${isSelected ? "ring-2 ring-white/80 ring-offset-2 ring-offset-slate-100/10" : ""}`}
+                            data-testid={`identity-lane-card-${id}`}
+                            onClick={() => togglePanel(id)}
+                            type="button"
+                            whileTap={{ scale: 0.99 }}
+                          >
+                            <div className={`absolute inset-0 bg-gradient-to-br ${color}`} />
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.34),transparent_45%)] opacity-90" />
+                            <div className={`absolute inset-0 transition-colors duration-300 ${isSelected ? "bg-black/0" : "bg-black/5 group-hover:bg-black/0"}`} />
+
+                            <div className="relative">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/25 bg-white/18 backdrop-blur-md">
+                                  <Icon className="h-6 w-6 text-white" />
+                                </div>
+                                <StatusBadge status={state.status} testId={`identity-status-${id}`} />
                               </div>
-                              <StatusBadge status={state.status} testId={`identity-status-${id}`} />
+                              <h3 className="mt-5 text-xl font-semibold">{name}</h3>
+                              <p className="mt-2 text-sm leading-6 text-white/84">{description}</p>
+                              <p className="mt-4 text-sm leading-6 text-white/90">{state.summary}</p>
+                              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/68">{t("identityTree.derivedFromRoot")}</p>
                             </div>
-                            <h3 className="mt-5 text-xl font-semibold">{name}</h3>
-                            <p className="mt-2 text-sm leading-6 text-white/84">{description}</p>
-                            <p className="mt-4 text-sm leading-6 text-white/90">{state.summary}</p>
-                            <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/68">{t("identityTree.derivedFromRoot")}</p>
-                          </div>
-                        </motion.button>
+                          </motion.button>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
 
-                        <AnimatePresence initial={false}>
-                          {activePanel === id ? (
-                            <motion.div animate={{ opacity: 1, height: "auto", y: 0 }} className="mt-3 overflow-hidden" data-testid={`identity-regulation-detail-${id}`} exit={{ opacity: 0, height: 0, y: -10 }} initial={{ opacity: 0, height: 0, y: -10 }} transition={{ duration: 0.26, ease: [0.25, 0.1, 0.25, 1] }}>
-                              <div className="rounded-[26px] border border-white/70 bg-white/72 p-4 shadow-[0_20px_38px_rgba(148,163,184,0.14)] backdrop-blur-2xl">
-                                <div data-selected-panel={id} data-testid="identity-regulation-detail" />
-                                <div className="grid gap-3">
-                                  <DetailSection title={t("identityTree.riskSignals")}><div className="space-y-3">{state.riskSignals.map((signal) => <div key={signal.id} className="rounded-2xl border border-slate-200/70 bg-white/82 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><SourceBadge source={signal.source} /><span className={`text-xs font-semibold uppercase tracking-[0.14em] ${SIGNAL_SEVERITY_STYLES[signal.severity]}`}>{signal.timestamp}</span></div><p className="mt-2 text-sm font-semibold text-slate-900">{signal.title}</p><p className="mt-2 text-sm leading-6 text-slate-600">{signal.detail}</p></div>)}</div></DetailSection>
-                                  <DetailSection title={t("identityTree.evaluationDecision")}><p className="text-sm leading-6 text-slate-600">{state.evaluation}</p></DetailSection>
-                                  <DetailSection title={t("identityTree.stateTransition")}><div className="space-y-3">{state.stateTransitions.map((event) => <TransitionRow event={event} key={event.id} />)}</div></DetailSection>
-                                  <DetailSection title={t("identityTree.regulatoryConsequences")}><div className="space-y-3">{state.consequences.map((consequence) => <ConsequenceRow consequence={consequence} key={consequence.id} />)}</div></DetailSection>
-                                  <DetailSection title={t("identityTree.manualReviewRecovery")}><p className="text-sm leading-6 text-slate-600">{state.recovery}</p></DetailSection>
+                  <AnimatePresence initial={false}>
+                    {selectedLane && selectedLaneDetail ? (
+                      <motion.div
+                        animate={{ opacity: 1, height: "auto", y: 0 }}
+                        className="mt-6 overflow-hidden"
+                        data-testid={`identity-regulation-detail-${selectedLane.id}`}
+                        exit={{ opacity: 0, height: 0, y: -16 }}
+                        initial={{ opacity: 0, height: 0, y: -16 }}
+                        ref={detailRef}
+                        transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                      >
+                        <div className="relative rounded-[32px] border border-white/75 bg-white/72 p-5 shadow-[0_28px_64px_rgba(148,163,184,0.16)] backdrop-blur-2xl lg:p-6">
+                          <div className="absolute inset-x-8 top-0 h-32 bg-gradient-to-r from-white/20 via-sky-200/25 to-rose-200/20 blur-3xl" />
+                          <div className="relative" data-selected-panel={selectedLane.id} data-testid="identity-regulation-detail">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="max-w-3xl">
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{selectedLane.name}</p>
+                                <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{selectedLane.state.summary}</h3>
+                                <p className="mt-3 text-sm leading-6 text-slate-600">{selectedLane.description}</p>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-3">
+                                <StatusBadge status={selectedLane.state.status} />
+                                <div className="rounded-full border border-white/80 bg-white/76 px-4 py-2 text-sm font-semibold text-slate-700 shadow-[0_12px_28px_rgba(148,163,184,0.12)]">
+                                  {t("identityTree.trustScore")}: {selectedLane.state.trustScore}
                                 </div>
                               </div>
-                            </motion.div>
-                          ) : null}
-                        </AnimatePresence>
+                            </div>
+
+                            <div className="mt-5 grid items-start gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                              <InsightSection
+                                aside={
+                                  <span className="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-500" data-testid="identity-recent-events-count">
+                                    {formatRecentEventCount(selectedLaneDetail.chainEvents.length, language)}
+                                  </span>
+                                }
+                                description={t("identityTree.recentNotableEventsHint")}
+                                testId="identity-detail-recent-events"
+                                title={t("identityTree.recentNotableEvents")}
+                              >
+                                {selectedLaneDetail.chainEvents.length > 0 ? (
+                                  <div className="grid gap-3 lg:grid-cols-2">
+                                    {selectedLaneDetail.chainEvents.map((signal) => (
+                                      <RecentEventCard event={signal} key={signal.id} status={selectedLane.state.status} />
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="rounded-[24px] border border-dashed border-slate-200/80 bg-white/60 p-5">
+                                    <p className="text-sm font-semibold text-slate-800">{t("identityTree.noRecentOnchainEvents")}</p>
+                                    <p className="mt-2 text-sm leading-6 text-slate-500">{t("identityTree.noRecentOnchainEventsHint")}</p>
+                                  </div>
+                                )}
+                              </InsightSection>
+
+                              <InsightSection description={t("identityTree.regulatoryStatusScoreHint")} testId="identity-detail-status" title={t("identityTree.regulatoryStatusScore")}>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <SummaryMetric
+                                    label={t("identityTree.currentAggregateStatus")}
+                                    value={
+                                      <div className="flex items-center gap-3">
+                                        <StatusBadge status={selectedLane.state.status} />
+                                      </div>
+                                    }
+                                  />
+                                  <SummaryMetric label={t("identityTree.trustScore")} value={<p className="text-3xl font-semibold text-slate-900">{selectedLane.state.trustScore}</p>} />
+                                </div>
+
+                                {selectedLaneDetail.latestTransition ? (
+                                  <div className="mt-3">
+                                    <SummaryMetric label={t("identityTree.latestTransition")} value={<TransitionRow event={selectedLaneDetail.latestTransition} />} />
+                                  </div>
+                                ) : null}
+
+                                <div className="mt-3 rounded-[24px] border border-slate-200/75 bg-white/68 p-4">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{t("identityTree.coreInfluenceFactors")}</p>
+                                  <div className="mt-3 space-y-3">
+                                    {selectedLaneDetail.keyFactors.map((signal) => (
+                                      <div className="rounded-[20px] border border-slate-200/70 bg-white/82 p-3" key={signal.id}>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <SourceBadge source={signal.source} />
+                                          <span className={`text-xs font-semibold uppercase tracking-[0.14em] ${SIGNAL_SEVERITY_STYLES[signal.severity]}`}>{signal.timestamp}</span>
+                                        </div>
+                                        <p className="mt-2 text-sm font-semibold text-slate-900">{signal.title}</p>
+                                        <p className="mt-2 text-sm leading-6 text-slate-600">{signal.detail}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </InsightSection>
+                            </div>
+
+                            <div className="mt-4">
+                              <InsightSection description={t("identityTree.recommendationsNextStepsHint")} testId="identity-detail-recommendations" title={t("identityTree.recommendationsNextSteps")}>
+                                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                                  <div className="rounded-[24px] border border-slate-200/75 bg-white/72 p-4">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{t("identityTree.currentAssessment")}</p>
+                                    <p className="mt-3 text-sm leading-7 text-slate-700">{selectedLane.state.evaluation}</p>
+
+                                    <div className="mt-5">
+                                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{t("identityTree.activeControls")}</p>
+                                      <div className="mt-3 space-y-3">
+                                        {selectedLaneDetail.activeConsequences.map((consequence) => (
+                                          <CompactConsequenceRow consequence={consequence} key={consequence.id} />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-[24px] border border-slate-200/75 bg-gradient-to-br from-slate-900/[0.03] via-white/72 to-sky-50/65 p-4">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{t("identityTree.recommendedRecoveryPath")}</p>
+                                    <div className="mt-3 rounded-[20px] border border-white/80 bg-white/78 p-4 shadow-[0_14px_30px_rgba(148,163,184,0.1)]">
+                                      <div className="flex items-start gap-3">
+                                        <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.16)]">
+                                          <ArrowRight className="h-4 w-4" />
+                                        </div>
+                                        <div>
+                                          <p className="text-sm font-semibold text-slate-900">{selectedLane.name}</p>
+                                          <p className="mt-2 text-sm leading-7 text-slate-600">{selectedLane.state.recovery}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </InsightSection>
+                            </div>
+                          </div>
+                        </div>
                       </motion.div>
-                    ))}
-                  </div>
+                    ) : null}
+                  </AnimatePresence>
                 </div>
               </div>
             </div>
