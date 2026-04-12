@@ -22,6 +22,7 @@ interface IdentityLaneDefinition {
 }
 
 const NETWORK_NAMES: Record<string, string> = {
+  "hashkey-testnet": "HashKey Chain Testnet",
   ethereum: "Ethereum",
   bnb: "BNB Chain",
   arbitrum: "Arbitrum One",
@@ -34,6 +35,7 @@ const NETWORK_NAMES: Record<string, string> = {
 };
 
 const NETWORK_ACCENTS: Record<string, string> = {
+  "hashkey-testnet": "from-teal-500/75 via-cyan-500/60 to-blue-500/55",
   ethereum: "from-indigo-500/70 via-violet-500/55 to-fuchsia-500/55",
   bnb: "from-amber-400/75 via-yellow-400/60 to-orange-400/50",
   arbitrum: "from-sky-500/70 via-blue-500/55 to-cyan-500/55",

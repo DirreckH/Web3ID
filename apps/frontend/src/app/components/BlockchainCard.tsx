@@ -12,6 +12,14 @@ interface BlockchainCardProps {
 
 const BlockchainLogo = ({ network }: { network: string }) => {
   const logos: Record<string, ReactNode> = {
+    "hashkey-testnet": (
+      <svg className="h-full w-full" viewBox="0 0 32 32">
+        <path d="M16 4 L25 9.5 V22.5 L16 28 L7 22.5 V9.5 Z" fill="none" opacity="0.92" stroke="white" strokeLinejoin="round" strokeWidth="2.2" />
+        <path d="M11 10 V22" opacity="0.9" stroke="white" strokeLinecap="round" strokeWidth="2.2" />
+        <path d="M21 10 V22" opacity="0.9" stroke="white" strokeLinecap="round" strokeWidth="2.2" />
+        <path d="M11 16 H21" opacity="0.9" stroke="white" strokeLinecap="round" strokeWidth="2.2" />
+      </svg>
+    ),
     ethereum: (
       <svg className="h-full w-full" viewBox="0 0 32 32">
         <g opacity="0.8">
@@ -95,6 +103,7 @@ const BlockchainLogo = ({ network }: { network: string }) => {
 };
 
 const BLOCKCHAIN_STYLES: Record<string, { gradient: string; textColor: string }> = {
+  "hashkey-testnet": { gradient: "from-teal-500 via-cyan-500 to-blue-600", textColor: "text-white" },
   ethereum: { gradient: "from-indigo-500 via-purple-500 to-purple-600", textColor: "text-white" },
   bnb: { gradient: "from-amber-300 via-yellow-400 to-orange-500", textColor: "text-white" },
   arbitrum: { gradient: "from-blue-500 via-blue-600 to-cyan-500", textColor: "text-white" },
@@ -107,6 +116,7 @@ const BLOCKCHAIN_STYLES: Record<string, { gradient: string; textColor: string }>
 };
 
 const NETWORK_NAMES: Record<string, string> = {
+  "hashkey-testnet": "HashKey Chain Testnet",
   ethereum: "Ethereum",
   bnb: "BNB Chain",
   arbitrum: "Arbitrum One",

@@ -6,6 +6,7 @@ export interface AppEnvConfig {
   dataSource: DataSourceMode;
   apiBaseUrl: string | null;
   anvilRpcUrl: string;
+  hashKeyTestnetRpcUrl: string | null;
   bnbRpcUrl: string | null;
   chainId: number;
   enableAnalytics: boolean;
@@ -23,6 +24,7 @@ const DATA_SOURCES: readonly DataSourceMode[] = ["mock", "api"];
 
 const DEFAULT_ANVIL_RPC_URL = "http://127.0.0.1:8545";
 export const DEFAULT_CHAIN_ID = 31337;
+export const HASHKEY_TESTNET_CHAIN_ID = 133;
 export const BNB_MAINNET_CHAIN_ID = 56;
 
 function readString(raw: unknown) {
@@ -111,6 +113,7 @@ export function parseAppEnvConfig(rawEnv: EnvRecord, options: EnvValidationOptio
   const dataSource = parseDataSource(rawEnv);
   const apiBaseUrl = normalizeApiBaseUrl(rawEnv);
   const anvilRpcUrl = readString(rawEnv.VITE_ANVIL_RPC_URL) || DEFAULT_ANVIL_RPC_URL;
+  const hashKeyTestnetRpcUrl = normalizeRpcUrl(rawEnv.VITE_HASHKEY_TESTNET_RPC_URL);
   const bnbRpcUrl = normalizeRpcUrl(rawEnv.VITE_BNB_RPC_URL);
   const chainId = parseChainId(rawEnv.VITE_CHAIN_ID);
   const enableAnalytics = parseBoolean(rawEnv.VITE_ENABLE_ANALYTICS, false);
@@ -123,6 +126,10 @@ export function parseAppEnvConfig(rawEnv: EnvRecord, options: EnvValidationOptio
 
   if (dataSource === "api" && apiBaseUrl === null) {
     issues.push("`VITE_API_BASE_URL` is required when `VITE_DATA_SOURCE=api`.");
+  }
+
+  if (chainId === HASHKEY_TESTNET_CHAIN_ID && hashKeyTestnetRpcUrl === null) {
+    issues.push("`VITE_HASHKEY_TESTNET_RPC_URL` is required when `VITE_CHAIN_ID=133`.");
   }
 
   if (chainId === BNB_MAINNET_CHAIN_ID && bnbRpcUrl === null) {
@@ -146,6 +153,7 @@ export function parseAppEnvConfig(rawEnv: EnvRecord, options: EnvValidationOptio
     dataSource,
     apiBaseUrl,
     anvilRpcUrl,
+    hashKeyTestnetRpcUrl,
     bnbRpcUrl,
     chainId: chainId ?? DEFAULT_CHAIN_ID,
     enableAnalytics,

@@ -60,7 +60,7 @@ The public site currently runs in `mock` data mode for a stable showcase and doe
 - If you only want the product shell and static experience, the default `mock` mode is enough
 - If you want the analyzer / policy / audit closed loop, prefer `pnpm demo:stage3` or `pnpm demo:platform`
 
-The public showcase still runs in `mock` mode. Mentioning BNB in this guide reflects the frontend/runtime support already present in the repository, not a requirement that the public site depend on a live BNB RPC.
+The public showcase still runs in `mock` mode. Mentioning HashKey Chain Testnet in this guide reflects the hackathon-facing frontend/runtime path already present in the repository, while BNB remains available as an additional EVM preset rather than the primary demo target.
 
 ## 3. Product Surfaces
 
@@ -74,7 +74,7 @@ The current frontend routes are:
 | `/history` | Transaction History | Audit-friendly transaction history and status filtering |
 | `/profile` | Profile | Root identity, KYC/AML state, sub-identity count, language switch, and system settings |
 
-For the current EVM-facing frontend demo, the wallet route can now present `BNB Chain (56)` alongside the local `31337` path. That makes BNB a usable live example when showing wallet cards, the identity tree, and EVM controller support.
+For the current EVM-facing frontend demo, the wallet route can now present `HashKey Chain Testnet (133)`, `BNB Chain (56)`, and the local `31337` path. For hackathon demos, `HashKey Chain Testnet (133)` is the recommended live example when showing wallet cards, the identity tree, and EVM controller support.
 
 The most important interactions to click during a live demo are:
 
@@ -152,7 +152,7 @@ Because they are different observation surfaces over one baseline system, not fo
 
 ### Does multi-chain support already show up as full wallet-connect UI for every chain family?
 
-No. The current multi-chain expansion mainly lives in backend, SDK, analyzer, verifier, and audit paths. It does not mean every family already has its own dedicated wallet-connect UI. The frontend surface that is already explicit today is the EVM demo path with local Foundry / Anvil (`31337`) and `BNB Chain (56)`.
+No. The current multi-chain expansion mainly lives in backend, SDK, analyzer, verifier, and audit paths. It does not mean every family already has its own dedicated wallet-connect UI. The frontend surface that is already explicit today is the EVM demo path with local Foundry / Anvil (`31337`), `HashKey Chain Testnet (133)`, and `BNB Chain (56)`.
 
 ### What does AI actually do in this system?
 

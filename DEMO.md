@@ -59,7 +59,7 @@ pnpm demo:platform
 - 如果只看前端产品壳和静态体验，默认 `mock` 模式即可
 - 如果要讲 analyzer / policy / audit 闭环，优先使用 `pnpm demo:stage3` 或 `pnpm demo:platform`
 
-线上公开 Demo 仍然运行在 `mock` 模式。这里补充 BNB 说明，表示仓库里的前端运行时和演示路径已经覆盖 BNB，并不表示公开站点依赖实时 BNB RPC。
+线上公开 Demo 仍然运行在 `mock` 模式。这里补充 `HashKey Chain Testnet` 的说明，是为了体现仓库里已经接入了面向黑客松的前端/runtime 路径；`BNB` 仍然保留为额外的 EVM preset，而不是主要演示目标。
 
 ## 3. 产品入口
 
@@ -73,7 +73,7 @@ pnpm demo:platform
 | `/history` | Transaction History | 交易记录、状态过滤、审计友好型历史视图 |
 | `/profile` | Profile | 根身份、KYC/AML 状态、子身份数量、语言切换、系统配置入口 |
 
-当前前端 EVM 演示已经把 `BNB Chain (56)` 作为正式支持链接入钱包页，可用来展示钱包卡片、身份树和 EVM controller 路径；本地开发默认链仍是 `31337`。
+当前前端 EVM 演示已经把 `HashKey Chain Testnet (133)`、`BNB Chain (56)` 与本地 `31337` 作为正式支持链路接入钱包页。对于黑客松演示，推荐优先使用 `HashKey Chain Testnet (133)` 来展示钱包卡片、身份树和 EVM controller 路径。
 
 除此之外，演示时最值得点开的交互面包括:
 
@@ -151,7 +151,7 @@ pnpm demo:platform
 
 ### 多链支持是不是已经全部体现在钱包连接 UI 上?
 
-不是。当前多链 controller 扩展主要落在 backend、SDK、analyzer、verifier 与 audit 主链路上，不代表每个 family 都已经有独立 wallet-connect UI。前端现在明确覆盖的是 EVM 演示路径里的本地 `31337` 与 `BNB Chain (56)`。
+不是。当前多链 controller 扩展主要落在 backend、SDK、analyzer、verifier 与 audit 主链路上，不代表每个 family 都已经有独立 wallet-connect UI。前端现在明确覆盖的是 EVM 演示路径里的本地 `31337`、`HashKey Chain Testnet (133)` 与 `BNB Chain (56)`。
 
 ### AI 在这个系统里到底做什么?
 

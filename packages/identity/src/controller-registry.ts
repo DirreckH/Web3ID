@@ -75,6 +75,7 @@ const DEFAULT_CAPABILITY_FLAGS: ControllerCapabilityFlags = {
 
 const EVM_NETWORKS: ControllerNetworkPreset[] = [
   { networkId: "1", label: "Ethereum Mainnet", networkRef: "eip155:1", mainnet: true },
+  { networkId: "133", label: "HashKey Chain Testnet", networkRef: "eip155:133", mainnet: false },
   { networkId: "56", label: "BNB Chain", networkRef: "eip155:56", mainnet: true },
   { networkId: "42161", label: "Arbitrum One", networkRef: "eip155:42161", mainnet: true },
   { networkId: "8453", label: "Base", networkRef: "eip155:8453", mainnet: true },
