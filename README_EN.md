@@ -18,6 +18,46 @@ Web3ID is a Web3 identity baseline built for real systems. It brings programmabl
 
 It is not a wallet-login demo, nor a sample project that loosely stitches together signatures, credentials, risk controls, audit, and operator panels. This repository is about how system boundaries are made real: how identity is anchored, how state evolves, how policy constrains behavior, how audit forms a closed loop, and how AI is kept inside an advisory boundary.
 
+## 🌱 Why Web3ID Starts Here
+
+Our view of Web3 begins with a tension. It gives users stronger privacy, but it also creates stronger identity isolation. Users, applications, and counterparties often interact across large trust blind spots, which makes scams, sybil attacks, and gray-market behavior easier to scale. At a broader level, this is also one of the core tensions between Web3 and regulation: privacy needs to be protected, but credible identity and behavior constraints are still missing.
+
+Web2 already solved part of this problem with mature credential ecosystems. A Google account or a WeChat account is not just a login button; it is a reusable credential layer that carries identity across applications and contexts. What Web3 is missing is not one more login entry, but a cross-scenario credential ecosystem that can also carry trust. From that perspective, the current `wallet + address` model is not the final form of Web3 identity. Web3 is not only about holding assets. It is also about consensus, attribution, and the fact that on-chain behavior leaves durable traces. That is why reputation should be treated as a core part of identity, not an optional extra.
+
+As RWA, trading, gaming, and agent-based workflows expand, the wallet looks more and more like an asset entry point rather than the unified entry point for future Web3 applications. It solves holding and transfer well, but it does not fully cover identity, permission, reputation, compliance, or cross-scenario collaboration. Web3ID is designed to add that missing layer on top of the wallet: users should own on-chain assets, but they should also own identity and reputation that can be accumulated, verified, and held accountable.
+
+## 🔄 Minimum Platform Loop
+
+### Core Framework
+
+The core chain in Web3ID starts from one or more blockchain addresses, derives corresponding `RootIdentity` anchors, and then derives different `SubIdentity` instances for different scenarios. When multiple roots need to belong to the same subject, the system never merges them implicitly; it requires explicit challenge, proof, and audit binding. Identity facts are carried through Verifiable Credentials, and verification is completed with zero-knowledge proofs plus smart-contract or business-system enforcement. The point is not to expose more raw data. The point is to make "this condition is satisfied" verifiable without unnecessarily revealing the underlying information.
+
+### Minimum Business Flow
+
+`User connects -> platform issues a challenge -> user proves control of an address or identity -> external proofs, business signals, and risk signals are ingested -> policy engine and risk assessment run -> an executable result is produced -> the result is written into the audit trail`
+
+From the platform's perspective, Web3ID is not just an identity display layer. It is a full closed loop that covers identity onboarding, credential carrying, condition verification, risk judgment, result output, and audit traceability.
+
+## ✨ Four Core Design Choices
+
+### 1. Root And Sub-Identity
+
+Web3ID does not require every scenario to remain permanently tied to a single wallet address, nor does it collapse identity into a single address entry point. The system allows scenario-specific `SubIdentity` instances under a given `RootIdentity`, and it also allows multiple roots to be explicitly aggregated under the same subject when needed. That design keeps identity ownership clear while still enabling minimal disclosure and scenario-specific execution. What users see are multiple controlled identities for different tasks; what the system preserves underneath is a verifiable and auditable identity relationship.
+
+### 2. Dynamic Oversight
+
+Identity should not be treated as a one-time static certification. In Web3ID it becomes a continuously updated state system. Proofs, behavioral signals, and risk signals keep flowing into the platform, and the policy engine plus risk assessment determine whether a user remains eligible, executable, or permitted under current rules. A completed KYC is therefore not a permanent guarantee. If risk status changes later, permissions can change with it.
+
+### 3. Zero-Knowledge Proofs
+
+What the platform usually needs is not the user's full raw profile, but proof that the user satisfies an entry, compliance, or execution condition. Zero-knowledge proofs preserve both sides of that equation at once: verifiability stays intact, and the privacy boundary also stays intact. In RWA-style scenarios, for example, the platform often only needs to know whether investment or compliance thresholds are met, not every identity detail behind them.
+
+### 4. AI Agent
+
+Web3ID is built for more than human users. It is also built for agents that will act inside Web3 workflows. The goal is not to let an AI Agent operate as a black box once it receives blanket authorization. The goal is to make it a controllable executor with identity, permissions, credentials, and audit boundaries. A user can authorize an agent tied to a specific `SubIdentity` and credential scope to initiate an RWA application or eligibility-verification flow, but the agent only operates within that scoped boundary. Final authorization, state writes, and permission effects are still decided by the policy engine, contract rules, and audit path.
+
+So Web3ID is not meant to be just another wallet entry point or a thin identity-authentication layer. It is intended to be identity infrastructure for multi-scenario Web3 systems: something that preserves privacy while building trust, serves users as well as applications and agents, and extends identity into permission control, risk judgment, compliance verification, and audit traceability.
+
 ## ✨ Features
 
 ### Identity And Control
