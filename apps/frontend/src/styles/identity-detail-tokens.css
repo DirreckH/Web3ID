@@ -1,0 +1,13 @@
+:root {
+  --subidentity-surface: #ffffff;
+  --subidentity-card-bg: #f7f9fc;
+  --subidentity-card-muted: rgba(247, 249, 252, 0.82);
+  --subidentity-border: #e6e8eb;
+  --subidentity-text: #111827;
+  --subidentity-text-muted: #667085;
+  --subidentity-brand: #0052ff;
+  --subidentity-danger: #ff4d4f;
+  --subidentity-radius: 8px;
+  --subidentity-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+  --subidentity-shadow-hover: 0 18px 40px rgba(0, 82, 255, 0.12);
+}

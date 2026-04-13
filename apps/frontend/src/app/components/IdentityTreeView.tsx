@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, Building2, Coins, Gamepad2, Shield, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowRight, Building2, ChevronUp, Coins, Gamepad2, Shield, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLanguage, type Language } from "../contexts/LanguageContext";
 import { getHighestRegulatoryStatus, type IdentityLaneState, type RegulatoryConsequence, type RegulatoryEvent, type RegulatoryStatus, type RiskSignal } from "../lib/identityRegulation";
@@ -87,6 +87,12 @@ const SIGNAL_SEVERITY_STYLES: Record<RiskSignal["severity"], string> = {
   low: "text-emerald-600",
   medium: "text-amber-600",
   high: "text-rose-600",
+};
+
+const IMPACT_BADGE_STYLES: Record<RiskSignal["severity"], string> = {
+  low: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  medium: "border-amber-200 bg-amber-50 text-amber-700",
+  high: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
 const SEVERITY_PRIORITY: Record<RiskSignal["severity"], number> = {
@@ -351,6 +357,19 @@ function SourceBadge({ source, testId }: { source: RiskSignal["source"]; testId?
   );
 }
 
+function ImpactBadge({ severity }: { severity: RiskSignal["severity"] }) {
+  const { t } = useLanguage();
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${IMPACT_BADGE_STYLES[severity]}`}
+      data-testid={`identity-impact-${severity}`}
+    >
+      {t("identityTree.impactSeverity")}: {t(`identityTree.impactLevels.${severity}`)}
+    </span>
+  );
+}
+
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-[24px] border border-white/70 bg-white/72 p-4 shadow-[0_16px_34px_rgba(148,163,184,0.12)] backdrop-blur-xl">
@@ -389,7 +408,7 @@ function ConsequenceRow({ consequence }: { consequence: RegulatoryConsequence })
 
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <span className="text-sm font-semibold text-slate-900">{consequence.title}</span>
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{t(`identityTree.consequences.${consequence.type}`)}</span>
       </div>
@@ -417,14 +436,14 @@ function TransitionRow({ event }: { event: RegulatoryEvent }) {
 
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{event.timestamp}</span>
-        <span className="text-sm font-semibold text-slate-900">
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{event.timestamp}</p>
+        <p className="text-sm font-semibold text-slate-900">
           {t(`identityTree.statuses.${event.from}`)} {"->"} {t(`identityTree.statuses.${event.to}`)}
-        </span>
+        </p>
+        <p className="text-sm leading-6 text-slate-600">{event.reason}</p>
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">{event.actor}</p>
       </div>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{event.reason}</p>
-      <p className="mt-2 text-xs font-medium uppercase tracking-[0.12em] text-slate-400">{event.actor}</p>
     </div>
   );
 }
@@ -484,6 +503,9 @@ function RecentEventCard({ event, status }: { event: RecentChainEvent; status: R
 export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProps) {
   const { t, language } = useLanguage();
   const [activePanel, setActivePanel] = useState<string | null>(null);
+  const [viewportBucket, setViewportBucket] = useState<"mobile" | "desktop">(() =>
+    typeof window !== "undefined" && window.innerWidth < 768 ? "mobile" : "desktop",
+  );
   const detailRef = useRef<HTMLDivElement | null>(null);
   const lanes = useMemo(() => buildIdentityLanes(), []);
 
@@ -492,6 +514,20 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
       setActivePanel(null);
     }
   }, [card?.id, isOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleResize = () => {
+      setViewportBucket(window.innerWidth < 768 ? "mobile" : "desktop");
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const rootSignals = useMemo<RiskSignal[]>(
     () => [
@@ -588,7 +624,7 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             transition={{ type: "spring", stiffness: 320, damping: 28 }}
           >
-            <div className="mx-auto my-8 flex min-h-full w-full max-w-5xl items-start justify-center lg:my-0">
+            <div className="mx-auto my-8 flex min-h-full w-full max-w-6xl items-start justify-center lg:my-0">
               <div className="relative w-full overflow-hidden rounded-[38px] border border-white/60 bg-white/38 p-5 shadow-[0_36px_120px_rgba(148,163,184,0.18)] backdrop-blur-[30px] lg:p-8">
                 <div className="absolute inset-x-10 top-0 h-44 bg-gradient-to-r from-sky-200/35 via-white/20 to-rose-200/30 blur-3xl" />
 
@@ -636,7 +672,7 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
                               <Shield className="h-8 w-8 text-slate-700" />
                             </div>
                             <div className="rounded-[24px] border border-white/70 bg-white/70 px-4 py-3 shadow-[0_12px_28px_rgba(148,163,184,0.14)]">
-                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{t("identityTree.trustScore")}</p>
+                              <p className="whitespace-nowrap text-sm font-semibold text-slate-500">{t("identityTree.trustScore")}</p>
                               <p className="mt-1 text-2xl font-semibold text-slate-900">{rootState.trustScore}</p>
                             </div>
                           </div>
@@ -654,22 +690,12 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
                           initial={{ opacity: 0, height: 0, y: -12 }}
                           transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
                         >
-                          <div className="rounded-[28px] border border-white/70 bg-white/70 p-4 shadow-[0_20px_40px_rgba(148,163,184,0.14)] backdrop-blur-2xl lg:p-5">
-                            <div className="grid gap-3 lg:grid-cols-3">
-                              <DetailSection title={t("identityTree.currentAggregateStatus")}>
-                                <div className="flex items-center gap-3">
-                                  <StatusBadge status={rootState.status} />
-                                </div>
-                              </DetailSection>
-                              <DetailSection title={t("identityTree.trustScore")}>
-                                <p className="text-3xl font-semibold text-slate-900">{rootState.trustScore}</p>
-                              </DetailSection>
+                          <div className="rounded-[28px] border border-white/70 bg-white/70 p-4 backdrop-blur-2xl lg:p-5">
+                            <div className="space-y-3">
                               <DetailSection title={t("identityTree.latestTransition")}>
                                 <TransitionRow event={rootState.stateTransitions[0]} />
                               </DetailSection>
-                            </div>
 
-                            <div className="mt-3 grid gap-3 lg:grid-cols-2">
                               <DetailSection title={t("identityTree.signalSources")}>
                                 <div className="space-y-3">
                                   {rootState.riskSignals.map((signal) => (
@@ -685,18 +711,13 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
                                 </div>
                               </DetailSection>
 
-                              <div className="grid gap-3">
-                                <DetailSection title={t("identityTree.activeConsequences")}>
-                                  <div className="space-y-3">
-                                    {rootState.consequences.map((consequence) => (
-                                      <ConsequenceRow consequence={consequence} key={consequence.id} />
-                                    ))}
-                                  </div>
-                                </DetailSection>
-                                <DetailSection title={t("identityTree.recoveryPath")}>
-                                  <p className="text-sm leading-6 text-slate-600">{rootState.recovery}</p>
-                                </DetailSection>
-                              </div>
+                              <DetailSection title={t("identityTree.activeConsequences")}>
+                                <div className="space-y-3">
+                                  {rootState.consequences.map((consequence) => (
+                                    <ConsequenceRow consequence={consequence} key={consequence.id} />
+                                  ))}
+                                </div>
+                              </DetailSection>
                             </div>
                           </div>
                         </motion.div>
@@ -753,30 +774,45 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
                         exit={{ opacity: 0, height: 0, y: -16 }}
                         initial={{ opacity: 0, height: 0, y: -16 }}
                         ref={detailRef}
-                        transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
                       >
-                        <div className="relative rounded-[32px] border border-white/75 bg-white/72 p-5 shadow-[0_28px_64px_rgba(148,163,184,0.16)] backdrop-blur-2xl lg:p-6">
+                        <div className="relative rounded-[24px] border border-transparent bg-[#FFFFFF] p-6 lg:p-8">
                           <div className="absolute inset-x-8 top-0 h-32 bg-gradient-to-r from-white/20 via-sky-200/25 to-rose-200/20 blur-3xl" />
-                          <div className="relative" data-selected-panel={selectedLane.id} data-testid="identity-regulation-detail">
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                              <div className="max-w-3xl">
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{selectedLane.name}</p>
-                                <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{selectedLane.state.summary}</h3>
-                                <p className="mt-3 text-sm leading-6 text-slate-600">{selectedLane.description}</p>
+                          <div className="relative" data-breakpoint={viewportBucket} data-selected-panel={selectedLane.id} data-testid="identity-regulation-detail">
+                            <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+                              <div className="max-w-4xl flex-1">
+                                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-slate-400">{selectedLane.name}</p>
+                                <h3 className="mt-4 text-[24px] font-semibold leading-[1.35] tracking-[-0.02em] text-slate-950">
+                                  {selectedLane.state.summary}
+                                </h3>
+                                <p className="mt-4 text-[16px] leading-7 text-slate-600">{selectedLane.description}</p>
                               </div>
 
-                              <div className="flex flex-wrap items-center gap-3">
+                              <div className="flex flex-wrap items-center gap-3 xl:max-w-[520px] xl:justify-end">
                                 <StatusBadge status={selectedLane.state.status} />
-                                <div className="rounded-full border border-white/80 bg-white/76 px-4 py-2 text-sm font-semibold text-slate-700 shadow-[0_12px_28px_rgba(148,163,184,0.12)]">
+                                <div className="inline-flex min-h-11 items-center rounded-full border border-[#E6E8EB] bg-[#F7F9FC] px-4 py-2 text-[14px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                                   {t("identityTree.trustScore")}: {selectedLane.state.trustScore}
                                 </div>
+                                <motion.button
+                                  aria-expanded={Boolean(selectedLane)}
+                                  className="inline-flex min-h-11 items-center gap-2 rounded-[8px] border border-[#E6E8EB] bg-[#F7F9FC] px-4 text-[14px] font-semibold text-slate-700 transition-colors duration-200 hover:border-[#0052FF] hover:text-[#0052FF]"
+                                  data-testid="identity-collapse-lane-detail"
+                                  onClick={() => setActivePanel(null)}
+                                  type="button"
+                                  whileTap={{ scale: 0.98 }}
+                                >
+                                  <motion.span animate={{ rotate: activePanel ? 180 : 0 }} transition={{ duration: 0.2, ease: "easeOut" }}>
+                                    <ChevronUp aria-label={t("identityTree.collapseLaneDetail")} className="h-4 w-4" />
+                                  </motion.span>
+                                  <span>{t("identityTree.collapseLaneDetail")}</span>
+                                </motion.button>
                               </div>
                             </div>
 
-                            <div className="mt-5 grid items-start gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                            <div className="mt-8">
                               <InsightSection
                                 aside={
-                                  <span className="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-500" data-testid="identity-recent-events-count">
+                                  <span className="rounded-full border border-[#E6E8EB] bg-[#F7F9FC] px-3 py-1.5 text-[12px] font-semibold text-slate-500" data-testid="identity-recent-events-count">
                                     {formatRecentEventCount(selectedLaneDetail.chainEvents.length, language)}
                                   </span>
                                 }
@@ -785,83 +821,121 @@ export function IdentityTreeView({ isOpen, onClose, card }: IdentityTreeViewProp
                                 title={t("identityTree.recentNotableEvents")}
                               >
                                 {selectedLaneDetail.chainEvents.length > 0 ? (
-                                  <div className="grid gap-3 lg:grid-cols-2">
+                                  <div className="space-y-2">
                                     {selectedLaneDetail.chainEvents.map((signal) => (
-                                      <RecentEventCard event={signal} key={signal.id} status={selectedLane.state.status} />
+                                      <div
+                                        className="ui-card-lift flex min-h-14 flex-wrap items-center gap-2 rounded-[8px] border border-[#E6E8EB] bg-[#F7F9FC] px-4 py-3 sm:flex-nowrap"
+                                        data-testid="identity-recent-event-card"
+                                        key={signal.id}
+                                      >
+                                        <span className="w-24 shrink-0 text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                          {signal.timestamp}
+                                        </span>
+                                        <span
+                                          className="min-w-0 flex-1 truncate text-[14px] font-medium text-slate-900"
+                                          title={`${signal.title} ${signal.detail}`}
+                                        >
+                                          {signal.title}
+                                        </span>
+                                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                          <ImpactBadge severity={signal.severity} />
+                                          <SourceBadge source={signal.source} testId="identity-recent-event-source" />
+                                        </div>
+                                      </div>
                                     ))}
                                   </div>
                                 ) : (
-                                  <div className="rounded-[24px] border border-dashed border-slate-200/80 bg-white/60 p-5">
-                                    <p className="text-sm font-semibold text-slate-800">{t("identityTree.noRecentOnchainEvents")}</p>
-                                    <p className="mt-2 text-sm leading-6 text-slate-500">{t("identityTree.noRecentOnchainEventsHint")}</p>
+                                  <div className="rounded-[8px] border border-dashed border-[#E6E8EB] bg-[#F7F9FC] p-4">
+                                    <p className="text-[14px] font-semibold text-slate-800">{t("identityTree.noRecentOnchainEvents")}</p>
+                                    <p className="mt-2 text-[14px] leading-6 text-slate-500">{t("identityTree.noRecentOnchainEventsHint")}</p>
                                   </div>
                                 )}
                               </InsightSection>
+                            </div>
 
+                            <div className="mt-6">
                               <InsightSection description={t("identityTree.regulatoryStatusScoreHint")} testId="identity-detail-status" title={t("identityTree.regulatoryStatusScore")}>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  <SummaryMetric
-                                    label={t("identityTree.currentAggregateStatus")}
-                                    value={
-                                      <div className="flex items-center gap-3">
-                                        <StatusBadge status={selectedLane.state.status} />
-                                      </div>
-                                    }
-                                  />
-                                  <SummaryMetric label={t("identityTree.trustScore")} value={<p className="text-3xl font-semibold text-slate-900">{selectedLane.state.trustScore}</p>} />
-                                </div>
-
-                                {selectedLaneDetail.latestTransition ? (
-                                  <div className="mt-3">
-                                    <SummaryMetric label={t("identityTree.latestTransition")} value={<TransitionRow event={selectedLaneDetail.latestTransition} />} />
-                                  </div>
-                                ) : null}
-
-                                <div className="mt-3 rounded-[24px] border border-slate-200/75 bg-white/68 p-4">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{t("identityTree.coreInfluenceFactors")}</p>
-                                  <div className="mt-3 space-y-3">
-                                    {selectedLaneDetail.keyFactors.map((signal) => (
-                                      <div className="rounded-[20px] border border-slate-200/70 bg-white/82 p-3" key={signal.id}>
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <SourceBadge source={signal.source} />
-                                          <span className={`text-xs font-semibold uppercase tracking-[0.14em] ${SIGNAL_SEVERITY_STYLES[signal.severity]}`}>{signal.timestamp}</span>
+                                <div className="space-y-4">
+                                  <div className="ui-card-lift rounded-[8px] border border-[#E6E8EB] bg-[#F7F9FC] p-4">
+                                    <h5 className="text-[16px] font-semibold text-slate-900">{t("identityTree.latestTransition")}</h5>
+                                    {selectedLaneDetail.latestTransition ? (
+                                      <div className="mt-4 grid gap-3 md:grid-cols-3">
+                                        <div className="min-w-0 rounded-[8px] border border-[#E6E8EB] bg-white px-4 py-3">
+                                          <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-400">{t("identityTree.stateTransition")}</p>
+                                          <p className="mt-2 text-[14px] font-semibold text-slate-900">
+                                            {t(`identityTree.statuses.${selectedLaneDetail.latestTransition.from}`)} {"->"} {t(`identityTree.statuses.${selectedLaneDetail.latestTransition.to}`)}
+                                          </p>
                                         </div>
-                                        <p className="mt-2 text-sm font-semibold text-slate-900">{signal.title}</p>
-                                        <p className="mt-2 text-sm leading-6 text-slate-600">{signal.detail}</p>
+                                        <div className="min-w-0 rounded-[8px] border border-[#E6E8EB] bg-white px-4 py-3">
+                                          <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-400">{t("identityTree.observationWindow")}</p>
+                                          <p className="mt-2 text-[14px] font-semibold text-slate-900">{selectedLaneDetail.latestTransition.timestamp}</p>
+                                        </div>
+                                        <div className="min-w-0 rounded-[8px] border border-[#E6E8EB] bg-white px-4 py-3">
+                                          <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-400">{t("identityTree.currentAssessment")}</p>
+                                          <p className="mt-2 text-[14px] font-semibold text-slate-900">{selectedLaneDetail.latestTransition.actor}</p>
+                                        </div>
                                       </div>
-                                    ))}
+                                    ) : (
+                                      <div className="mt-4 rounded-[8px] border border-dashed border-[#E6E8EB] bg-white px-4 py-3 text-[14px] text-slate-500">
+                                        {t("identityTree.noRecentOnchainEventsHint")}
+                                      </div>
+                                    )}
+                                    {selectedLaneDetail.latestTransition ? (
+                                      <p className="mt-4 text-[14px] leading-6 text-slate-600">{selectedLaneDetail.latestTransition.reason}</p>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="ui-card-lift rounded-[8px] border border-[#E6E8EB] bg-[#F7F9FC] p-4">
+                                    <h5 className="text-[16px] font-semibold text-slate-900">{t("identityTree.coreInfluenceFactors")}</h5>
+                                    <div className="mt-4 divide-y divide-[#E6E8EB] overflow-hidden rounded-[8px] border border-[#E6E8EB] bg-white">
+                                      {selectedLaneDetail.keyFactors.map((signal) => (
+                                        <div className="min-w-0 px-4 py-3" key={signal.id}>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <SourceBadge source={signal.source} />
+                                            <span className={`text-[12px] font-semibold uppercase tracking-[0.14em] ${SIGNAL_SEVERITY_STYLES[signal.severity]}`}>
+                                              {signal.timestamp}
+                                            </span>
+                                          </div>
+                                          <p className="mt-3 truncate text-[14px] font-semibold leading-6 text-slate-900" title={signal.title}>
+                                            {signal.title}
+                                          </p>
+                                          <p className="mt-2 truncate text-[14px] leading-6 text-slate-600" title={signal.detail}>
+                                            {signal.detail}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 </div>
                               </InsightSection>
                             </div>
 
-                            <div className="mt-4">
+                            <div className="mt-6">
                               <InsightSection description={t("identityTree.recommendationsNextStepsHint")} testId="identity-detail-recommendations" title={t("identityTree.recommendationsNextSteps")}>
-                                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                                  <div className="rounded-[24px] border border-slate-200/75 bg-white/72 p-4">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{t("identityTree.currentAssessment")}</p>
-                                    <p className="mt-3 text-sm leading-7 text-slate-700">{selectedLane.state.evaluation}</p>
-
-                                    <div className="mt-5">
-                                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{t("identityTree.activeControls")}</p>
-                                      <div className="mt-3 space-y-3">
-                                        {selectedLaneDetail.activeConsequences.map((consequence) => (
-                                          <CompactConsequenceRow consequence={consequence} key={consequence.id} />
-                                        ))}
-                                      </div>
+                                <div className="space-y-4">
+                                  <div className="ui-card-lift flex min-h-full flex-col rounded-[8px] border border-[#E6E8EB] bg-[#F7F9FC] p-4">
+                                    <h5 className="text-[16px] font-semibold text-slate-900">{t("identityTree.currentAssessment")}</h5>
+                                    <p className="mt-4 flex-1 text-[14px] leading-7 text-slate-700">{selectedLane.state.evaluation}</p>
+                                    <div className="mt-4 space-y-2">
+                                      {selectedLaneDetail.activeConsequences.map((consequence) => (
+                                        <div className="rounded-[8px] border border-[#E6E8EB] bg-white px-4 py-3" key={consequence.id}>
+                                          <p className="text-[14px] font-semibold text-slate-900">{consequence.title}</p>
+                                          <p className="mt-2 text-[14px] leading-6 text-slate-600">{consequence.detail}</p>
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
 
-                                  <div className="rounded-[24px] border border-slate-200/75 bg-gradient-to-br from-slate-900/[0.03] via-white/72 to-sky-50/65 p-4">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{t("identityTree.recommendedRecoveryPath")}</p>
-                                    <div className="mt-3 rounded-[20px] border border-white/80 bg-white/78 p-4 shadow-[0_14px_30px_rgba(148,163,184,0.1)]">
+                                  <div className="ui-card-lift flex min-h-full flex-col rounded-[8px] border border-[#E6E8EB] bg-[#F7F9FC] p-4">
+                                    <h5 className="text-[16px] font-semibold text-slate-900">{t("identityTree.recommendedRecoveryPath")}</h5>
+                                    <div className="mt-4 flex-1 rounded-[8px] border border-[#E6E8EB] bg-white px-4 py-4">
                                       <div className="flex items-start gap-3">
-                                        <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.16)]">
-                                          <ArrowRight className="h-4 w-4" />
+                                        <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] bg-[#0052FF] text-white">
+                                          <ArrowRight aria-label="Recovery action" className="h-4 w-4" />
                                         </div>
                                         <div>
-                                          <p className="text-sm font-semibold text-slate-900">{selectedLane.name}</p>
-                                          <p className="mt-2 text-sm leading-7 text-slate-600">{selectedLane.state.recovery}</p>
+                                          <p className="text-[14px] font-semibold text-slate-900">{selectedLane.name}</p>
+                                          <p className="mt-2 text-[14px] leading-7 text-slate-600">{selectedLane.state.recovery}</p>
                                         </div>
                                       </div>
                                     </div>

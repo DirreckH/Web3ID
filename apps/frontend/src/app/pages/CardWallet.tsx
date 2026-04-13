@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { Mail, Plus, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AddCardModal, type CardData } from "../components/AddCardModal";
 import { BlockchainCard } from "../components/BlockchainCard";
 import { EmptyCardCharacter } from "../components/EmptyCardCharacter";
@@ -9,17 +9,42 @@ import { LiquidGlassButton, LiquidGlassCard } from "../components/LiquidGlassBut
 import { MessagesInbox } from "../components/MessagesInbox";
 import { useLanguage } from "../contexts/LanguageContext";
 
+const WALLET_CARDS_STORAGE_KEY = "web3id.wallet.cards";
+
+function loadStoredCards(): CardData[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(WALLET_CARDS_STORAGE_KEY);
+
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export function CardWallet() {
   const { t } = useLanguage();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [cards, setCards] = useState<CardData[]>([]);
+  const [cards, setCards] = useState<CardData[]>(() => loadStoredCards());
   const [showMessages, setShowMessages] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => loadStoredCards().length > 0);
+
+  useEffect(() => {
+    window.localStorage.setItem(WALLET_CARDS_STORAGE_KEY, JSON.stringify(cards));
+  }, [cards]);
 
   const handleAddCard = (card: CardData) => {
-    setCards([card, ...cards]);
+    setCards((currentCards) => [card, ...currentCards]);
     setIsExpanded(true);
   };
 
